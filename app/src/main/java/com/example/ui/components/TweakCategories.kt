@@ -127,10 +127,10 @@ fun TweakCategories(
             )
         }
 
-        // 2. Dynamic Core Topology (2, 3, or 4 Cores & Threshold up to 100%)
+        // 2. Dynamic Core Topology (Selectable 1 or 2 Cores & Threshold up to 100%)
         TweakCategoryGroup(
             title = "Dynamic Core Topology",
-            badgeText = "${config.offlineCoreCount} Cores • ${if (config.offlineBatteryThreshold >= 100) "Always" else "≤${config.offlineBatteryThreshold}%"}",
+            badgeText = "${config.offlineCoreCount} ${if (config.offlineCoreCount == 1) "Core" else "Cores"} • ${if (config.offlineBatteryThreshold >= 100) "Always" else "≤${config.offlineBatteryThreshold}%"}",
             icon = Icons.Default.Memory,
             iconColor = MiuiPurple,
             defaultExpanded = true
@@ -162,7 +162,7 @@ fun TweakCategories(
                         )
                         .padding(14.dp)
                 ) {
-                    // Option: Select how many cores to offline (2, 3, or 4)
+                    // Option: Select how many cores to offline (1 or 2)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -178,8 +178,7 @@ fun TweakCategories(
 
                         Text(
                             text = when (config.offlineCoreCount) {
-                                4 -> "Cores 4, 5, 6, 7"
-                                3 -> "Cores 5, 6, 7"
+                                1 -> "Core 7"
                                 else -> "Cores 6, 7"
                             },
                             fontSize = 11.sp,
@@ -192,9 +191,9 @@ fun TweakCategories(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        listOf(2, 3, 4).forEach { count ->
+                        listOf(1, 2).forEach { count ->
                             val isSelected = config.offlineCoreCount == count
                             val btnBg by animateColorAsState(
                                 targetValue = if (isSelected) MiuiPurple.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface,
@@ -210,7 +209,7 @@ fun TweakCategories(
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(42.dp)
+                                    .height(44.dp)
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(btnBg)
                                     .border(
@@ -224,7 +223,7 @@ fun TweakCategories(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "$count Cores",
+                                    text = "$count ${if (count == 1) "Core" else "Cores"}",
                                     fontSize = 13.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                     color = btnColor

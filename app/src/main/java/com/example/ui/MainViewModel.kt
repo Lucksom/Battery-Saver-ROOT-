@@ -80,16 +80,69 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _isBusy.value = true
             val current = configState.value
             if (apply) {
+                val allTogglesWereOff = !current.cpuFreqCapEnabled &&
+                        !current.schedutilGovernorEnabled &&
+                        !current.twoCoresOfflineBelow20Enabled &&
+                        !current.inputTouchBoostDisabled &&
+                        !current.gpuPowerLimitEnabled
+
+                val toApply = if (allTogglesWereOff) {
+                    current.copy(
+                        isMasterApplied = true,
+                        lastAppliedTimestamp = System.currentTimeMillis(),
+                        cpuFreqCapEnabled = true,
+                        schedutilGovernorEnabled = true,
+                        schedutilRateLimitsEnabled = true,
+                        twoCoresOfflineBelow20Enabled = true,
+                        inputTouchBoostDisabled = true,
+                        gpuPowerLimitEnabled = true,
+                        adrenoIdlerEnabled = true,
+                        storageIoQueueEnabled = true,
+                        dynamicFsyncEnabled = true,
+                        vmDirtyWritebackEnabled = true,
+                        tcpBbrCongestionEnabled = true,
+                        gmsDozeEnabled = true,
+                        lpmSleepEnabled = true,
+                        doubleTapWakePreserved = true,
+                        schedtuneTopAppEnabled = true,
+                        powerEfficientWorkqueueEnabled = true
+                    )
+                } else {
+                    current.copy(
+                        isMasterApplied = true,
+                        lastAppliedTimestamp = System.currentTimeMillis()
+                    )
+                }
                 _statusMessage.value = "Creating stock backup & applying tweaks into RAM..."
-                val logs = RootBridge.applyPowersaveTweaks(getApplication(), current)
-                dao.updateAppliedStatus(true, System.currentTimeMillis())
+                dao.update(toApply)
+                RootBridge.applyPowersaveTweaks(getApplication(), toApply)
                 dao.updateBackupStatus(true, RootBridge.BACKUP_FILE_PATH)
                 _statusMessage.value = "Tweaks active in RAM! Stock backup saved."
             } else {
-                _statusMessage.value = "Restoring factory kernel parameters..."
+                _statusMessage.value = "Restoring factory kernel parameters from backup..."
                 RootBridge.revertAllTweaks(getApplication())
-                dao.updateAppliedStatus(false, System.currentTimeMillis())
-                _statusMessage.value = "All tweaks reverted to stock values."
+                val allOff = current.copy(
+                    isMasterApplied = false,
+                    lastAppliedTimestamp = System.currentTimeMillis(),
+                    cpuFreqCapEnabled = false,
+                    schedutilGovernorEnabled = false,
+                    schedutilRateLimitsEnabled = false,
+                    twoCoresOfflineBelow20Enabled = false,
+                    inputTouchBoostDisabled = false,
+                    gpuPowerLimitEnabled = false,
+                    adrenoIdlerEnabled = false,
+                    storageIoQueueEnabled = false,
+                    dynamicFsyncEnabled = false,
+                    vmDirtyWritebackEnabled = false,
+                    tcpBbrCongestionEnabled = false,
+                    gmsDozeEnabled = false,
+                    lpmSleepEnabled = false,
+                    doubleTapWakePreserved = false,
+                    schedtuneTopAppEnabled = false,
+                    powerEfficientWorkqueueEnabled = false
+                )
+                dao.update(allOff)
+                _statusMessage.value = "All tweaks reverted from backup file & all toggles turned off."
             }
             refreshTelemetry()
             _isBusy.value = false
@@ -101,8 +154,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _isBusy.value = true
             _statusMessage.value = "Executing stock backup revert..."
             val ok = RootBridge.revertAllTweaks(getApplication())
-            dao.updateAppliedStatus(false, System.currentTimeMillis())
-            _statusMessage.value = if (ok) "Stock parameters restored." else "Notice: Restored default tables."
+            val current = configState.value
+            val allOff = current.copy(
+                isMasterApplied = false,
+                lastAppliedTimestamp = System.currentTimeMillis(),
+                cpuFreqCapEnabled = false,
+                schedutilGovernorEnabled = false,
+                schedutilRateLimitsEnabled = false,
+                twoCoresOfflineBelow20Enabled = false,
+                inputTouchBoostDisabled = false,
+                gpuPowerLimitEnabled = false,
+                adrenoIdlerEnabled = false,
+                storageIoQueueEnabled = false,
+                dynamicFsyncEnabled = false,
+                vmDirtyWritebackEnabled = false,
+                tcpBbrCongestionEnabled = false,
+                gmsDozeEnabled = false,
+                lpmSleepEnabled = false,
+                doubleTapWakePreserved = false,
+                schedtuneTopAppEnabled = false,
+                powerEfficientWorkqueueEnabled = false
+            )
+            dao.update(allOff)
+            _statusMessage.value = if (ok) "Stock backup restored & all toggles turned off." else "Notice: Restored default tables."
             refreshTelemetry()
             _isBusy.value = false
         }
@@ -168,7 +242,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val current = configState.value
             val updated = current.copy(
-                offlineCoreCount = coreCount,
+                offlineCoreCount = coreCount.coerceIn(1, 2),
                 offlineBatteryThreshold = threshold
             )
             dao.update(updated)

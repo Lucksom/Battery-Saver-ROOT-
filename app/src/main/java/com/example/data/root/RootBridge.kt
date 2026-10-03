@@ -353,12 +353,11 @@ object RootBridge {
             logs.add("Schedutil rate limits restored from stock backup snapshot")
         }
 
-        // 3. Dynamic Core Topology (Selectable 2, 3, or 4 Cores & Threshold up to 100%)
+        // 3. Dynamic Core Topology (Selectable 1 or 2 Cores & Threshold up to 100%)
         if (config.twoCoresOfflineBelow20Enabled) {
             val shouldOffline = (config.offlineBatteryThreshold >= 100) || (batteryLevel in 1..config.offlineBatteryThreshold)
             val coresToOffline = when (config.offlineCoreCount) {
-                4 -> listOf(4, 5, 6, 7)
-                3 -> listOf(5, 6, 7)
+                1 -> listOf(7)
                 else -> listOf(6, 7)
             }
             val coresToKeepOnline = (0..7).filterNot { coresToOffline.contains(it) }
