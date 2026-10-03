@@ -560,19 +560,41 @@ object RootBridge {
             logs.add("Qualcomm LPM sleep enabled")
         }
 
-        // 12. SchedTune Top-App & Multicore power savings
+        // 12. Background App Power Restriction & Active App Prioritization
         if (config.schedtuneTopAppEnabled) {
             commands.append("""
-                [ -d /dev/stune/top-app ] && echo 5 > /dev/stune/top-app/schedtune.boost 2>/dev/null
+                # Restrict background cpuset to efficiency cores (0-3) so background tasks never spin up big cores
+                if [ -d /dev/cpuset/background ]; then
+                    echo "0-3" > /dev/cpuset/background/cpus 2>/dev/null
+                fi
+                if [ -d /dev/cpuset/system-background ]; then
+                    echo "0-2" > /dev/cpuset/system-background/cpus 2>/dev/null
+                fi
+                # Top-app (currently active foreground app) retains access to all online cores
+                if [ -d /dev/cpuset/top-app ]; then
+                    echo "0-7" > /dev/cpuset/top-app/cpus 2>/dev/null
+                fi
+
+                # CPU shares & uclamp: Top-app is prioritized (1024 shares), background is throttled (128 shares, max 30% uclamp)
+                [ -e /dev/cpuctl/background/cpu.shares ] && echo 128 > /dev/cpuctl/background/cpu.shares 2>/dev/null
+                [ -e /dev/cpuctl/system-background/cpu.shares ] && echo 128 > /dev/cpuctl/system-background/cpu.shares 2>/dev/null
+                [ -e /dev/cpuctl/top-app/cpu.shares ] && echo 1024 > /dev/cpuctl/top-app/cpu.shares 2>/dev/null
+                [ -e /dev/cpuctl/background/cpu.uclamp.max ] && echo 30 > /dev/cpuctl/background/cpu.uclamp.max 2>/dev/null
+
+                # SchedTune: Top-app gets prefer_idle for zero-latency frame draws; background idle waking is disabled
+                [ -d /dev/stune/top-app ] && echo 1 > /dev/stune/top-app/schedtune.prefer_idle 2>/dev/null
+                [ -d /dev/stune/top-app ] && echo 0 > /dev/stune/top-app/schedtune.boost 2>/dev/null
                 [ -d /dev/stune/background ] && echo 0 > /dev/stune/background/schedtune.boost 2>/dev/null
+                [ -d /dev/stune/background ] && echo 0 > /dev/stune/background/schedtune.prefer_idle 2>/dev/null
+
                 [ -e /sys/devices/system/cpu/sched_mc_power_savings ] && echo 2 > /sys/devices/system/cpu/sched_mc_power_savings 2>/dev/null
             """.trimIndent()).append("\n")
-            logs.add("SchedTune & multi-core power savings applied")
+            logs.add("Background apps throttled to efficiency cores; active app prioritized (App switching unaffected)")
         } else {
             commands.append("""
-                restore_from_backup "stune|sched_mc_power_savings" "[ -d /dev/stune/top-app ] && echo 0 > /dev/stune/top-app/schedtune.boost 2>/dev/null; [ -e /sys/devices/system/cpu/sched_mc_power_savings ] && echo 0 > /sys/devices/system/cpu/sched_mc_power_savings 2>/dev/null"
+                restore_from_backup "cpuset|cpuctl|stune|sched_mc" "[ -d /dev/cpuset/background ] && echo \"0-7\" > /dev/cpuset/background/cpus 2>/dev/null; [ -d /dev/cpuset/top-app ] && echo \"0-7\" > /dev/cpuset/top-app/cpus 2>/dev/null; [ -e /dev/cpuctl/background/cpu.shares ] && echo 1024 > /dev/cpuctl/background/cpu.shares 2>/dev/null; [ -d /dev/stune/top-app ] && echo 0 > /dev/stune/top-app/schedtune.boost 2>/dev/null; [ -e /sys/devices/system/cpu/sched_mc_power_savings ] && echo 0 > /sys/devices/system/cpu/sched_mc_power_savings 2>/dev/null"
             """.trimIndent()).append("\n")
-            logs.add("SchedTune restored from stock backup snapshot")
+            logs.add("Background cpuset and scheduling restored from stock backup snapshot")
         }
 
         // 13. Safe Screen / Touchpanel check (Gracefully skips missing LCD nodes on AMOLED displays)

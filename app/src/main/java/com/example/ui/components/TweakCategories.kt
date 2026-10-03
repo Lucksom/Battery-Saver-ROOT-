@@ -94,7 +94,7 @@ fun TweakCategories(
         // 1. CPU Frequency & Clocks
         TweakCategoryGroup(
             title = "CPU Clocks & Governors",
-            badgeText = "3 Tweaks",
+            badgeText = "4 Tweaks",
             icon = Icons.Default.Speed,
             iconColor = MiuiGreen,
             defaultExpanded = true
@@ -124,6 +124,15 @@ fun TweakCategories(
                 iconColor = MiuiAmber,
                 isChecked = config.schedutilRateLimitsEnabled,
                 onCheckedChange = { onUpdateTweak("schedutilRate", it) }
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
+            TweakItem(
+                title = "Background Power Throttle & Active Priority",
+                description = "Throttles background apps to efficiency cores (0-3) while prioritizing the active app. Switching between apps stays instantaneous.",
+                icon = Icons.Default.DashboardCustomize,
+                iconColor = MiuiPurple,
+                isChecked = config.schedtuneTopAppEnabled,
+                onCheckedChange = { onUpdateTweak("schedtuneTopApp", it) }
             )
         }
 
@@ -334,8 +343,8 @@ fun TweakCategories(
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
             TweakItem(
-                title = "Touch & HyperOS Boost Clamp",
-                description = "Suppresses HyperOS pnpmgr launch boost, scroll uclamp, and input boost to eliminate 2000-3000mA spikes on app launch and 700-900mA scroll drain",
+                title = "Touch & App Launch Boost Control",
+                description = "Prevents CPU clocks from artificially ramping to max frequency during screen touches, scrolling, and app opening",
                 icon = Icons.Default.TouchApp,
                 iconColor = MiuiAmber,
                 isChecked = config.inputTouchBoostDisabled,

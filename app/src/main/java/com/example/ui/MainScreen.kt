@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.BackupStatusBanner
+import com.example.ui.components.CpuFrequencyGraphCard
 import com.example.ui.components.HeaderBar
 import com.example.ui.components.ProfileSelector
 import com.example.ui.components.TelemetryCard
@@ -37,6 +38,7 @@ fun MainScreen(
 ) {
     val config by viewModel.configState.collectAsState()
     val telemetry by viewModel.telemetry.collectAsState()
+    val cpuFreqHistory by viewModel.cpuFreqHistory.collectAsState()
     val isBusy by viewModel.isBusy.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
 
@@ -100,6 +102,14 @@ fun MainScreen(
                 item {
                     TelemetryCard(
                         telemetry = telemetry
+                    )
+                }
+
+                item {
+                    CpuFrequencyGraphCard(
+                        history = cpuFreqHistory,
+                        isFreqCapActive = config.isMasterApplied && config.cpuFreqCapEnabled,
+                        activeGovernor = telemetry.activeGovernor
                     )
                 }
 
