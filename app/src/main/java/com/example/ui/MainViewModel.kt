@@ -157,7 +157,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     schedtuneTopAppEnabled = false,
                     powerEfficientWorkqueueEnabled = false,
                     systemBatterySaverWithoutDarkEnabled = false,
-                    lock60HzRefreshRateEnabled = false
+                    lock60HzRefreshRateEnabled = false,
+                    deepSleepScreenOffEnabled = false,
+                    developerProcessLimitEnabled = false
                 )
                 dao.update(allOff)
                 _statusMessage.value = "All tweaks reverted from backup file & all toggles turned off."
@@ -193,7 +195,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 schedtuneTopAppEnabled = false,
                 powerEfficientWorkqueueEnabled = false,
                 systemBatterySaverWithoutDarkEnabled = false,
-                lock60HzRefreshRateEnabled = false
+                lock60HzRefreshRateEnabled = false,
+                deepSleepScreenOffEnabled = false,
+                developerProcessLimitEnabled = false
             )
             dao.update(allOff)
             _statusMessage.value = if (ok) "Stock backup restored & all toggles turned off." else "Notice: Restored default tables."
@@ -206,12 +210,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             dao.updateProfile(profile)
             val current = configState.value.copy(activeProfile = profile)
-            val govName = when (profile) {
-                "PERFORMANCE" -> "performance"
-                "BALANCE" -> "schedutil"
-                else -> "powersave"
+            val desc = when (profile) {
+                "PERFORMANCE" -> "Performance profile active • Full clocks, performance governor"
+                "BALANCE" -> "Balance profile active • 70% CPU cap, Schedutil, RAM scaling & 5m Deep Sleep"
+                else -> "Powersave profile active • 50% CPU cap, Powersave governor"
             }
-            _statusMessage.value = "$profile profile active • Governor: $govName"
+            _statusMessage.value = desc
             if (current.isMasterApplied) {
                 RootBridge.applyPowersaveTweaks(getApplication(), current)
                 refreshTelemetry()
@@ -247,6 +251,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 "powerEfficientWorkqueue" -> current.copy(powerEfficientWorkqueueEnabled = enabled)
                 "batterySaverNoDark" -> current.copy(systemBatterySaverWithoutDarkEnabled = enabled)
                 "lock60Hz" -> current.copy(lock60HzRefreshRateEnabled = enabled)
+                "deepSleepScreenOff" -> current.copy(deepSleepScreenOffEnabled = enabled)
+                "developerProcessLimit" -> current.copy(developerProcessLimitEnabled = enabled)
+                "balanceCpuTweaks" -> current.copy(balanceCpuTweaksEnabled = enabled)
+                "balanceRamScaling" -> current.copy(balanceRamScalingEnabled = enabled)
+                "balanceCfsScheduler" -> current.copy(balanceCfsSchedulerEnabled = enabled)
+                "balanceGpuOptimization" -> current.copy(balanceGpuOptimizationEnabled = enabled)
+                "balanceStorageIo" -> current.copy(balanceStorageIoEnabled = enabled)
+                "balanceNetworkBbr" -> current.copy(balanceNetworkBbrEnabled = enabled)
                 else -> current
             }
             dao.update(updated)
@@ -256,6 +268,50 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _statusMessage.value = if (enabled) "Tweak applied to RAM" else "Stock values restored for this tweak"
                 RootBridge.applyPowersaveTweaks(getApplication(), updated)
                 refreshTelemetry()
+            }
+        }
+    }
+
+    fun onUpdateDeepSleepWhitelist(whitelist: String) {
+        viewModelScope.launch {
+            val current = configState.value
+            val updated = current.copy(deepSleepWhitelist = whitelist)
+            dao.update(updated)
+            if (current.isMasterApplied && current.deepSleepScreenOffEnabled) {
+                RootBridge.applyPowersaveTweaks(getApplication(), updated)
+            }
+        }
+    }
+
+    fun onUpdateDeepSleepDelay(minutes: Int) {
+        viewModelScope.launch {
+            val current = configState.value
+            val updated = current.copy(deepSleepDelayMinutes = minutes.coerceIn(1, 30))
+            dao.update(updated)
+            if (current.isMasterApplied && current.deepSleepScreenOffEnabled) {
+                RootBridge.applyPowersaveTweaks(getApplication(), updated)
+            }
+        }
+    }
+
+    fun onUpdateDeveloperProcessLimit(limit: Int) {
+        viewModelScope.launch {
+            val current = configState.value
+            val updated = current.copy(developerProcessLimit = limit.coerceIn(1, 8))
+            dao.update(updated)
+            if (current.isMasterApplied && current.developerProcessLimitEnabled) {
+                RootBridge.applyPowersaveTweaks(getApplication(), updated)
+            }
+        }
+    }
+
+    fun onUpdateBalanceCpuCap(percent: Int) {
+        viewModelScope.launch {
+            val current = configState.value
+            val updated = current.copy(balanceCpuCapPercent = percent.coerceIn(50, 95))
+            dao.update(updated)
+            if (current.isMasterApplied && current.activeProfile == "BALANCE" && current.cpuFreqCapEnabled) {
+                RootBridge.applyPowersaveTweaks(getApplication(), updated)
             }
         }
     }

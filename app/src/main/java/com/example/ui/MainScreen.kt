@@ -121,6 +121,9 @@ fun MainScreen(
                         },
                         onUpdateCoreTopology = { coreCount, threshold ->
                             viewModel.onUpdateCoreTopology(coreCount, threshold)
+                        },
+                        onUpdateDeepSleepWhitelist = { whitelist ->
+                            viewModel.onUpdateDeepSleepWhitelist(whitelist)
                         }
                     )
                 }

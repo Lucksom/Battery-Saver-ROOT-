@@ -34,5 +34,19 @@ data class TweakConfigEntity(
     val schedtuneTopAppEnabled: Boolean = true,
     val powerEfficientWorkqueueEnabled: Boolean = true,
     val systemBatterySaverWithoutDarkEnabled: Boolean = true,
-    val lock60HzRefreshRateEnabled: Boolean = true
+    val lock60HzRefreshRateEnabled: Boolean = true,
+
+    // Balanced Mode Specific Toggles & Enhancements
+    val balanceCpuTweaksEnabled: Boolean = true,
+    val balanceRamScalingEnabled: Boolean = true,
+    val balanceCfsSchedulerEnabled: Boolean = true,
+    val balanceGpuOptimizationEnabled: Boolean = true,
+    val balanceStorageIoEnabled: Boolean = true,
+    val balanceNetworkBbrEnabled: Boolean = true,
+    val deepSleepScreenOffEnabled: Boolean = true,
+    val deepSleepDelayMinutes: Int = 5,
+    val deepSleepWhitelist: String = "com.whatsapp,org.telegram.messenger,com.spotify.music",
+    val developerProcessLimitEnabled: Boolean = true,
+    val developerProcessLimit: Int = 4,
+    val balanceCpuCapPercent: Int = 70
 )

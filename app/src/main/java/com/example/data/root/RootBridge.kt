@@ -286,19 +286,22 @@ object RootBridge {
             }
         """.trimIndent()).append("\n\n")
 
-        // 1. 50% CPU Max Frequency Cap
+        val isBalance = config.activeProfile == "BALANCE"
+
+        // 1. CPU Max Frequency Cap (70% in Balance Mode, 50% in Powersave Mode)
         if (config.cpuFreqCapEnabled) {
+            val capPercent = if (isBalance) config.balanceCpuCapPercent else 50
             commands.append("""
                 for cpu in /sys/devices/system/cpu/cpu*/cpufreq; do
                     max=`cat ${'$'}cpu/cpuinfo_max_freq 2>/dev/null`
                     if [ -n "${'$'}max" ]; then
-                        half=${'$'}((max / 2))
-                        echo "${'$'}half" > "${'$'}cpu/scaling_max_freq" 2>/dev/null
+                        target=${'$'}((max * $capPercent / 100))
+                        echo "${'$'}target" > "${'$'}cpu/scaling_max_freq" 2>/dev/null
                     fi
                     echo "100000" > "${'$'}cpu/scaling_min_freq" 2>/dev/null
                 done
             """.trimIndent()).append("\n")
-            logs.add("CPU Max Frequency capped to 50%")
+            logs.add("CPU Max Frequency capped to $capPercent% (Profile: ${config.activeProfile})")
         } else {
             commands.append("""
                 restore_from_backup "scaling_max_freq" "for cpu in /sys/devices/system/cpu/cpu*/cpufreq; do max=\`cat ${'$'}cpu/cpuinfo_max_freq 2>/dev/null\`; [ -n \"${'$'}max\" ] && echo \"${'$'}max\" > \"${'$'}cpu/scaling_max_freq\" 2>/dev/null; done"
@@ -338,21 +341,53 @@ object RootBridge {
         }
 
         if (config.schedutilRateLimitsEnabled) {
-            commands.append("""
-                for s in /sys/devices/system/cpu/cpu*/cpufreq/schedutil /sys/devices/system/cpu/cpufreq/schedutil; do
-                    [ -d "${'$'}s" ] || continue
-                    echo 8000 > "${'$'}s/up_rate_limit_us" 2>/dev/null
-                    echo 32000 > "${'$'}s/down_rate_limit_us" 2>/dev/null
-                    echo 99 > "${'$'}s/hispeed_load" 2>/dev/null
-                    echo 0 > "${'$'}s/iowait_boost_enable" 2>/dev/null
-                done
-            """.trimIndent()).append("\n")
-            logs.add("Schedutil rate limits & 99% hispeed threshold applied")
+            if (isBalance) {
+                commands.append("""
+                    for cpu in /sys/devices/system/cpu/cpu[0-9]*; do
+                        [ -d "${'$'}cpu/cpufreq/schedutil" ] || continue
+                        c_num=`echo "${'$'}cpu" | tr -dc '0-9'`
+                        if [ "${'$'}c_num" -lt 4 ]; then
+                            echo 500 > "${'$'}cpu/cpufreq/schedutil/up_rate_limit_us" 2>/dev/null
+                            echo 20000 > "${'$'}cpu/cpufreq/schedutil/down_rate_limit_us" 2>/dev/null
+                        else
+                            echo 500 > "${'$'}cpu/cpufreq/schedutil/up_rate_limit_us" 2>/dev/null
+                            echo 10000 > "${'$'}cpu/cpufreq/schedutil/down_rate_limit_us" 2>/dev/null
+                        fi
+                    done
+                """.trimIndent()).append("\n")
+                logs.add("Balanced Schedutil Rate Limits: Little cores (500us/20ms), Big cores (500us/10ms fluid response)")
+            } else {
+                commands.append("""
+                    for s in /sys/devices/system/cpu/cpu*/cpufreq/schedutil /sys/devices/system/cpu/cpufreq/schedutil; do
+                        [ -d "${'$'}s" ] || continue
+                        echo 8000 > "${'$'}s/up_rate_limit_us" 2>/dev/null
+                        echo 32000 > "${'$'}s/down_rate_limit_us" 2>/dev/null
+                        echo 99 > "${'$'}s/hispeed_load" 2>/dev/null
+                        echo 0 > "${'$'}s/iowait_boost_enable" 2>/dev/null
+                    done
+                """.trimIndent()).append("\n")
+                logs.add("Powersave Schedutil rate limits & 99% hispeed threshold applied")
+            }
         } else {
             commands.append("""
                 restore_from_backup "schedutil/" "for s in /sys/devices/system/cpu/cpu*/cpufreq/schedutil; do [ -d \"${'$'}s\" ] || continue; echo 500 > \"${'$'}s/up_rate_limit_us\" 2>/dev/null; echo 20000 > \"${'$'}s/down_rate_limit_us\" 2>/dev/null; echo 80 > \"${'$'}s/hispeed_load\" 2>/dev/null; echo 1 > \"${'$'}s/iowait_boost_enable\" 2>/dev/null; done"
             """.trimIndent()).append("\n")
             logs.add("Schedutil rate limits restored from stock backup snapshot")
+        }
+
+        // Background Process Limit (Developer Options equivalent: At Most 4 Processes)
+        if (config.developerProcessLimitEnabled) {
+            commands.append("""
+                service call activity 51 i32 ${config.developerProcessLimit} >/dev/null 2>&1
+                setprop persist.sys.hidden_app_mem ${config.developerProcessLimit} >/dev/null 2>&1
+            """.trimIndent()).append("\n")
+            logs.add("Background process limit set to ${config.developerProcessLimit} (Developer Options setting)")
+        } else {
+            commands.append("""
+                service call activity 51 i32 -1 >/dev/null 2>&1
+                setprop persist.sys.hidden_app_mem "" >/dev/null 2>&1
+            """.trimIndent()).append("\n")
+            logs.add("Background process limit restored to standard")
         }
 
         // 3. Dynamic Core Topology (Selectable 1 or 2 Cores & Threshold up to 100%)
@@ -427,19 +462,44 @@ object RootBridge {
         }
 
         // 5. GPU Power Limit & Idler
-        if (config.gpuPowerLimitEnabled) {
-            commands.append("""
-                for g in /sys/class/kgsl/kgsl-3d0 /sys/devices/platform/*.gpu /sys/devices/*.mali; do
-                    [ -d "${'$'}g" ] || continue
-                    [ -e "${'$'}g/throttling" ] && echo 1 > "${'$'}g/throttling" 2>/dev/null
-                    [ -e "${'$'}g/devfreq/adrenoboost" ] && echo 0 > "${'$'}g/devfreq/adrenoboost" 2>/dev/null
-                    [ -e "${'$'}g/devfreq/max_freq" ] && {
-                        cur_max=`cat "${'$'}g/devfreq/max_freq" 2>/dev/null`
-                        [ -n "${'$'}cur_max" ] && echo "${'$'}((cur_max / 2))" > "${'$'}g/devfreq/max_freq" 2>/dev/null
-                    }
-                done
-            """.trimIndent()).append("\n")
-            logs.add("GPU power throttling applied")
+        val isGpuEnabled = if (isBalance) config.balanceGpuOptimizationEnabled else config.gpuPowerLimitEnabled
+        if (isGpuEnabled) {
+            if (isBalance) {
+                commands.append("""
+                    for g in /sys/class/kgsl/kgsl-3d0 /sys/devices/platform/*.gpu /sys/devices/*.mali; do
+                        [ -d "${'$'}g" ] || continue
+                        [ -e "${'$'}g/force_no_nap" ] && echo 0 > "${'$'}g/force_no_nap" 2>/dev/null
+                        [ -e "${'$'}g/idle_timer" ] && echo 80 > "${'$'}g/idle_timer" 2>/dev/null
+                        [ -e "${'$'}g/dvfs" ] && echo 1 > "${'$'}g/dvfs" 2>/dev/null
+                        [ -e "${'$'}g/power_policy" ] && echo "coarse_demand" > "${'$'}g/power_policy" 2>/dev/null
+                    done
+                    for gpf in /proc/gpufreq /proc/gpufreqv2; do
+                        if [ -d "${'$'}gpf" ]; then
+                            [ -w "${'$'}gpf/aging_mode" ] && echo disable > "${'$'}gpf/aging_mode" 2>/dev/null
+                            [ -w "${'$'}gpf/limit_table" ] && echo "0 0 0" > "${'$'}gpf/limit_table" 2>/dev/null
+                            [ -w "${'$'}gpf/gpm_mode" ] && echo 1 > "${'$'}gpf/gpm_mode" 2>/dev/null
+                            break
+                        fi
+                    done
+                    [ -w /sys/module/ged/parameters/ged_boost_enable ] && echo 1 > /sys/module/ged/parameters/ged_boost_enable 2>/dev/null
+                    [ -w /sys/module/ged/parameters/boost_gpu_enable ] && echo 1 > /sys/module/ged/parameters/boost_gpu_enable 2>/dev/null
+                    [ -w /sys/module/ged/parameters/gx_boost_on ] && echo 1 > /sys/module/ged/parameters/gx_boost_on 2>/dev/null
+                """.trimIndent()).append("\n")
+                logs.add("GPU Balanced: 80ms idle timer, nap sleep enabled, DVFS dynamic scaling")
+            } else {
+                commands.append("""
+                    for g in /sys/class/kgsl/kgsl-3d0 /sys/devices/platform/*.gpu /sys/devices/*.mali; do
+                        [ -d "${'$'}g" ] || continue
+                        [ -e "${'$'}g/throttling" ] && echo 1 > "${'$'}g/throttling" 2>/dev/null
+                        [ -e "${'$'}g/devfreq/adrenoboost" ] && echo 0 > "${'$'}g/devfreq/adrenoboost" 2>/dev/null
+                        [ -e "${'$'}g/devfreq/max_freq" ] && {
+                            cur_max=`cat "${'$'}g/devfreq/max_freq" 2>/dev/null`
+                            [ -n "${'$'}cur_max" ] && echo "${'$'}((cur_max / 2))" > "${'$'}g/devfreq/max_freq" 2>/dev/null
+                        }
+                    done
+                """.trimIndent()).append("\n")
+                logs.add("GPU power throttling applied")
+            }
         } else {
             commands.append("""
                 restore_from_backup "kgsl|gpu|mali" "for g in /sys/class/kgsl/kgsl-3d0 /sys/devices/platform/*.gpu /sys/devices/*.mali; do [ -d \"${'$'}g\" ] || continue; [ -e \"${'$'}g/throttling\" ] && echo 0 > \"${'$'}g/throttling\" 2>/dev/null; done"
@@ -463,17 +523,47 @@ object RootBridge {
             logs.add("Adreno Idler restored from stock backup snapshot")
         }
 
-        // 6. Storage & I/O Queue
-        if (config.storageIoQueueEnabled) {
-            commands.append("""
-                for q in /sys/block/*/queue; do
-                    [ -d "${'$'}q" ] || continue
-                    echo 128 > "${'$'}q/read_ahead_kb" 2>/dev/null
-                    echo 64 > "${'$'}q/nr_requests" 2>/dev/null
-                    echo 0 > "${'$'}q/iostats" 2>/dev/null
-                done
-            """.trimIndent()).append("\n")
-            logs.add("I/O queue tuned (128KB read-ahead, 64 queue depth)")
+        // 6. Storage I/O Queue
+        val isStorageEnabled = if (isBalance) config.balanceStorageIoEnabled else config.storageIoQueueEnabled
+        if (isStorageEnabled) {
+            if (isBalance) {
+                commands.append("""
+                    MEM_KB=`grep MemTotal /proc/meminfo | awk '{print ${'$'}2}'`
+                    RA=128
+                    NR=256
+                    if [ "${'$'}MEM_KB" -gt 6000000 ]; then
+                        RA=256
+                        NR=512
+                    elif [ "${'$'}MEM_KB" -le 3000000 ]; then
+                        RA=64
+                        NR=128
+                    fi
+                    for dev in /sys/block/sd* /sys/block/mmcblk* /sys/block/nvme*; do
+                        [ -d "${'$'}dev/queue" ] || continue
+                        scheds=`cat "${'$'}dev/queue/scheduler" 2>/dev/null`
+                        case "${'$'}scheds" in
+                            *kyber*) echo kyber > "${'$'}dev/queue/scheduler" 2>/dev/null ;;
+                            *bfq*) echo bfq > "${'$'}dev/queue/scheduler" 2>/dev/null ;;
+                            *mq-deadline*) echo mq-deadline > "${'$'}dev/queue/scheduler" 2>/dev/null ;;
+                        esac
+                        echo "${'$'}RA" > "${'$'}dev/queue/read_ahead_kb" 2>/dev/null
+                        echo "${'$'}NR" > "${'$'}dev/queue/nr_requests" 2>/dev/null
+                        echo 2 > "${'$'}dev/queue/rq_affinity" 2>/dev/null
+                        echo 0 > "${'$'}dev/queue/iostats" 2>/dev/null
+                    done
+                """.trimIndent()).append("\n")
+                logs.add("Storage I/O tuned: Adaptive queue, rq_affinity=2, Kyber/BFQ priority")
+            } else {
+                commands.append("""
+                    for q in /sys/block/*/queue; do
+                        [ -d "${'$'}q" ] || continue
+                        echo 128 > "${'$'}q/read_ahead_kb" 2>/dev/null
+                        echo 64 > "${'$'}q/nr_requests" 2>/dev/null
+                        echo 0 > "${'$'}q/iostats" 2>/dev/null
+                    done
+                """.trimIndent()).append("\n")
+                logs.add("I/O queue tuned (128KB read-ahead, 64 queue depth)")
+            }
         } else {
             commands.append("""
                 restore_from_backup "queue/read_ahead_kb|queue/nr_requests" "for q in /sys/block/*/queue; do [ -d \"${'$'}q\" ] || continue; echo 512 > \"${'$'}q/read_ahead_kb\" 2>/dev/null; echo 128 > \"${'$'}q/nr_requests\" 2>/dev/null; echo 1 > \"${'$'}q/iostats\" 2>/dev/null; done"
@@ -494,17 +584,71 @@ object RootBridge {
             logs.add("Dynamic Fsync restored from stock backup snapshot")
         }
 
-        // 8. Virtual Memory (Dirty writeback delay & ZRAM)
-        if (config.vmDirtyWritebackEnabled) {
-            commands.append("""
-                echo 50 > /proc/sys/vm/dirty_ratio 2>/dev/null
-                echo 5 > /proc/sys/vm/dirty_background_ratio 2>/dev/null
-                echo 3000 > /proc/sys/vm/dirty_writeback_centisecs 2>/dev/null
-                echo 3000 > /proc/sys/vm/dirty_expire_centisecs 2>/dev/null
-                echo 100 > /proc/sys/vm/swappiness 2>/dev/null
-                echo 50 > /proc/sys/vm/vfs_cache_pressure 2>/dev/null
-            """.trimIndent()).append("\n")
-            logs.add("VM writeback extended to 30s")
+        // 8. Virtual Memory (Dirty writeback delay, ZRAM & CFS Scheduler)
+        val isVmEnabled = if (isBalance) (config.balanceRamScalingEnabled || config.balanceCfsSchedulerEnabled) else config.vmDirtyWritebackEnabled
+        if (isVmEnabled) {
+            if (isBalance) {
+                commands.append("""
+                    MEM_KB=`grep MemTotal /proc/meminfo | awk '{print ${'$'}2}'`
+                    if [ "${'$'}MEM_KB" -ge 8000000 ]; then
+                        echo 60 > /proc/sys/vm/swappiness 2>/dev/null
+                        echo 20 > /proc/sys/vm/dirty_ratio 2>/dev/null
+                        echo 10 > /proc/sys/vm/dirty_background_ratio 2>/dev/null
+                        echo 60 > /proc/sys/vm/vfs_cache_pressure 2>/dev/null
+                        echo 20480 > /proc/sys/vm/extra_free_kbytes 2>/dev/null
+                    elif [ "${'$'}MEM_KB" -ge 4000000 ]; then
+                        echo 80 > /proc/sys/vm/swappiness 2>/dev/null
+                        echo 15 > /proc/sys/vm/dirty_ratio 2>/dev/null
+                        echo 8 > /proc/sys/vm/dirty_background_ratio 2>/dev/null
+                        echo 80 > /proc/sys/vm/vfs_cache_pressure 2>/dev/null
+                        echo 10240 > /proc/sys/vm/extra_free_kbytes 2>/dev/null
+                    else
+                        echo 100 > /proc/sys/vm/swappiness 2>/dev/null
+                        echo 10 > /proc/sys/vm/dirty_ratio 2>/dev/null
+                        echo 5 > /proc/sys/vm/dirty_background_ratio 2>/dev/null
+                        echo 100 > /proc/sys/vm/vfs_cache_pressure 2>/dev/null
+                        echo 4096 > /proc/sys/vm/extra_free_kbytes 2>/dev/null
+                    fi
+                    echo 3000 > /proc/sys/vm/dirty_writeback_centisecs 2>/dev/null
+                    echo 3000 > /proc/sys/vm/dirty_expire_centisecs 2>/dev/null
+                    echo 0 > /proc/sys/vm/page-cluster 2>/dev/null
+                    echo 10 > /proc/sys/vm/stat_interval 2>/dev/null
+                    echo 80 > /proc/sys/vm/overcommit_ratio 2>/dev/null
+                    echo 0 > /proc/sys/vm/panic_on_oom 2>/dev/null
+
+                    # CFS Scheduler
+                    echo 1 > /proc/sys/kernel/sched_autogroup_enabled 2>/dev/null
+                    echo 1 > /proc/sys/kernel/sched_child_runs_first 2>/dev/null
+                    echo 0 > /proc/sys/kernel/sched_tunable_scaling 2>/dev/null
+                    echo 0 > /proc/sys/kernel/sched_schedstats 2>/dev/null
+                    echo 5000000 > /proc/sys/kernel/sched_migration_cost_ns 2>/dev/null
+                    echo 128 > /proc/sys/kernel/sched_nr_migrate 2>/dev/null
+
+                    if [ "${'$'}MEM_KB" -ge 6000000 ]; then
+                        echo 4000000 > /proc/sys/kernel/sched_latency_ns 2>/dev/null
+                        echo 400000 > /proc/sys/kernel/sched_min_granularity_ns 2>/dev/null
+                        echo 1000000 > /proc/sys/kernel/sched_wakeup_granularity_ns 2>/dev/null
+                    fi
+
+                    if [ -w /sys/kernel/debug/sched_features ]; then
+                        echo "NEXT_BUDDY" > /sys/kernel/debug/sched_features 2>/dev/null
+                        echo "TTWU_QUEUE" > /sys/kernel/debug/sched_features 2>/dev/null
+                        echo "NO_HRTICK" > /sys/kernel/debug/sched_features 2>/dev/null
+                        echo "WAKEUP_PREEMPTION" > /sys/kernel/debug/sched_features 2>/dev/null
+                    fi
+                """.trimIndent()).append("\n")
+                logs.add("Balanced RAM & CFS: Dynamic 3-tier memory scaling, 30s dirty writeback, CFS preemption")
+            } else {
+                commands.append("""
+                    echo 50 > /proc/sys/vm/dirty_ratio 2>/dev/null
+                    echo 5 > /proc/sys/vm/dirty_background_ratio 2>/dev/null
+                    echo 3000 > /proc/sys/vm/dirty_writeback_centisecs 2>/dev/null
+                    echo 3000 > /proc/sys/vm/dirty_expire_centisecs 2>/dev/null
+                    echo 100 > /proc/sys/vm/swappiness 2>/dev/null
+                    echo 50 > /proc/sys/vm/vfs_cache_pressure 2>/dev/null
+                """.trimIndent()).append("\n")
+                logs.add("VM writeback extended to 30s")
+            }
         } else {
             commands.append("""
                 restore_from_backup "/proc/sys/vm/" "echo 20 > /proc/sys/vm/dirty_ratio 2>/dev/null; echo 10 > /proc/sys/vm/dirty_background_ratio 2>/dev/null; echo 500 > /proc/sys/vm/dirty_writeback_centisecs 2>/dev/null; echo 60 > /proc/sys/vm/swappiness 2>/dev/null; echo 100 > /proc/sys/vm/vfs_cache_pressure 2>/dev/null"
@@ -513,7 +657,8 @@ object RootBridge {
         }
 
         // 9. TCP BBR & Fast Open
-        if (config.tcpBbrCongestionEnabled) {
+        val isNetEnabled = if (isBalance) config.balanceNetworkBbrEnabled else config.tcpBbrCongestionEnabled
+        if (isNetEnabled) {
             commands.append("""
                 echo "bbr" > /proc/sys/net/ipv4/tcp_congestion_control 2>/dev/null
                 echo 3 > /proc/sys/net/ipv4/tcp_fastopen 2>/dev/null
@@ -644,9 +789,56 @@ object RootBridge {
             logs.add("Display refresh rate restored to dynamic stock")
         }
 
+        // 16. Deep Sleep App Exception Whitelist (Apps exempted from doze restrictions)
+        if (config.deepSleepWhitelist.isNotBlank()) {
+            val pkgs = config.deepSleepWhitelist.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            for (pkg in pkgs) {
+                commands.append("dumpsys deviceidle whitelist +$pkg >/dev/null 2>&1\n")
+            }
+            logs.add("Deep Sleep Whitelist: ${pkgs.size} apps exempted from sleep (${pkgs.joinToString(", ")})")
+        }
+
+        // 17. 5-Minute Screen-Off Deep Sleep Doze Daemon (Zero disk writes, RAM-only execution)
+        commands.append("""
+            pkill -f "voltpower_doze_daemon" >/dev/null 2>&1
+        """.trimIndent()).append("\n")
+
+        if (config.deepSleepScreenOffEnabled && isBalance) {
+            val delaySec = config.deepSleepDelayMinutes * 60
+            commands.append("""
+                (
+                    exec -a voltpower_doze_daemon sh -c '
+                    OFF_SECONDS=0
+                    IS_DEEP=0
+                    while true; do
+                        IS_AWAKE=${'$'}(dumpsys power 2>/dev/null | grep -E "mWakefulness=Awake|Display Power: state=ON")
+                        if [ -z "${'$'}IS_AWAKE" ]; then
+                            OFF_SECONDS=${'$'}((OFF_SECONDS + 10))
+                            if [ "${'$'}OFF_SECONDS" -ge $delaySec ] && [ "${'$'}IS_DEEP" -eq 0 ]; then
+                                dumpsys deviceidle force-idle deep >/dev/null 2>&1
+                                IS_DEEP=1
+                            fi
+                        else
+                            if [ "${'$'}IS_DEEP" -eq 1 ]; then
+                                dumpsys deviceidle unforce >/dev/null 2>&1
+                                IS_DEEP=0
+                            fi
+                            OFF_SECONDS=0
+                        fi
+                        sleep 10
+                    done
+                    '
+                ) >/dev/null 2>&1 &
+            """.trimIndent()).append("\n")
+            logs.add("5-Minute Screen-Off Deep Sleep Daemon active in background (Triggers after ${config.deepSleepDelayMinutes} min screen off)")
+        } else {
+            commands.append("dumpsys deviceidle unforce >/dev/null 2>&1\n")
+            logs.add("Deep Sleep Daemon deactivated / normal doze restored")
+        }
+
         val execResult = execute(commands.toString())
         if (execResult.success) {
-            logs.add("All selected powersave tweaks successfully written to RAM.")
+            logs.add("All selected ${if (isBalance) "balanced" else "powersave"} tweaks successfully written to RAM.")
         } else {
             logs.add("Execution completed with notices: ${execResult.stderr.take(100)}")
         }
