@@ -94,16 +94,25 @@ fun TweakCategories(
         // 1. CPU Frequency & Clocks
         TweakCategoryGroup(
             title = "CPU Clocks & Governors",
-            badgeText = "2 Tweaks",
+            badgeText = "3 Tweaks",
             icon = Icons.Default.Speed,
             iconColor = MiuiGreen,
             defaultExpanded = true
         ) {
             TweakItem(
+                title = "Powersave CPU Governor",
+                description = "Switches CPU scaling governor to 'powersave' (minimum frequency lock) for maximum battery life",
+                icon = Icons.Default.Speed,
+                iconColor = MiuiGreen,
+                isChecked = config.schedutilGovernorEnabled,
+                onCheckedChange = { onUpdateTweak("schedutilGov", it) }
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
+            TweakItem(
                 title = "50% CPU Max Frequency Cap",
                 description = "Caps all CPU clusters at 50% max clock in RAM to save up to 40% battery",
                 icon = Icons.Default.Speed,
-                iconColor = MiuiGreen,
+                iconColor = MiuiCyan,
                 isChecked = config.cpuFreqCapEnabled,
                 onCheckedChange = { onUpdateTweak("cpuFreqCap", it) }
             )
@@ -112,7 +121,7 @@ fun TweakCategories(
                 title = "Schedutil Slow Ramp-Up & 99% Threshold",
                 description = "Delays frequency ramp-up and sets hispeed load to 99% to prevent micro-spikes",
                 icon = Icons.Default.FastForward,
-                iconColor = MiuiCyan,
+                iconColor = MiuiAmber,
                 isChecked = config.schedutilRateLimitsEnabled,
                 onCheckedChange = { onUpdateTweak("schedutilRate", it) }
             )

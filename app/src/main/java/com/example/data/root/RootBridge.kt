@@ -155,6 +155,35 @@ object RootBridge {
 
         // 7. GMS Doze Restore
         commands.append("dumpsys deviceidle whitelist +com.google.android.gms 2>/dev/null\n")
+
+        // 8. GPU Clocks & Idler
+        val gpuNodes = listOf(
+            "/sys/class/kgsl/kgsl-3d0/throttling",
+            "/sys/class/kgsl/kgsl-3d0/devfreq/adrenoboost",
+            "/sys/class/kgsl/kgsl-3d0/devfreq/max_freq",
+            "/sys/module/adreno_idler/parameters/adreno_idler_active"
+        )
+        for (node in gpuNodes) {
+            readNode(node)?.let { commands.append("echo \"$it\" > \"$node\" 2>/dev/null\n") }
+        }
+
+        // 9. Networking & Congestion
+        readNode("/proc/sys/net/ipv4/tcp_congestion_control")?.let {
+            commands.append("echo \"$it\" > \"/proc/sys/net/ipv4/tcp_congestion_control\" 2>/dev/null\n")
+        }
+
+        // 10. Workqueue, Schedtune & Fsync
+        val miscNodes = listOf(
+            "/sys/module/workqueue/parameters/power_efficient",
+            "/sys/devices/system/cpu/cpuidle/use_deepest_state",
+            "/dev/stune/top-app/schedtune.boost",
+            "/sys/devices/system/cpu/sched_mc_power_savings",
+            "/sys/kernel/dyn_fsync/Dyn_fsync_active"
+        )
+        for (node in miscNodes) {
+            readNode(node)?.let { commands.append("echo \"$it\" > \"$node\" 2>/dev/null\n") }
+        }
+
         commands.append("echo \"Stock parameters restored successfully.\"\n")
 
         val scriptContent = commands.toString()
@@ -240,6 +269,21 @@ object RootBridge {
 
         val commands = StringBuilder()
 
+        // Helper shell function to restore parameters from the exact snapshot backup file
+        commands.append("""
+            restore_from_backup() {
+                _pat="${'$'}1"
+                _fb="${'$'}2"
+                if [ -f "$backupPath" ] && grep -qE "${'$'}_pat" "$backupPath" 2>/dev/null; then
+                    grep -E "${'$'}_pat" "$backupPath" | sh 2>/dev/null
+                elif [ -f "$BACKUP_FILE_PATH" ] && grep -qE "${'$'}_pat" "$BACKUP_FILE_PATH" 2>/dev/null; then
+                    grep -E "${'$'}_pat" "$BACKUP_FILE_PATH" | sh 2>/dev/null
+                else
+                    eval "${'$'}_fb"
+                fi
+            }
+        """.trimIndent()).append("\n\n")
+
         // 1. 50% CPU Max Frequency Cap
         if (config.cpuFreqCapEnabled) {
             commands.append("""
@@ -253,16 +297,42 @@ object RootBridge {
                 done
             """.trimIndent()).append("\n")
             logs.add("CPU Max Frequency capped to 50%")
+        } else {
+            commands.append("""
+                restore_from_backup "scaling_max_freq" "for cpu in /sys/devices/system/cpu/cpu*/cpufreq; do max=\`cat ${'$'}cpu/cpuinfo_max_freq 2>/dev/null\`; [ -n \"${'$'}max\" ] && echo \"${'$'}max\" > \"${'$'}cpu/scaling_max_freq\" 2>/dev/null; done"
+            """.trimIndent()).append("\n")
+            logs.add("CPU Max Frequency restored from stock backup snapshot")
         }
 
-        // 2. Schedutil Governor & Rate Limits
+        // 2. CPU Scaling Governor (powersave for POWERSAVE mode, performance for PERFORMANCE, schedutil for BALANCE)
         if (config.schedutilGovernorEnabled) {
+            val targetGov = when (config.activeProfile) {
+                "PERFORMANCE" -> "performance"
+                "BALANCE" -> "schedutil"
+                else -> "powersave"
+            }
             commands.append("""
                 for cpu in /sys/devices/system/cpu/cpu*/cpufreq; do
-                    echo "schedutil" > "${'$'}cpu/scaling_governor" 2>/dev/null
+                    [ -d "${'$'}cpu" ] || continue
+                    echo "$targetGov" > "${'$'}cpu/scaling_governor" 2>/dev/null
+                    cur=`cat "${'$'}cpu/scaling_governor" 2>/dev/null`
+                    if [ "${'$'}cur" != "$targetGov" ]; then
+                        if grep -q "$targetGov" "${'$'}cpu/scaling_available_governors" 2>/dev/null; then
+                            echo "$targetGov" > "${'$'}cpu/scaling_governor" 2>/dev/null
+                        elif grep -q "powersave" "${'$'}cpu/scaling_available_governors" 2>/dev/null; then
+                            echo "powersave" > "${'$'}cpu/scaling_governor" 2>/dev/null
+                        else
+                            echo "schedutil" > "${'$'}cpu/scaling_governor" 2>/dev/null
+                        fi
+                    fi
                 done
             """.trimIndent()).append("\n")
-            logs.add("Governor set to Schedutil")
+            logs.add("Governor set to $targetGov (Profile: ${config.activeProfile})")
+        } else {
+            commands.append("""
+                restore_from_backup "scaling_governor" "for cpu in /sys/devices/system/cpu/cpu*/cpufreq; do echo \"schedutil\" > \"${'$'}cpu/scaling_governor\" 2>/dev/null; done"
+            """.trimIndent()).append("\n")
+            logs.add("Governor restored from stock backup snapshot")
         }
 
         if (config.schedutilRateLimitsEnabled) {
@@ -276,6 +346,11 @@ object RootBridge {
                 done
             """.trimIndent()).append("\n")
             logs.add("Schedutil rate limits & 99% hispeed threshold applied")
+        } else {
+            commands.append("""
+                restore_from_backup "schedutil/" "for s in /sys/devices/system/cpu/cpu*/cpufreq/schedutil; do [ -d \"${'$'}s\" ] || continue; echo 500 > \"${'$'}s/up_rate_limit_us\" 2>/dev/null; echo 20000 > \"${'$'}s/down_rate_limit_us\" 2>/dev/null; echo 80 > \"${'$'}s/hispeed_load\" 2>/dev/null; echo 1 > \"${'$'}s/iowait_boost_enable\" 2>/dev/null; done"
+            """.trimIndent()).append("\n")
+            logs.add("Schedutil rate limits restored from stock backup snapshot")
         }
 
         // 3. Dynamic Core Topology (Selectable 2, 3, or 4 Cores & Threshold up to 100%)
@@ -298,11 +373,17 @@ object RootBridge {
                 val reason = if (config.offlineBatteryThreshold >= 100) "Always Active (100%)" else "Battery $batteryLevel% <= ${config.offlineBatteryThreshold}%"
                 logs.add("Dynamic Topology: Offlined ${coresToOffline.size} cores (${coresToOffline.joinToString(", ") { "Core $it" }}) - $reason")
             } else {
-                for (i in 0..7) {
-                    commands.append("echo 1 > /sys/devices/system/cpu/cpu$i/online 2>/dev/null\n")
-                }
+                commands.append("""
+                    restore_from_backup "cpu[0-9]+/online" "for i in 0 1 2 3 4 5 6 7; do echo 1 > \"/sys/devices/system/cpu/cpu${'$'}i/online\" 2>/dev/null; done"
+                """.trimIndent()).append("\n")
                 logs.add("Dynamic Topology: Battery ($batteryLevel% > ${config.offlineBatteryThreshold}%) - All CPU cores online")
             }
+        } else {
+            // Atomically bring ALL cores back online from the stock snapshot
+            commands.append("""
+                restore_from_backup "cpu[0-9]+/online" "for i in 0 1 2 3 4 5 6 7; do echo 1 > \"/sys/devices/system/cpu/cpu${'$'}i/online\" 2>/dev/null; done"
+            """.trimIndent()).append("\n")
+            logs.add("Dynamic Core Topology disabled: All CPU cores restored from stock backup snapshot")
         }
 
         // 4. Input & Touch Boost
@@ -315,6 +396,11 @@ object RootBridge {
                 [ -e /sys/kernel/fp_boost/enabled ] && echo 0 > /sys/kernel/fp_boost/enabled 2>/dev/null
             """.trimIndent()).append("\n")
             logs.add("Input & Touch boost disabled")
+        } else {
+            commands.append("""
+                restore_from_backup "input_boost|touchboost|pnpmgr|fp_boost" "[ -e /sys/module/cpu_boost/parameters/input_boost_ms ] && echo 40 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null; [ -e /sys/module/msm_performance/parameters/touchboost ] && echo 1 > /sys/module/msm_performance/parameters/touchboost 2>/dev/null"
+            """.trimIndent()).append("\n")
+            logs.add("Touch & input boost restored from stock backup snapshot")
         }
 
         // 5. GPU Power Limit & Idler
@@ -331,6 +417,11 @@ object RootBridge {
                 done
             """.trimIndent()).append("\n")
             logs.add("GPU power throttling applied")
+        } else {
+            commands.append("""
+                restore_from_backup "kgsl|gpu|mali" "for g in /sys/class/kgsl/kgsl-3d0 /sys/devices/platform/*.gpu /sys/devices/*.mali; do [ -d \"${'$'}g\" ] || continue; [ -e \"${'$'}g/throttling\" ] && echo 0 > \"${'$'}g/throttling\" 2>/dev/null; done"
+            """.trimIndent()).append("\n")
+            logs.add("GPU power throttling restored from stock backup snapshot")
         }
 
         if (config.adrenoIdlerEnabled) {
@@ -342,6 +433,11 @@ object RootBridge {
                 fi
             """.trimIndent()).append("\n")
             logs.add("Adreno Idler configured")
+        } else {
+            commands.append("""
+                restore_from_backup "adreno_idler" "[ -d /sys/module/adreno_idler/parameters ] && echo \"N\" > /sys/module/adreno_idler/parameters/adreno_idler_active 2>/dev/null"
+            """.trimIndent()).append("\n")
+            logs.add("Adreno Idler restored from stock backup snapshot")
         }
 
         // 6. Storage & I/O Queue
@@ -355,6 +451,11 @@ object RootBridge {
                 done
             """.trimIndent()).append("\n")
             logs.add("I/O queue tuned (128KB read-ahead, 64 queue depth)")
+        } else {
+            commands.append("""
+                restore_from_backup "queue/read_ahead_kb|queue/nr_requests" "for q in /sys/block/*/queue; do [ -d \"${'$'}q\" ] || continue; echo 512 > \"${'$'}q/read_ahead_kb\" 2>/dev/null; echo 128 > \"${'$'}q/nr_requests\" 2>/dev/null; echo 1 > \"${'$'}q/iostats\" 2>/dev/null; done"
+            """.trimIndent()).append("\n")
+            logs.add("I/O queue restored from stock backup snapshot")
         }
 
         // 7. Dynamic Fsync
@@ -363,6 +464,11 @@ object RootBridge {
                 [ -e /sys/kernel/dyn_fsync/Dyn_fsync_active ] && echo 1 > /sys/kernel/dyn_fsync/Dyn_fsync_active 2>/dev/null
             """.trimIndent()).append("\n")
             logs.add("Dynamic Fsync enabled")
+        } else {
+            commands.append("""
+                restore_from_backup "Dyn_fsync" "[ -e /sys/kernel/dyn_fsync/Dyn_fsync_active ] && echo 0 > /sys/kernel/dyn_fsync/Dyn_fsync_active 2>/dev/null"
+            """.trimIndent()).append("\n")
+            logs.add("Dynamic Fsync restored from stock backup snapshot")
         }
 
         // 8. Virtual Memory (Dirty writeback delay & ZRAM)
@@ -376,6 +482,11 @@ object RootBridge {
                 echo 50 > /proc/sys/vm/vfs_cache_pressure 2>/dev/null
             """.trimIndent()).append("\n")
             logs.add("VM writeback extended to 30s")
+        } else {
+            commands.append("""
+                restore_from_backup "/proc/sys/vm/" "echo 20 > /proc/sys/vm/dirty_ratio 2>/dev/null; echo 10 > /proc/sys/vm/dirty_background_ratio 2>/dev/null; echo 500 > /proc/sys/vm/dirty_writeback_centisecs 2>/dev/null; echo 60 > /proc/sys/vm/swappiness 2>/dev/null; echo 100 > /proc/sys/vm/vfs_cache_pressure 2>/dev/null"
+            """.trimIndent()).append("\n")
+            logs.add("VM dirty writeback restored from stock backup snapshot")
         }
 
         // 9. TCP BBR & Fast Open
@@ -387,6 +498,11 @@ object RootBridge {
                 echo 30 > /proc/sys/net/ipv4/tcp_fin_timeout 2>/dev/null
             """.trimIndent()).append("\n")
             logs.add("TCP BBR congestion control configured")
+        } else {
+            commands.append("""
+                restore_from_backup "tcp_congestion_control" "echo \"cubic\" > /proc/sys/net/ipv4/tcp_congestion_control 2>/dev/null"
+            """.trimIndent()).append("\n")
+            logs.add("TCP congestion restored from stock backup snapshot")
         }
 
         // 10. GMS Doze (Safe native Doze whitelist toggle - NO package disabling)
@@ -394,8 +510,10 @@ object RootBridge {
             commands.append("dumpsys deviceidle whitelist -com.google.android.gms 2>/dev/null\n")
             logs.add("GMS Doze enabled (removed from battery saver exemption whitelist)")
         } else {
-            commands.append("dumpsys deviceidle whitelist +com.google.android.gms 2>/dev/null\n")
-            logs.add("GMS Doze disabled (normal exemption restored)")
+            commands.append("""
+                restore_from_backup "deviceidle whitelist" "dumpsys deviceidle whitelist +com.google.android.gms 2>/dev/null"
+            """.trimIndent()).append("\n")
+            logs.add("GMS normal exemption restored from stock backup snapshot")
         }
 
         // 11. Power Efficient Workqueue & LPM Sleep
@@ -405,6 +523,11 @@ object RootBridge {
                 [ -e /sys/devices/system/cpu/cpuidle/use_deepest_state ] && echo 1 > /sys/devices/system/cpu/cpuidle/use_deepest_state 2>/dev/null
             """.trimIndent()).append("\n")
             logs.add("Power-efficient workqueue and deepest idle states enabled")
+        } else {
+            commands.append("""
+                restore_from_backup "workqueue|cpuidle" "[ -e /sys/module/workqueue/parameters/power_efficient ] && echo \"N\" > /sys/module/workqueue/parameters/power_efficient 2>/dev/null"
+            """.trimIndent()).append("\n")
+            logs.add("Workqueue power efficiency restored from stock backup snapshot")
         }
 
         if (config.lpmSleepEnabled) {
@@ -424,6 +547,11 @@ object RootBridge {
                 [ -e /sys/devices/system/cpu/sched_mc_power_savings ] && echo 2 > /sys/devices/system/cpu/sched_mc_power_savings 2>/dev/null
             """.trimIndent()).append("\n")
             logs.add("SchedTune & multi-core power savings applied")
+        } else {
+            commands.append("""
+                restore_from_backup "stune|sched_mc_power_savings" "[ -d /dev/stune/top-app ] && echo 0 > /dev/stune/top-app/schedtune.boost 2>/dev/null; [ -e /sys/devices/system/cpu/sched_mc_power_savings ] && echo 0 > /sys/devices/system/cpu/sched_mc_power_savings 2>/dev/null"
+            """.trimIndent()).append("\n")
+            logs.add("SchedTune restored from stock backup snapshot")
         }
 
         // 13. Safe Screen / Touchpanel check (Gracefully skips missing LCD nodes on AMOLED displays)

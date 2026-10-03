@@ -111,10 +111,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun onSelectProfile(profile: String) {
         viewModelScope.launch {
             dao.updateProfile(profile)
-            if (profile == "POWERSAVE") {
-                _statusMessage.value = "Powersave Profile selected"
-            } else {
-                _statusMessage.value = "$profile profile staged (ready for wiring)"
+            val current = configState.value.copy(activeProfile = profile)
+            val govName = when (profile) {
+                "PERFORMANCE" -> "performance"
+                "BALANCE" -> "schedutil"
+                else -> "powersave"
+            }
+            _statusMessage.value = "$profile profile active • Governor: $govName"
+            if (current.isMasterApplied) {
+                RootBridge.applyPowersaveTweaks(getApplication(), current)
+                refreshTelemetry()
             }
         }
     }
@@ -151,6 +157,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             // If master is currently active, dynamically push change into RAM
             if (current.isMasterApplied) {
+                _statusMessage.value = if (enabled) "Tweak applied to RAM" else "Stock values restored for this tweak"
                 RootBridge.applyPowersaveTweaks(getApplication(), updated)
                 refreshTelemetry()
             }

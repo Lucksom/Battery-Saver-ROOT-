@@ -86,16 +86,19 @@ class TelemetryRepository(private val context: Context) {
         )
     }
 
-    private fun readGovernor(): String {
+    private suspend fun readGovernor(): String {
         val file = File("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor")
         if (file.exists() && file.canRead()) {
-            return try {
-                file.readText().trim()
-            } catch (_: Exception) {
-                "schedutil"
-            }
+            try {
+                val txt = file.readText().trim()
+                if (txt.isNotEmpty()) return txt
+            } catch (_: Exception) {}
         }
-        return "schedutil"
+        val rootVal = RootBridge.readNode("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor")
+        if (!rootVal.isNullOrBlank()) {
+            return rootVal
+        }
+        return "powersave"
     }
 
     private fun readCoreOnline(core: Int): Boolean {
