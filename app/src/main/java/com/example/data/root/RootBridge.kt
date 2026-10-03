@@ -278,20 +278,30 @@ object RootBridge {
             logs.add("Schedutil rate limits & 99% hispeed threshold applied")
         }
 
-        // 3. Smart 2-Core Offline below 20% Battery
+        // 3. Dynamic Core Topology (Selectable 2, 3, or 4 Cores & Threshold up to 100%)
         if (config.twoCoresOfflineBelow20Enabled) {
-            if (batteryLevel in 1..20) {
-                commands.append("""
-                    echo 0 > /sys/devices/system/cpu/cpu6/online 2>/dev/null
-                    echo 0 > /sys/devices/system/cpu/cpu7/online 2>/dev/null
-                """.trimIndent()).append("\n")
-                logs.add("Battery <= 20%: Offlined Prime Cores 6 & 7 (Efficiency & Mid cores kept active)")
+            val shouldOffline = (config.offlineBatteryThreshold >= 100) || (batteryLevel in 1..config.offlineBatteryThreshold)
+            val coresToOffline = when (config.offlineCoreCount) {
+                4 -> listOf(4, 5, 6, 7)
+                3 -> listOf(5, 6, 7)
+                else -> listOf(6, 7)
+            }
+            val coresToKeepOnline = (0..7).filterNot { coresToOffline.contains(it) }
+
+            if (shouldOffline) {
+                for (core in coresToOffline) {
+                    commands.append("echo 0 > /sys/devices/system/cpu/cpu$core/online 2>/dev/null\n")
+                }
+                for (core in coresToKeepOnline) {
+                    commands.append("echo 1 > /sys/devices/system/cpu/cpu$core/online 2>/dev/null\n")
+                }
+                val reason = if (config.offlineBatteryThreshold >= 100) "Always Active (100%)" else "Battery $batteryLevel% <= ${config.offlineBatteryThreshold}%"
+                logs.add("Dynamic Topology: Offlined ${coresToOffline.size} cores (${coresToOffline.joinToString(", ") { "Core $it" }}) - $reason")
             } else {
-                commands.append("""
-                    echo 1 > /sys/devices/system/cpu/cpu6/online 2>/dev/null
-                    echo 1 > /sys/devices/system/cpu/cpu7/online 2>/dev/null
-                """.trimIndent()).append("\n")
-                logs.add("Battery > 20%: All CPU cores kept online")
+                for (i in 0..7) {
+                    commands.append("echo 1 > /sys/devices/system/cpu/cpu$i/online 2>/dev/null\n")
+                }
+                logs.add("Dynamic Topology: Battery ($batteryLevel% > ${config.offlineBatteryThreshold}%) - All CPU cores online")
             }
         }
 

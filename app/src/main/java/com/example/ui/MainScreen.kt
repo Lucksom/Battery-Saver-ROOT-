@@ -108,6 +108,9 @@ fun MainScreen(
                         config = config,
                         onUpdateTweak = { key, enabled ->
                             viewModel.onUpdateTweak(key, enabled)
+                        },
+                        onUpdateCoreTopology = { coreCount, threshold ->
+                            viewModel.onUpdateCoreTopology(coreCount, threshold)
                         }
                     )
                 }

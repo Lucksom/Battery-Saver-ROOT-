@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -9,15 +10,18 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.DisplaySettings
@@ -38,9 +42,12 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -60,11 +67,13 @@ import com.example.ui.theme.MiuiCyan
 import com.example.ui.theme.MiuiGreen
 import com.example.ui.theme.MiuiOrange
 import com.example.ui.theme.MiuiPurple
+import kotlin.math.roundToInt
 
 @Composable
 fun TweakCategories(
     config: TweakConfigEntity,
     onUpdateTweak: (String, Boolean) -> Unit,
+    onUpdateCoreTopology: (Int, Int) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -109,22 +118,194 @@ fun TweakCategories(
             )
         }
 
-        // 2. Smart Core Control (2 Cores)
+        // 2. Dynamic Core Topology (2, 3, or 4 Cores & Threshold up to 100%)
         TweakCategoryGroup(
             title = "Dynamic Core Topology",
-            badgeText = "Safe 2-Core",
+            badgeText = "${config.offlineCoreCount} Cores • ${if (config.offlineBatteryThreshold >= 100) "Always" else "≤${config.offlineBatteryThreshold}%"}",
             icon = Icons.Default.Memory,
             iconColor = MiuiPurple,
             defaultExpanded = true
         ) {
             TweakItem(
-                title = "Offline 2 Prime Cores Below 20%",
-                description = "Smart battery protection: Shuts down only Cores 6 & 7 (Prime high-power) when battery <= 20%, keeping 6 responsive cores active",
+                title = "Dynamic Core Parking",
+                description = "Parks heavy CPU cores to extend battery runtime. Customise core count and battery threshold below.",
                 icon = Icons.Default.Memory,
                 iconColor = MiuiPurple,
                 isChecked = config.twoCoresOfflineBelow20Enabled,
                 onCheckedChange = { onUpdateTweak("twoCoresOffline", it) }
             )
+
+            AnimatedVisibility(
+                visible = config.twoCoresOfflineBelow20Enabled,
+                enter = expandVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
+                exit = shrinkVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                        .border(
+                            1.dp,
+                            MiuiPurple.copy(alpha = 0.25f),
+                            RoundedCornerShape(16.dp)
+                        )
+                        .padding(14.dp)
+                ) {
+                    // Option: Select how many cores to offline (2, 3, or 4)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "CORES TO PARK / OFFLINE",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MiuiPurple,
+                            letterSpacing = 0.8.sp
+                        )
+
+                        Text(
+                            text = when (config.offlineCoreCount) {
+                                4 -> "Cores 4, 5, 6, 7"
+                                3 -> "Cores 5, 6, 7"
+                                else -> "Cores 6, 7"
+                            },
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(2, 3, 4).forEach { count ->
+                            val isSelected = config.offlineCoreCount == count
+                            val btnBg by animateColorAsState(
+                                targetValue = if (isSelected) MiuiPurple.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface,
+                                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                                label = "CoreCountBg"
+                            )
+                            val btnColor by animateColorAsState(
+                                targetValue = if (isSelected) MiuiPurple else MaterialTheme.colorScheme.onSurfaceVariant,
+                                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                                label = "CoreCountText"
+                            )
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(42.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(btnBg)
+                                    .border(
+                                        width = if (isSelected) 1.5.dp else 1.dp,
+                                        color = if (isSelected) MiuiPurple else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                    .hyperBounceClick(scaleDown = 0.94f) {
+                                        onUpdateCoreTopology(count, config.offlineBatteryThreshold)
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "$count Cores",
+                                    fontSize = 13.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = btnColor
+                                )
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                        modifier = Modifier.padding(vertical = 12.dp)
+                    )
+
+                    // Option: Battery percentage threshold slider (up to 100%)
+                    var sliderValue by remember(config.offlineBatteryThreshold) {
+                        mutableFloatStateOf(config.offlineBatteryThreshold.toFloat())
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.BatteryChargingFull,
+                                contentDescription = "Battery Threshold",
+                                tint = if (sliderValue >= 100f) MiuiGreen else MiuiPurple,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "BATTERY THRESHOLD",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                letterSpacing = 0.8.sp,
+                                modifier = Modifier.padding(start = 6.dp)
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (sliderValue >= 100f) MiuiGreen.copy(alpha = 0.15f)
+                                    else MiuiPurple.copy(alpha = 0.15f)
+                                )
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                text = if (sliderValue >= 100f) "100% (Always Offline)" else "≤ ${sliderValue.roundToInt()}%",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (sliderValue >= 100f) MiuiGreen else MiuiPurple
+                            )
+                        }
+                    }
+
+                    Slider(
+                        value = sliderValue,
+                        onValueChange = { sliderValue = it },
+                        onValueChangeFinished = {
+                            val targetPct = sliderValue.roundToInt().coerceIn(5, 100)
+                            onUpdateCoreTopology(config.offlineCoreCount, targetPct)
+                        },
+                        valueRange = 5f..100f,
+                        steps = 18, // 5% increments
+                        colors = SliderDefaults.colors(
+                            thumbColor = if (sliderValue >= 100f) MiuiGreen else MiuiPurple,
+                            activeTrackColor = if (sliderValue >= 100f) MiuiGreen else MiuiPurple,
+                            inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp)
+                    )
+
+                    Text(
+                        text = if (sliderValue >= 100f) {
+                            "★ Permanent Mode: The selected ${config.offlineCoreCount} cores will remain offlined at all times (even at 100% battery) for maximum endurance."
+                        } else {
+                            "The selected ${config.offlineCoreCount} cores will park when battery is at or below ${sliderValue.roundToInt()}%, and automatically wake back up when charging."
+                        },
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 15.sp,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+            }
         }
 
         // 3. Google Play Services (GMS) Doze

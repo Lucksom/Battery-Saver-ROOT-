@@ -156,4 +156,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
+    fun onUpdateCoreTopology(coreCount: Int, threshold: Int) {
+        viewModelScope.launch {
+            val current = configState.value
+            val updated = current.copy(
+                offlineCoreCount = coreCount,
+                offlineBatteryThreshold = threshold
+            )
+            dao.update(updated)
+            if (current.isMasterApplied && current.twoCoresOfflineBelow20Enabled) {
+                RootBridge.applyPowersaveTweaks(getApplication(), updated)
+                refreshTelemetry()
+            }
+        }
+    }
 }

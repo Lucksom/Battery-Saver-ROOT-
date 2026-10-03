@@ -19,6 +19,8 @@ data class TweakConfigEntity(
     val schedutilGovernorEnabled: Boolean = true,
     val schedutilRateLimitsEnabled: Boolean = true,
     val twoCoresOfflineBelow20Enabled: Boolean = true,
+    val offlineCoreCount: Int = 2, // 2, 3, or 4 cores
+    val offlineBatteryThreshold: Int = 20, // 5% to 100%
     val inputTouchBoostDisabled: Boolean = true,
     val gpuPowerLimitEnabled: Boolean = true,
     val adrenoIdlerEnabled: Boolean = true,
