@@ -155,7 +155,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     lpmSleepEnabled = false,
                     doubleTapWakePreserved = false,
                     schedtuneTopAppEnabled = false,
-                    powerEfficientWorkqueueEnabled = false
+                    powerEfficientWorkqueueEnabled = false,
+                    systemBatterySaverWithoutDarkEnabled = false,
+                    lock60HzRefreshRateEnabled = false
                 )
                 dao.update(allOff)
                 _statusMessage.value = "All tweaks reverted from backup file & all toggles turned off."
@@ -189,7 +191,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 lpmSleepEnabled = false,
                 doubleTapWakePreserved = false,
                 schedtuneTopAppEnabled = false,
-                powerEfficientWorkqueueEnabled = false
+                powerEfficientWorkqueueEnabled = false,
+                systemBatterySaverWithoutDarkEnabled = false,
+                lock60HzRefreshRateEnabled = false
             )
             dao.update(allOff)
             _statusMessage.value = if (ok) "Stock backup restored & all toggles turned off." else "Notice: Restored default tables."
@@ -241,6 +245,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 "doubleTapWake" -> current.copy(doubleTapWakePreserved = enabled)
                 "schedtuneTopApp" -> current.copy(schedtuneTopAppEnabled = enabled)
                 "powerEfficientWorkqueue" -> current.copy(powerEfficientWorkqueueEnabled = enabled)
+                "batterySaverNoDark" -> current.copy(systemBatterySaverWithoutDarkEnabled = enabled)
+                "lock60Hz" -> current.copy(lock60HzRefreshRateEnabled = enabled)
                 else -> current
             }
             dao.update(updated)

@@ -223,6 +223,8 @@ object RootBridge {
         val result = execute(backupCmd)
         execute("dumpsys deviceidle whitelist +com.google.android.gms 2>/dev/null")
         execute("for i in /sys/devices/system/cpu/cpu*/online; do echo 1 > \"\$i\" 2>/dev/null; done")
+        execute("cmd power set-mode 0 2>/dev/null || settings put global low_power 0 2>/dev/null")
+        execute("settings delete system min_refresh_rate 2>/dev/null; settings delete system peak_refresh_rate 2>/dev/null; settings delete system user_refresh_rate 2>/dev/null; settings delete secure miui_refresh_rate 2>/dev/null")
         result.success
     }
 
@@ -604,6 +606,42 @@ object RootBridge {
                 [ -e /proc/tp_gesture ] && echo 1 > /proc/tp_gesture 2>/dev/null
             """.trimIndent()).append("\n")
             logs.add("Double-tap wake gesture preserved")
+        }
+
+        // 14. System Battery Saver (Keep Light Theme - Suppress forced Dark Mode)
+        if (config.systemBatterySaverWithoutDarkEnabled) {
+            commands.append("""
+                cmd power set-mode 1 2>/dev/null || settings put global low_power 1 2>/dev/null
+                cmd uimode night no 2>/dev/null
+                settings put secure ui_night_mode 1 2>/dev/null
+                settings put system ui_night_mode 1 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("System battery saver enabled (Dark mode suppressed / light theme preserved)")
+        } else {
+            commands.append("""
+                cmd power set-mode 0 2>/dev/null || settings put global low_power 0 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("System battery saver restored to normal")
+        }
+
+        // 15. Lock Display Refresh Rate to 60Hz
+        if (config.lock60HzRefreshRateEnabled) {
+            commands.append("""
+                settings put system min_refresh_rate 60.0 2>/dev/null
+                settings put system peak_refresh_rate 60.0 2>/dev/null
+                settings put system user_refresh_rate 60 2>/dev/null
+                settings put secure miui_refresh_rate 60 2>/dev/null
+                service call SurfaceFlinger 1035 i32 60 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("Display refresh rate locked to 60Hz (Saves 350-500mA on scroll)")
+        } else {
+            commands.append("""
+                settings delete system min_refresh_rate 2>/dev/null
+                settings delete system peak_refresh_rate 2>/dev/null
+                settings delete system user_refresh_rate 2>/dev/null
+                settings delete secure miui_refresh_rate 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("Display refresh rate restored to dynamic stock")
         }
 
         val execResult = execute(commands.toString())

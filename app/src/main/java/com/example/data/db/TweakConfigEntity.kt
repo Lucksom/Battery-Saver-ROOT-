@@ -32,5 +32,7 @@ data class TweakConfigEntity(
     val lpmSleepEnabled: Boolean = true,
     val doubleTapWakePreserved: Boolean = true,
     val schedtuneTopAppEnabled: Boolean = true,
-    val powerEfficientWorkqueueEnabled: Boolean = true
+    val powerEfficientWorkqueueEnabled: Boolean = true,
+    val systemBatterySaverWithoutDarkEnabled: Boolean = true,
+    val lock60HzRefreshRateEnabled: Boolean = true
 )

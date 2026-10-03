@@ -441,7 +441,7 @@ fun TweakCategories(
         // 8. Safe Display & Hardware Extras
         TweakCategoryGroup(
             title = "Hardware & Display Extras",
-            badgeText = "3 Tweaks",
+            badgeText = "5 Tweaks",
             icon = Icons.Default.DisplaySettings,
             iconColor = MiuiBlue
         ) {
@@ -452,6 +452,24 @@ fun TweakCategories(
                 iconColor = MiuiBlue,
                 isChecked = config.powerEfficientWorkqueueEnabled,
                 onCheckedChange = { onUpdateTweak("powerEfficientWorkqueue", it) }
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
+            TweakItem(
+                title = "Lock Refresh Rate to 60 Hz",
+                description = "Forces system and SurfaceFlinger display rendering to 60 Hz. Saves 350-500 mA current during scrolling.",
+                icon = Icons.Default.Speed,
+                iconColor = MiuiAmber,
+                isChecked = config.lock60HzRefreshRateEnabled,
+                onCheckedChange = { onUpdateTweak("lock60Hz", it) }
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
+            TweakItem(
+                title = "System Battery Saver (Keep Light Mode)",
+                description = "Enables system power saver while strictly preserving Light Mode (suppresses forced Dark Mode).",
+                icon = Icons.Default.BatteryChargingFull,
+                iconColor = MiuiGreen,
+                isChecked = config.systemBatterySaverWithoutDarkEnabled,
+                onCheckedChange = { onUpdateTweak("batterySaverNoDark", it) }
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
             TweakItem(
