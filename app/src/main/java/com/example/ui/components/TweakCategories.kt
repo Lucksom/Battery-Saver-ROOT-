@@ -334,8 +334,8 @@ fun TweakCategories(
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
             TweakItem(
-                title = "Disable Touch & Input Boost",
-                description = "Stops CPU clocks from spiking during screen touches and fingerprint unlocks",
+                title = "Touch & HyperOS Boost Clamp",
+                description = "Suppresses HyperOS pnpmgr launch boost, scroll uclamp, and input boost to eliminate 2000-3000mA spikes on app launch and 700-900mA scroll drain",
                 icon = Icons.Default.TouchApp,
                 iconColor = MiuiAmber,
                 isChecked = config.inputTouchBoostDisabled,

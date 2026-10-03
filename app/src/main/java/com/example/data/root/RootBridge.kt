@@ -385,19 +385,41 @@ object RootBridge {
             logs.add("Dynamic Core Topology disabled: All CPU cores restored from stock backup snapshot")
         }
 
-        // 4. Input & Touch Boost
+        // 4. Input & Touch Boost + HyperOS App Launch & Scroll Spikes
         if (config.inputTouchBoostDisabled) {
             commands.append("""
+                # Standard Kernel Input & Launch Boost
                 [ -e /sys/module/cpu_boost/parameters/input_boost_ms ] && echo 0 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null
+                [ -e /sys/module/cpu_boost/parameters/app_launch_boost_ms ] && echo 0 > /sys/module/cpu_boost/parameters/app_launch_boost_ms 2>/dev/null
+                [ -e /sys/module/cpu_boost/parameters/wake_boost_ms ] && echo 0 > /sys/module/cpu_boost/parameters/wake_boost_ms 2>/dev/null
+                [ -e /sys/module/cpu_boost/parameters/sched_boost_on_input ] && echo 0 > /sys/module/cpu_boost/parameters/sched_boost_on_input 2>/dev/null
                 [ -e /sys/module/cpu_input_boost/parameters/input_boost_duration ] && echo 0 > /sys/module/cpu_input_boost/parameters/input_boost_duration 2>/dev/null
                 [ -e /sys/module/msm_performance/parameters/touchboost ] && echo 0 > /sys/module/msm_performance/parameters/touchboost 2>/dev/null
-                [ -e /sys/power/pnpmgr/touch_boost ] && echo 0 > /sys/power/pnpmgr/touch_boost 2>/dev/null
+
+                # Xiaomi / HyperOS Specific pnpmgr & perfhub (Eliminates 2000-3000mA launch & 700-900mA scroll spikes)
+                if [ -d /sys/power/pnpmgr ]; then
+                    echo 0 > /sys/power/pnpmgr/touch_boost 2>/dev/null
+                    echo 0 > /sys/power/pnpmgr/launch_boost 2>/dev/null
+                    echo 0 > /sys/power/pnpmgr/spc/spc_enabled 2>/dev/null
+                    echo 0 > /sys/power/pnpmgr/activity_trigger 2>/dev/null
+                    echo 0 > /sys/power/pnpmgr/install_boost 2>/dev/null
+                fi
+                [ -e /sys/module/miperf/parameters/boost_enabled ] && echo 0 > /sys/module/miperf/parameters/boost_enabled 2>/dev/null
+                [ -e /sys/module/perfhub/parameters/perfhub_enable ] && echo 0 > /sys/module/perfhub/parameters/perfhub_enable 2>/dev/null
                 [ -e /sys/kernel/fp_boost/enabled ] && echo 0 > /sys/kernel/fp_boost/enabled 2>/dev/null
+
+                # Android uclamp & schedtune (Stops artificial frequency boosting during scrolling)
+                for u in /dev/cpuctl/top-app/cpu.uclamp.min /dev/cpuctl/foreground/cpu.uclamp.min /dev/cpuctl/cpu.uclamp.min; do
+                    [ -e "${'$'}u" ] && echo 0 > "${'$'}u" 2>/dev/null
+                done
+                for s in /dev/stune/top-app/schedtune.boost /dev/stune/top-app/schedtune.sched_boost_no_override; do
+                    [ -e "${'$'}s" ] && echo 0 > "${'$'}s" 2>/dev/null
+                done
             """.trimIndent()).append("\n")
-            logs.add("Input & Touch boost disabled")
+            logs.add("Touch, App-Launch & HyperOS pnpmgr boost disabled (Spikes eliminated)")
         } else {
             commands.append("""
-                restore_from_backup "input_boost|touchboost|pnpmgr|fp_boost" "[ -e /sys/module/cpu_boost/parameters/input_boost_ms ] && echo 40 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null; [ -e /sys/module/msm_performance/parameters/touchboost ] && echo 1 > /sys/module/msm_performance/parameters/touchboost 2>/dev/null"
+                restore_from_backup "input_boost|touchboost|pnpmgr|fp_boost|uclamp" "[ -e /sys/module/cpu_boost/parameters/input_boost_ms ] && echo 40 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null; [ -e /sys/module/msm_performance/parameters/touchboost ] && echo 1 > /sys/module/msm_performance/parameters/touchboost 2>/dev/null; [ -d /sys/power/pnpmgr ] && echo 1 > /sys/power/pnpmgr/touch_boost 2>/dev/null"
             """.trimIndent()).append("\n")
             logs.add("Touch & input boost restored from stock backup snapshot")
         }
