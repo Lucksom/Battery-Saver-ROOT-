@@ -1,0 +1,6 @@
+{
+  "name": "VoltPower",
+  "description": "Modern kernel and battery optimization manager with MIUIX design.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
