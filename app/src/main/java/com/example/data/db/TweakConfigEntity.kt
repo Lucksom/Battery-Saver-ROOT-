@@ -48,5 +48,17 @@ data class TweakConfigEntity(
     val deepSleepWhitelist: String = "com.whatsapp,org.telegram.messenger,com.spotify.music",
     val developerProcessLimitEnabled: Boolean = true,
     val developerProcessLimit: Int = 4,
-    val balanceCpuCapPercent: Int = 70
+    val balanceCpuCapPercent: Int = 70,
+
+    // Performance Mode Specific Toggles & Sub-Modes
+    val performanceSubMode: String = "LITE", // LITE, HEAVY, ULTRA
+    val perfCpuGovernorLockEnabled: Boolean = true,
+    val perfAllCoresOnlineEnabled: Boolean = true,
+    val perfSchedtuneBoostEnabled: Boolean = true,
+    val perfGpuAdrenoBoostEnabled: Boolean = true,
+    val perfGpuNoNapEnabled: Boolean = true,
+    val perfDdrBusBoostEnabled: Boolean = true,
+    val perfStorageQueue512Enabled: Boolean = true,
+    val perfTouchBoostEnabled: Boolean = true,
+    val perfLmkTuningEnabled: Boolean = true
 )

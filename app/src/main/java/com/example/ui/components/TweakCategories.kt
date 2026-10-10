@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.DisplaySettings
+import androidx.compose.material.icons.filled.ElectricBolt
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Gesture
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.NetworkWifi
 import androidx.compose.material.icons.filled.SdCard
 import androidx.compose.material.icons.filled.SecurityUpdateGood
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Thermostat
@@ -72,6 +74,7 @@ import com.example.ui.theme.MiuiCyan
 import com.example.ui.theme.MiuiGreen
 import com.example.ui.theme.MiuiOrange
 import com.example.ui.theme.MiuiPurple
+import com.example.ui.theme.MiuiRed
 import kotlin.math.roundToInt
 
 @Composable
@@ -80,6 +83,7 @@ fun TweakCategories(
     onUpdateTweak: (String, Boolean) -> Unit,
     onUpdateCoreTopology: (Int, Int) -> Unit = { _, _ -> },
     onUpdateDeepSleepWhitelist: (String) -> Unit = {},
+    onSelectPerformanceSubMode: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showWhitelistDialog by remember { mutableStateOf(false) }
@@ -146,7 +150,8 @@ fun TweakCategories(
             "PERFORMANCE" -> {
                 PerformanceTweakList(
                     config = config,
-                    onUpdateTweak = onUpdateTweak
+                    onUpdateTweak = onUpdateTweak,
+                    onSelectSubMode = onSelectPerformanceSubMode
                 )
             }
             else -> {
@@ -804,81 +809,341 @@ private fun PowersaveTweakList(
 }
 
 /**
- * Dedicated Performance Mode Tweaks
+ * Dedicated Performance Mode Tweaks with Lite, Heavy, and Ultra Sub-Modes
  */
 @Composable
 private fun PerformanceTweakList(
     config: TweakConfigEntity,
-    onUpdateTweak: (String, Boolean) -> Unit
+    onUpdateTweak: (String, Boolean) -> Unit,
+    onSelectSubMode: (String) -> Unit
 ) {
+    val activeSubMode = config.performanceSubMode.uppercase()
+    val isUltra = activeSubMode == "ULTRA"
+    val isHeavy = activeSubMode == "HEAVY"
+    val isLite = activeSubMode == "LITE"
+
+    val subModeColor = when {
+        isUltra -> MiuiRed
+        isHeavy -> MiuiOrange
+        else -> MiuiGreen
+    }
+
     Text(
-        text = "PERFORMANCE KERNEL CONTROLS",
+        text = "PERFORMANCE OPTIMIZATION TIER",
         fontSize = 12.sp,
         fontWeight = FontWeight.Bold,
-        color = MiuiAmber,
+        color = subModeColor,
         letterSpacing = 1.sp,
-        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp, start = 4.dp)
+        modifier = Modifier.padding(top = 10.dp, bottom = 4.dp, start = 4.dp)
     )
 
+    // Sub-Mode Segmented Selector (Lite, Heavy, Ultra)
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            PerformanceSubModeButton(
+                title = "Lite",
+                subtitle = "90/120Hz Fluid",
+                icon = Icons.Default.Speed,
+                accentColor = MiuiGreen,
+                isSelected = isLite,
+                onClick = { onSelectSubMode("LITE") },
+                modifier = Modifier.weight(1f)
+            )
+
+            PerformanceSubModeButton(
+                title = "Heavy",
+                subtitle = "60/90 FPS Gaming",
+                icon = Icons.Default.ElectricBolt,
+                accentColor = MiuiOrange,
+                isSelected = isHeavy,
+                onClick = { onSelectSubMode("HEAVY") },
+                modifier = Modifier.weight(1f)
+            )
+
+            PerformanceSubModeButton(
+                title = "Ultra",
+                subtitle = "Esports & Clocks",
+                icon = Icons.Default.FastForward,
+                accentColor = MiuiRed,
+                isSelected = isUltra,
+                onClick = { onSelectSubMode("ULTRA") },
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+
+    // Safety & Architecture Verification Card
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = subModeColor.copy(alpha = 0.08f)
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            subModeColor.copy(alpha = 0.25f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(subModeColor.copy(alpha = 0.16f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Shield,
+                    contentDescription = "Safe",
+                    tint = subModeColor,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            Column(modifier = Modifier.padding(start = 12.dp)) {
+                Text(
+                    text = when {
+                        isUltra -> "Ultra: Maximum Hardware Clock & Bus Lock"
+                        isHeavy -> "Heavy: Elevated Frequency Floor & DDR Bus Boost"
+                        else -> "Lite: Fluid Schedutil & Zero Adreno Idle Throttling"
+                    },
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Emergency thermal protections preserved. 100% volatile RAM execution (zero adware).",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+
+    // 1. CPU & Scheduler Engine
     TweakCategoryGroup(
-        title = "Maximum Frequency & Clocks",
-        badgeText = "3 Tweaks",
+        title = "CPU & Scheduler Engine",
+        badgeText = "4 Tweaks",
         icon = Icons.Default.Speed,
-        iconColor = MiuiAmber,
+        iconColor = subModeColor,
         defaultExpanded = true
     ) {
+        val govTitle = when {
+            isUltra -> "Performance Governor (Full Clock Lock)"
+            isHeavy -> "Schedutil Fast-Ramp + 45% Clock Floor"
+            else -> "Schedutil Responsive (500µs Rate Limit)"
+        }
+        val govDesc = when {
+            isUltra -> "Locks all cores at maximum hardware frequency tables in RAM for zero thermal throttling during intense gaming"
+            isHeavy -> "Elevates base frequency floor to 45% of max clock with 400µs up-rate limit to eliminate 1% low frame dips"
+            else -> "Dynamic energy-aware governor with 500µs ramp-up for fluid 90Hz/120Hz system navigation"
+        }
         TweakItem(
-            title = "Performance Governor (Full Clock Lock)",
-            description = "Locks CPU cores at highest available frequency tables for zero thermal throttling and maximum FPS",
+            title = govTitle,
+            description = govDesc,
             icon = Icons.Default.Speed,
-            iconColor = MiuiAmber,
-            isChecked = true,
-            onCheckedChange = { }
+            iconColor = subModeColor,
+            isChecked = config.perfCpuGovernorLockEnabled,
+            onCheckedChange = { onUpdateTweak("perfGovLock", it) }
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
+
         TweakItem(
-            title = "All 8 CPU Cores Online 100%",
-            description = "Forces all Big, Mid, and Prime CPU cores to stay awake with zero core parking",
+            title = if (isUltra) "All 8 Cores Online & Core_Ctl Disabled" else "All 8 CPU Cores Online 100%",
+            description = if (isUltra) "Keeps Little, Mid, and Big cores active and disables core_ctl parking to eliminate scheduling wake delays" else "Forces all 8 CPU cores online in volatile memory with zero sleep parking",
             icon = Icons.Default.Memory,
             iconColor = MiuiPurple,
-            isChecked = true,
-            onCheckedChange = { }
+            isChecked = config.perfAllCoresOnlineEnabled,
+            onCheckedChange = { onUpdateTweak("perfAllCores", it) }
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
+
+        val schedtuneBoostVal = if (isUltra) "50%" else if (isHeavy) "45%" else "25%"
         TweakItem(
-            title = "Instant 0us Schedutil Rate Limits",
-            description = "Zero delay ramp-up on all cores for instant frame rendering during heavy gaming",
-            icon = Icons.Default.FastForward,
-            iconColor = MiuiGreen,
-            isChecked = true,
-            onCheckedChange = { }
+            title = "SchedTune Top-App Boost ($schedtuneBoostVal)",
+            description = "Boosts active foreground game thread affinity to $schedtuneBoostVal and grants top-app 1024 CPU shares for zero frame jitter",
+            icon = Icons.Default.DashboardCustomize,
+            iconColor = MiuiAmber,
+            isChecked = config.perfSchedtuneBoostEnabled,
+            onCheckedChange = { onUpdateTweak("perfSchedtune", it) }
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
+
+        val boostDuration = if (isUltra) "256ms" else "128ms"
+        TweakItem(
+            title = "Touch & Input Boost ($boostDuration)",
+            description = "Enables instantaneous frequency boost upon finger touch to register fast swipe, aim, and tap gestures",
+            icon = Icons.Default.TouchApp,
+            iconColor = MiuiCyan,
+            isChecked = config.perfTouchBoostEnabled,
+            onCheckedChange = { onUpdateTweak("perfTouchBoost", it) }
         )
     }
 
+    // 2. GPU & Graphic Acceleration
     TweakCategoryGroup(
-        title = "GPU & Storage Acceleration",
+        title = "GPU & Graphic Acceleration",
         badgeText = "2 Tweaks",
         icon = Icons.Default.VideogameAsset,
         iconColor = MiuiCyan,
         defaultExpanded = true
     ) {
+        val boostLevel = if (isUltra) "Level 3 + Rail Lock" else if (isHeavy) "Level 2 (80ms timer)" else "Level 1"
         TweakItem(
-            title = "GPU Throttling Bypass",
-            description = "Disables artificial GPU throttling flags and unlocks maximum clock tables for rendering",
+            title = "AdrenoBoost & Rail Power ($boostLevel)",
+            description = "Bypasses artificial GPU throttling flags, disables Adreno Idler, and elevates Adreno/Mali clock gating",
             icon = Icons.Default.VideogameAsset,
             iconColor = MiuiCyan,
-            isChecked = true,
-            onCheckedChange = { }
+            isChecked = config.perfGpuAdrenoBoostEnabled,
+            onCheckedChange = { onUpdateTweak("perfGpuBoost", it) }
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
+
+        TweakItem(
+            title = "GPU Force No-Nap",
+            description = "Prevents GPU micro-sleep nap states between rendered frame cycles to maintain flat frametimes",
+            icon = Icons.Default.BatteryChargingFull,
+            iconColor = MiuiGreen,
+            isChecked = config.perfGpuNoNapEnabled,
+            onCheckedChange = { onUpdateTweak("perfGpuNoNap", it) }
+        )
+    }
+
+    // 3. DDR Memory & Bus Bandwidth
+    TweakCategoryGroup(
+        title = "DDR Memory & Bus Acceleration",
+        badgeText = "2 Tweaks",
+        icon = Icons.Default.SdCard,
+        iconColor = MiuiBlue,
+        defaultExpanded = false
+    ) {
+        val busDesc = when {
+            isUltra -> "Locks Qualcomm & universal devfreq memory buses (cpubw, gpubw, memlat) to maximum bandwidth"
+            isHeavy -> "Accelerates CPU/GPU memory bandwidth devfreq governors for smooth 3D asset streaming"
+            else -> "Dynamic memory bus scaling active to balance bandwidth and thermals"
+        }
+        TweakItem(
+            title = "Devfreq RAM Bus Bandwidth",
+            description = busDesc,
+            icon = Icons.Default.SdCard,
+            iconColor = MiuiBlue,
+            isChecked = config.perfDdrBusBoostEnabled,
+            onCheckedChange = { onUpdateTweak("perfDdrBus", it) }
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
+
+        TweakItem(
+            title = "LMK Gaming Free-Pool Allocation",
+            description = "Reserves 21MB extra free RAM pool (swappiness 75) and expands background app limit to 34 to avoid game reload stutter",
+            icon = Icons.Default.Memory,
+            iconColor = MiuiPurple,
+            isChecked = config.perfLmkTuningEnabled,
+            onCheckedChange = { onUpdateTweak("perfLmkTuning", it) }
+        )
+    }
+
+    // 4. Storage I/O Multi-Queue Engine
+    TweakCategoryGroup(
+        title = "Storage I/O Multi-Queue Engine",
+        badgeText = "1 Tweak",
+        icon = Icons.Default.Storage,
+        iconColor = MiuiGreen,
+        defaultExpanded = false
+    ) {
         TweakItem(
             title = "High-Throughput Storage I/O (512KB)",
-            description = "Expands block read-ahead to 512KB and queue depth to 512 for instant game asset streaming",
+            description = "Expands block queue read-ahead to 512KB, nr_requests to 256, and enables rq_affinity 2 for rapid game asset loading",
             icon = Icons.Default.Storage,
             iconColor = MiuiGreen,
-            isChecked = true,
-            onCheckedChange = { }
+            isChecked = config.perfStorageQueue512Enabled,
+            onCheckedChange = { onUpdateTweak("perfStorage512", it) }
         )
+    }
+}
+
+@Composable
+private fun PerformanceSubModeButton(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    accentColor: Color,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val bgColor by animateColorAsState(
+        targetValue = if (isSelected) accentColor.copy(alpha = 0.16f) else Color.Transparent,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "SubModeBg"
+    )
+    val contentColor by animateColorAsState(
+        targetValue = if (isSelected) accentColor else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "SubModeContent"
+    )
+
+    Box(
+        modifier = modifier
+            .height(58.dp)
+            .clip(RoundedCornerShape(15.dp))
+            .background(bgColor)
+            .border(
+                width = if (isSelected) 1.5.dp else 0.dp,
+                color = if (isSelected) accentColor.copy(alpha = 0.5f) else Color.Transparent,
+                shape = RoundedCornerShape(15.dp)
+            )
+            .hyperBounceClick(scaleDown = 0.94f, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = title,
+                    tint = contentColor,
+                    modifier = Modifier.size(15.dp)
+                )
+                Text(
+                    text = title,
+                    fontSize = 13.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    color = contentColor,
+                    modifier = Modifier.padding(start = 4.dp)
+                )
+            }
+            Text(
+                text = subtitle,
+                fontSize = 9.sp,
+                color = contentColor.copy(alpha = if (isSelected) 0.9f else 0.6f),
+                fontWeight = FontWeight.Normal
+            )
+        }
     }
 }
 

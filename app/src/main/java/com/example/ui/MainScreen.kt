@@ -124,6 +124,9 @@ fun MainScreen(
                         },
                         onUpdateDeepSleepWhitelist = { whitelist ->
                             viewModel.onUpdateDeepSleepWhitelist(whitelist)
+                        },
+                        onSelectPerformanceSubMode = { subMode ->
+                            viewModel.onSelectPerformanceSubMode(subMode)
                         }
                     )
                 }

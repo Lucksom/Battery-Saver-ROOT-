@@ -259,6 +259,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 "balanceGpuOptimization" -> current.copy(balanceGpuOptimizationEnabled = enabled)
                 "balanceStorageIo" -> current.copy(balanceStorageIoEnabled = enabled)
                 "balanceNetworkBbr" -> current.copy(balanceNetworkBbrEnabled = enabled)
+                "perfGovLock" -> current.copy(perfCpuGovernorLockEnabled = enabled)
+                "perfAllCores" -> current.copy(perfAllCoresOnlineEnabled = enabled)
+                "perfSchedtune" -> current.copy(perfSchedtuneBoostEnabled = enabled)
+                "perfGpuBoost" -> current.copy(perfGpuAdrenoBoostEnabled = enabled)
+                "perfGpuNoNap" -> current.copy(perfGpuNoNapEnabled = enabled)
+                "perfDdrBus" -> current.copy(perfDdrBusBoostEnabled = enabled)
+                "perfStorage512" -> current.copy(perfStorageQueue512Enabled = enabled)
+                "perfTouchBoost" -> current.copy(perfTouchBoostEnabled = enabled)
+                "perfLmkTuning" -> current.copy(perfLmkTuningEnabled = enabled)
                 else -> current
             }
             dao.update(updated)
@@ -267,6 +276,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (current.isMasterApplied) {
                 _statusMessage.value = if (enabled) "Tweak applied to RAM" else "Stock values restored for this tweak"
                 RootBridge.applyPowersaveTweaks(getApplication(), updated)
+                refreshTelemetry()
+            }
+        }
+    }
+
+    fun onSelectPerformanceSubMode(subMode: String) {
+        viewModelScope.launch {
+            dao.updatePerformanceSubMode(subMode)
+            val current = configState.value.copy(performanceSubMode = subMode)
+            val desc = when (subMode) {
+                "ULTRA" -> "Performance ULTRA Active • Maximum clock lock, bus acceleration, esports FPS"
+                "HEAVY" -> "Performance HEAVY Active • SchedTune 45, Adreno boost, gaming bus"
+                else -> "Performance LITE Active • Fluid 90/120Hz, responsive Schedutil, Adreno Idler off"
+            }
+            _statusMessage.value = desc
+            if (current.isMasterApplied && current.activeProfile == "PERFORMANCE") {
+                RootBridge.applyPowersaveTweaks(getApplication(), current)
                 refreshTelemetry()
             }
         }

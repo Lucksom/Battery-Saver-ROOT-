@@ -27,6 +27,9 @@ interface TweakConfigDao {
     @Query("UPDATE tweak_config SET activeProfile = :profile WHERE id = 1")
     suspend fun updateProfile(profile: String)
 
+    @Query("UPDATE tweak_config SET performanceSubMode = :subMode WHERE id = 1")
+    suspend fun updatePerformanceSubMode(subMode: String)
+
     @Query("UPDATE tweak_config SET themeMode = :mode WHERE id = 1")
     suspend fun updateThemeMode(mode: String)
 
