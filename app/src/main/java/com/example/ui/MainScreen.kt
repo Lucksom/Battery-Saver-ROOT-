@@ -108,7 +108,10 @@ fun MainScreen(
                 item {
                     CpuFrequencyGraphCard(
                         history = cpuFreqHistory,
-                        isFreqCapActive = config.isMasterApplied && config.cpuFreqCapEnabled,
+                        activeProfile = config.activeProfile,
+                        performanceSubMode = config.performanceSubMode,
+                        isMasterApplied = config.isMasterApplied,
+                        cpuFreqCapEnabled = config.cpuFreqCapEnabled,
                         activeGovernor = telemetry.activeGovernor
                     )
                 }

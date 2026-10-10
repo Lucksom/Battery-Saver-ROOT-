@@ -7,16 +7,15 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Speed
@@ -42,12 +41,17 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.theme.MiuiAmber
 import com.example.ui.theme.MiuiCyan
 import com.example.ui.theme.MiuiGreen
+import com.example.ui.theme.MiuiOrange
+import com.example.ui.theme.MiuiRed
 
 @Composable
 fun CpuFrequencyGraphCard(
     history: List<Int>,
-    isFreqCapActive: Boolean,
-    activeGovernor: String,
+    activeProfile: String = "POWERSAVE",
+    performanceSubMode: String = "LITE",
+    isMasterApplied: Boolean = false,
+    cpuFreqCapEnabled: Boolean = true,
+    activeGovernor: String = "schedutil",
     modifier: Modifier = Modifier
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "PulseTransition")
@@ -63,9 +67,88 @@ fun CpuFrequencyGraphCard(
 
     val currentAvg = history.lastOrNull() ?: 800
     val maxScaleFreq = 2400f // Max scale range (MHz)
-    val capFreq = 1200f // 50% cap reference line
 
-    val lineColor = if (isFreqCapActive) MiuiGreen else MiuiAmber
+    // Compute dynamic styling and labels based on the currently active profile and sub-mode
+    val isPerformance = activeProfile == "PERFORMANCE"
+    val isBalance = activeProfile == "BALANCE"
+    val isPowersave = activeProfile == "POWERSAVE"
+
+    val subModeUpper = performanceSubMode.uppercase()
+    val isUltra = isPerformance && subModeUpper == "ULTRA"
+    val isHeavy = isPerformance && subModeUpper == "HEAVY"
+    val isLite = isPerformance && subModeUpper == "LITE"
+
+    val lineColor = when {
+        isUltra -> MiuiRed
+        isHeavy -> MiuiOrange
+        isLite -> MiuiGreen
+        isBalance -> MiuiCyan
+        isPowersave -> MiuiGreen
+        else -> MiuiAmber
+    }
+
+    val badgeText = when {
+        isMasterApplied -> when {
+            isUltra -> "Ultra (Max Clocks)"
+            isHeavy -> "Heavy (45% Floor)"
+            isLite -> "Lite (90/120Hz)"
+            isBalance -> "Balance (70% Cap)"
+            isPowersave -> "Powersave (50% Cap)"
+            else -> "Gov: $activeGovernor"
+        }
+        else -> when {
+            isUltra -> "Ultra Perf (Idle)"
+            isHeavy -> "Heavy Perf (Idle)"
+            isLite -> "Lite Perf (Idle)"
+            isBalance -> "Balance (Idle)"
+            isPowersave -> "Powersave (Idle)"
+            else -> "Gov: $activeGovernor"
+        }
+    }
+
+    val badgeColor = when {
+        isUltra -> MiuiRed
+        isHeavy -> MiuiOrange
+        isLite -> MiuiGreen
+        isBalance -> MiuiCyan
+        isPowersave -> MiuiGreen
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    val subtitleText = when {
+        isMasterApplied -> when {
+            isUltra -> "Locked at maximum hardware frequencies"
+            isHeavy -> "Elevated floor + unconstrained headroom"
+            isLite -> "Fluid 90/120Hz unconstrained headroom"
+            isBalance -> "Clocks scaled in balanced 70% band"
+            isPowersave -> "Clocks locked in low energy band"
+            else -> "Stock dynamic frequency scaling"
+        }
+        else -> when {
+            isUltra -> "Target: Uncapped clocks • Tap Master switch to apply"
+            isHeavy -> "Target: 45% floor + boost • Tap Master switch to apply"
+            isLite -> "Target: Fluid 90/120Hz • Tap Master switch to apply"
+            isBalance -> "Target: 70% balanced band • Tap Master switch to apply"
+            isPowersave -> "Target: 50% low energy band • Tap Master switch to apply"
+            else -> "Stock dynamic frequency scaling"
+        }
+    }
+
+    val referenceLineFreq: Float? = when {
+        isPowersave && cpuFreqCapEnabled -> 1200f
+        isBalance && cpuFreqCapEnabled -> 1680f
+        isHeavy -> 1100f
+        isUltra -> 2100f
+        else -> null
+    }
+
+    val referenceLineLabel: String? = when {
+        isPowersave && cpuFreqCapEnabled -> "─── 50% Cap Level"
+        isBalance && cpuFreqCapEnabled -> "─── 70% Cap Level"
+        isHeavy -> "─── 45% Floor Level"
+        isUltra -> "─── Max Clock Target"
+        else -> null
+    }
 
     Card(
         modifier = modifier
@@ -108,16 +191,16 @@ fun CpuFrequencyGraphCard(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .background(
-                            if (isFreqCapActive) MiuiGreen.copy(alpha = 0.15f)
+                            if (isMasterApplied) badgeColor.copy(alpha = 0.15f)
                             else MaterialTheme.colorScheme.surfaceVariant
                         )
                         .padding(horizontal = 8.dp, vertical = 3.dp)
                 ) {
                     Text(
-                        text = if (isFreqCapActive) "50% Cap Active" else "Gov: $activeGovernor",
+                        text = badgeText,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isFreqCapActive) MiuiGreen else MaterialTheme.colorScheme.onSurfaceVariant
+                        color = badgeColor
                     )
                 }
             }
@@ -147,9 +230,9 @@ fun CpuFrequencyGraphCard(
                 }
 
                 Text(
-                    text = if (isFreqCapActive) "Clocks locked in low energy band" else "Stock unconstrained frequency",
+                    text = subtitleText,
                     fontSize = 11.sp,
-                    color = if (isFreqCapActive) MiuiGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (isMasterApplied) badgeColor else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 4.dp)
                 )
             }
@@ -158,12 +241,11 @@ fun CpuFrequencyGraphCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(110.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
-                    .padding(horizontal = 10.dp, vertical = 8.dp)
+                    .height(130.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
             ) {
-                Canvas(modifier = Modifier.matchParentSize()) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
                     val width = size.width
                     val height = size.height
 
@@ -182,11 +264,11 @@ fun CpuFrequencyGraphCard(
                         )
                     }
 
-                    // 50% Cap reference dashed line if active
-                    if (isFreqCapActive) {
-                        val capY = height * (1f - (capFreq / maxScaleFreq).coerceIn(0f, 1f))
+                    // Reference dashed line if active
+                    if (referenceLineFreq != null) {
+                        val capY = height * (1f - (referenceLineFreq / maxScaleFreq).coerceIn(0f, 1f))
                         drawLine(
-                            color = MiuiCyan.copy(alpha = 0.5f),
+                            color = lineColor.copy(alpha = 0.5f),
                             start = Offset(0f, capY),
                             end = Offset(width, capY),
                             strokeWidth = 1.5f,
@@ -272,12 +354,12 @@ fun CpuFrequencyGraphCard(
                     fontSize = 10.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                 )
-                if (isFreqCapActive) {
+                if (referenceLineLabel != null) {
                     Text(
-                        text = "─── 50% Cap Level",
+                        text = referenceLineLabel,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = MiuiCyan
+                        color = lineColor
                     )
                 }
                 Text(

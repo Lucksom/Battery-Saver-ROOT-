@@ -931,11 +931,6 @@ private fun PerformanceTweakList(
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                Text(
-                    text = "Emergency thermal protections preserved. 100% volatile RAM execution (zero adware).",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
     }
