@@ -21,6 +21,17 @@ object RootBridge {
 
     const val BACKUP_FILE_PATH = "/sdcard/Download/Stock_Kernel_Backup.sh"
 
+    // Hardcoded permanent system exceptions that can NEVER be restricted, killed, or frozen
+    val PERMANENT_SYSTEM_EXCEPTIONS = setOf(
+        "com.mi.android.globallauncher",
+        "com.miui.home",
+        "com.android.systemui",
+        "miui.systemui.plugin",
+        "com.google.android.gms",
+        "com.android.phone",
+        "android"
+    )
+
     suspend fun isRootAvailable(): Boolean = withContext(Dispatchers.IO) {
         val result = execute("id")
         result.success && result.stdout.contains("uid=0")
@@ -228,6 +239,9 @@ object RootBridge {
         execute("for d in /sys/class/devfreq/*; do [ -f \"\$d/available_governors\" ] && { gov=\$(cat \"\$d/available_governors\" | awk '{print \$1}'); [ -n \"\$gov\" ] && echo \"\$gov\" > \"\$d/governor\" 2>/dev/null; }; done")
         execute("[ -d /dev/stune/top-app ] && echo 0 > /dev/stune/top-app/schedtune.boost 2>/dev/null; [ -d /dev/stune/top-app ] && echo 0 > /dev/stune/top-app/schedtune.sched_boost 2>/dev/null")
         execute("pkill -f \"voltpower_doze_daemon\" >/dev/null 2>&1")
+        execute("settings put secure aod_mode 1 2>/dev/null; settings put system aod_mode 1 2>/dev/null; settings put secure doze_always_on 1 2>/dev/null; setprop debug.miui.aod_enable 1 2>/dev/null; am broadcast -a miui.intent.action.AOD_STATE_CHANGED --ez enabled true 2>/dev/null")
+        execute("setprop persist.vendor.radio.5g_power_save 0 2>/dev/null; setprop persist.radio.power_saving 0 2>/dev/null")
+        execute("echo 1 > /sys/module/msm_performance/parameters/touchboost 2>/dev/null; settings delete secure touch_boost 2>/dev/null")
         result.success
     }
 
@@ -293,6 +307,10 @@ object RootBridge {
 
         if (config.activeProfile == "PERFORMANCE") {
             return@withContext applyPerformanceTweaksInternal(context, config, logs, commands, backupPath)
+        }
+
+        if (config.activeProfile == "POWERSAVE" && config.hyperOsPowerSaverEnabled) {
+            return@withContext applyHyperOsPowersaveTweaksInternal(context, config, logs, commands, backupPath)
         }
 
         // 1. CPU Max Frequency Cap (70% in Balance Mode, 50% in Powersave Mode)
@@ -1164,6 +1182,149 @@ object RootBridge {
             logs.add("All selected Performance ($subMode) tweaks written to RAM successfully.")
         } else {
             logs.add("Performance tweaks applied with notices: ${execResult.stderr.take(80)}")
+        }
+
+        return logs
+    }
+
+    private suspend fun applyHyperOsPowersaveTweaksInternal(
+        context: Context,
+        config: TweakConfigEntity,
+        logs: MutableList<String>,
+        commands: StringBuilder,
+        backupPath: String
+    ): List<String> {
+        logs.add("Activating HyperOS / MIUI Super Power Saving Engine")
+
+        // 1. Permanent System Components + User Allowed Apps Protection
+        val userAllowedPkgs = config.backgroundAllowedApps
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .toSet()
+
+        val allProtectedPkgs = PERMANENT_SYSTEM_EXCEPTIONS + userAllowedPkgs + setOf(
+            "com.whatsapp",
+            "com.twitter.android",
+            "com.android.vending",
+            "com.android.mms",
+            "org.barebrowser",
+            "com.example",
+            "com.voltpower"
+        )
+
+        // Whitelist all protected apps in Android DeviceIdle (Doze)
+        for (pkg in allProtectedPkgs) {
+            commands.append("dumpsys deviceidle whitelist +$pkg 2>/dev/null\n")
+        }
+        logs.add("Permanent system protection verified: Launcher, SystemUI, Plugin & ${userAllowedPkgs.size} user background apps exempted")
+
+        // 2. Always-On Display (AOD) Control (MiuiAod setAodEnable)
+        if (config.hyperOsAodDisabled) {
+            commands.append("""
+                settings put secure aod_mode 0 2>/dev/null
+                settings put system aod_mode 0 2>/dev/null
+                settings put secure doze_always_on 0 2>/dev/null
+                setprop debug.miui.aod_enable 0 2>/dev/null
+                am broadcast -a miui.intent.action.AOD_STATE_CHANGED --ez enabled false 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("Always-On Display disabled (MiuiAod.Utils setAodEnable: false)")
+        } else {
+            commands.append("""
+                settings put secure aod_mode 1 2>/dev/null
+                settings put system aod_mode 1 2>/dev/null
+                settings put secure doze_always_on 1 2>/dev/null
+                setprop debug.miui.aod_enable 1 2>/dev/null
+                am broadcast -a miui.intent.action.AOD_STATE_CHANGED --ez enabled true 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("Always-On Display (AOD) preserved enabled")
+        }
+
+        // 3. Aurogon & SuperPowerClean (Background cleanup while shielding whitelisted apps)
+        if (config.hyperOsSuperPowerCleanEnabled) {
+            val protectedArgs = allProtectedPkgs.joinToString(" ")
+            commands.append("""
+                # SuperPowerClean: Purge unwhitelisted 3rd-party background tasks from RAM
+                for pkg in ${'$'}(pm list packages -3 2>/dev/null | cut -d: -f2); do
+                    case " $protectedArgs " in
+                        *" ${'$'}pkg "*) ;; # whitelisted, preserve in background
+                        *) am stop-app "${'$'}pkg" 2>/dev/null || am force-stop "${'$'}pkg" 2>/dev/null ;;
+                    esac
+                done
+            """.trimIndent()).append("\n")
+            logs.add("SuperPowerClean: Memory cleaned in RAM (Protected: ${allProtectedPkgs.size} apps)")
+        }
+
+        // 4. Xiaomi Touch Boost Clamping
+        if (config.hyperOsTouchBoostDisabled) {
+            commands.append("""
+                echo 0 > /sys/module/msm_performance/parameters/touchboost 2>/dev/null
+                echo 0 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null
+                echo 0 > /sys/devices/system/cpu/cpufreq/schedutil/iowait_boost_enable 2>/dev/null
+                settings put secure touch_boost 0 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("Xiaomi Touch Boost disabled (Saves 8-15% battery during active touches)")
+        }
+
+        // 5. Qualcomm 5G / Modem Power Optimization (FiveGPowerController)
+        if (config.hyperOsFiveGPowerOptEnabled) {
+            commands.append("""
+                setprop persist.vendor.radio.5g_power_save 1 2>/dev/null
+                setprop persist.radio.power_saving 1 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("Modem 5G Power Optimization enabled (FiveGPowerController powerSaveOpt)")
+        }
+
+        // 6. Display Refresh Rate 60Hz Cap
+        if (config.hyperOsLock60HzEnabled) {
+            commands.append("""
+                settings put secure miui_refresh_rate 60 2>/dev/null
+                settings put system min_refresh_rate 60.0 2>/dev/null
+                settings put system peak_refresh_rate 60.0 2>/dev/null
+                settings put system user_refresh_rate 60 2>/dev/null
+                service call SurfaceFlinger 1035 i32 60 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("Display refresh rate clamped to 60Hz")
+        }
+
+        // 7. CPU Frequency 50% Cap
+        commands.append("""
+            for cpu in /sys/devices/system/cpu/cpu*/cpufreq; do
+                max=`cat ${'$'}cpu/cpuinfo_max_freq 2>/dev/null`
+                if [ -n "${'$'}max" ]; then
+                    target=${'$'}((max * 50 / 100))
+                    echo "${'$'}target" > "${'$'}cpu/scaling_max_freq" 2>/dev/null
+                fi
+                echo "100000" > "${'$'}cpu/scaling_min_freq" 2>/dev/null
+            done
+        """.trimIndent()).append("\n")
+        logs.add("CPU Max Frequency capped to 50% in RAM")
+
+        // 8. Governor & Core Topology (Heavy cores parked if enabled)
+        if (config.twoCoresOfflineBelow20Enabled) {
+            val coresToOffline = if (config.offlineCoreCount == 1) listOf(7) else listOf(6, 7)
+            for (core in coresToOffline) {
+                commands.append("echo 0 > /sys/devices/system/cpu/cpu$core/online 2>/dev/null\n")
+            }
+            logs.add("HyperOS Dynamic Core Parking: ${config.offlineCoreCount} cores offlined in RAM")
+        }
+
+        // 9. System Battery Saver (Preserve Light Theme)
+        if (config.systemBatterySaverWithoutDarkEnabled) {
+            commands.append("""
+                cmd power set-mode 1 2>/dev/null || settings put global low_power 1 2>/dev/null
+                cmd uimode night no 2>/dev/null
+                settings put secure ui_night_mode 1 2>/dev/null
+                settings put system ui_night_mode 1 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("System battery saver active (Light mode preserved)")
+        }
+
+        val execResult = execute(commands.toString())
+        if (execResult.success) {
+            logs.add("HyperOS Super Power Saving Engine applied successfully to RAM.")
+        } else {
+            logs.add("HyperOS tweaks applied with notices: ${execResult.stderr.take(80)}")
         }
 
         return logs

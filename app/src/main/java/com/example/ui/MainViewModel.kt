@@ -3,6 +3,8 @@ package com.example.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.apps.AppInfoRepository
+import com.example.data.apps.InstalledAppItem
 import com.example.data.db.AppDatabase
 import com.example.data.db.TweakConfigEntity
 import com.example.data.root.RootBridge
@@ -23,6 +25,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val db = AppDatabase.getDatabase(application)
     private val dao = db.tweakConfigDao()
     private val telemetryRepo = TelemetryRepository(application)
+    private val appInfoRepo = AppInfoRepository(application)
 
     val configState: StateFlow<TweakConfigEntity> = dao.getConfig()
         .map { it ?: TweakConfigEntity() }
@@ -46,6 +49,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     )
     val telemetry: StateFlow<DeviceTelemetry> = _telemetry.asStateFlow()
 
+    private val _installedApps = MutableStateFlow<List<InstalledAppItem>>(emptyList())
+    val installedApps: StateFlow<List<InstalledAppItem>> = _installedApps.asStateFlow()
+
     private val _cpuFreqHistory = MutableStateFlow<List<Int>>(listOf(750, 780, 810, 760, 720, 740, 790))
     val cpuFreqHistory: StateFlow<List<Int>> = _cpuFreqHistory.asStateFlow()
 
@@ -62,6 +68,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 dao.insertOrUpdate(TweakConfigEntity())
             }
             refreshTelemetry()
+        }
+
+        // Asynchronously load installed apps for the background app picker
+        viewModelScope.launch {
+            _installedApps.value = appInfoRepo.getInstalledApps()
         }
 
         // Live telemetry updater
@@ -268,6 +279,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 "perfStorage512" -> current.copy(perfStorageQueue512Enabled = enabled)
                 "perfTouchBoost" -> current.copy(perfTouchBoostEnabled = enabled)
                 "perfLmkTuning" -> current.copy(perfLmkTuningEnabled = enabled)
+                "hyperOsPowerSaver" -> current.copy(hyperOsPowerSaverEnabled = enabled)
+                "hyperOsAod" -> current.copy(hyperOsAodDisabled = enabled)
+                "hyperOsAurogon" -> current.copy(hyperOsAurogonFreezerEnabled = enabled)
+                "hyperOsSuperPowerClean" -> current.copy(hyperOsSuperPowerCleanEnabled = enabled)
+                "hyperOsTouchBoost" -> current.copy(hyperOsTouchBoostDisabled = enabled)
+                "hyperOsFiveG" -> current.copy(hyperOsFiveGPowerOptEnabled = enabled)
+                "hyperOsLock60Hz" -> current.copy(hyperOsLock60HzEnabled = enabled)
                 else -> current
             }
             dao.update(updated)
@@ -277,6 +295,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _statusMessage.value = if (enabled) "Tweak applied to RAM" else "Stock values restored for this tweak"
                 RootBridge.applyPowersaveTweaks(getApplication(), updated)
                 refreshTelemetry()
+            }
+        }
+    }
+
+    fun onToggleHyperOsPowerSaver(enabled: Boolean) {
+        viewModelScope.launch {
+            val current = configState.value
+            val updated = current.copy(hyperOsPowerSaverEnabled = enabled)
+            dao.update(updated)
+            _statusMessage.value = if (enabled) {
+                "HyperOS / MIUI Super Power Saving Engine active"
+            } else {
+                "Standard Powersave profile restored"
+            }
+            if (current.isMasterApplied && current.activeProfile == "POWERSAVE") {
+                RootBridge.applyPowersaveTweaks(getApplication(), updated)
+                refreshTelemetry()
+            }
+        }
+    }
+
+    fun onUpdateBackgroundAllowedApps(apps: Set<String>) {
+        viewModelScope.launch {
+            val current = configState.value
+            val pkgString = apps.joinToString(",")
+            val updated = current.copy(backgroundAllowedApps = pkgString)
+            dao.update(updated)
+            _statusMessage.value = "Background app whitelist updated (${apps.size} apps allowed)"
+            if (current.isMasterApplied && current.activeProfile == "POWERSAVE" && current.hyperOsPowerSaverEnabled) {
+                RootBridge.applyPowersaveTweaks(getApplication(), updated)
             }
         }
     }

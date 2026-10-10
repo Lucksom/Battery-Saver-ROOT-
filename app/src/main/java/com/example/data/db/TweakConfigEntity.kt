@@ -60,5 +60,15 @@ data class TweakConfigEntity(
     val perfDdrBusBoostEnabled: Boolean = true,
     val perfStorageQueue512Enabled: Boolean = true,
     val perfTouchBoostEnabled: Boolean = true,
-    val perfLmkTuningEnabled: Boolean = true
+    val perfLmkTuningEnabled: Boolean = true,
+
+    // HyperOS / MIUI Super Power Saving Engine
+    val hyperOsPowerSaverEnabled: Boolean = false,
+    val hyperOsAodDisabled: Boolean = true,
+    val hyperOsAurogonFreezerEnabled: Boolean = true,
+    val hyperOsSuperPowerCleanEnabled: Boolean = true,
+    val hyperOsFiveGPowerOptEnabled: Boolean = true,
+    val hyperOsTouchBoostDisabled: Boolean = true,
+    val hyperOsLock60HzEnabled: Boolean = true,
+    val backgroundAllowedApps: String = "org.barebrowser,com.f0x1d.logfox,com.whatsapp"
 )

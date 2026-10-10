@@ -16,32 +16,41 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AcUnit
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.DisplaySettings
 import androidx.compose.material.icons.filled.ElectricBolt
+import androidx.compose.material.icons.filled.EnergySavingsLeaf
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Gesture
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.NetworkWifi
 import androidx.compose.material.icons.filled.SdCard
 import androidx.compose.material.icons.filled.SecurityUpdateGood
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.VideogameAsset
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -50,6 +59,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -65,8 +76,10 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.apps.InstalledAppItem
 import com.example.data.db.TweakConfigEntity
 import com.example.ui.theme.MiuiAmber
 import com.example.ui.theme.MiuiBlue
@@ -84,10 +97,28 @@ fun TweakCategories(
     onUpdateCoreTopology: (Int, Int) -> Unit = { _, _ -> },
     onUpdateDeepSleepWhitelist: (String) -> Unit = {},
     onSelectPerformanceSubMode: (String) -> Unit = {},
+    onToggleHyperOs: (Boolean) -> Unit = {},
+    onSaveBackgroundAllowedApps: (Set<String>) -> Unit = {},
+    installedApps: List<InstalledAppItem> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     var showWhitelistDialog by remember { mutableStateOf(false) }
     var whitelistText by remember(config.deepSleepWhitelist) { mutableStateOf(config.deepSleepWhitelist) }
+    var showAppPickerDialog by remember { mutableStateOf(false) }
+
+    if (showAppPickerDialog) {
+        val selectedSet = remember(config.backgroundAllowedApps) {
+            config.backgroundAllowedApps.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        }
+        AppPickerDialog(
+            installedApps = installedApps,
+            initiallySelectedPackages = selectedSet,
+            onSaveSelection = { newSelected ->
+                onSaveBackgroundAllowedApps(newSelected)
+            },
+            onDismiss = { showAppPickerDialog = false }
+        )
+    }
 
     if (showWhitelistDialog) {
         AlertDialog(
@@ -155,12 +186,123 @@ fun TweakCategories(
                 )
             }
             else -> {
-                PowersaveTweakList(
-                    config = config,
-                    onUpdateTweak = onUpdateTweak,
-                    onUpdateCoreTopology = onUpdateCoreTopology
+                // Top prominent toggle for HyperOS / MIUI Mode
+                HyperOsModeBanner(
+                    isEnabled = config.hyperOsPowerSaverEnabled,
+                    onToggle = onToggleHyperOs
                 )
+
+                // If HyperOS toggle is enabled, replace standard powersave tweaks with the HyperOS suite
+                if (config.hyperOsPowerSaverEnabled) {
+                    HyperOsPowersaveTweakList(
+                        config = config,
+                        onUpdateTweak = onUpdateTweak,
+                        onUpdateCoreTopology = onUpdateCoreTopology,
+                        onOpenAppPicker = { showAppPickerDialog = true }
+                    )
+                } else {
+                    PowersaveTweakList(
+                        config = config,
+                        onUpdateTweak = onUpdateTweak,
+                        onUpdateCoreTopology = onUpdateCoreTopology
+                    )
+                }
             }
+        }
+    }
+}
+
+/**
+ * Top HyperOS / MIUI Mode Switcher Card
+ */
+@Composable
+fun HyperOsModeBanner(
+    isEnabled: Boolean,
+    onToggle: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isEnabled) MiuiOrange.copy(alpha = 0.12f)
+            else MaterialTheme.colorScheme.surface
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = if (isEnabled) MiuiOrange.copy(alpha = 0.5f)
+            else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (isEnabled) MiuiOrange.copy(alpha = 0.2f) else MiuiGreen.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isEnabled) Icons.Default.ElectricBolt else Icons.Default.EnergySavingsLeaf,
+                        contentDescription = null,
+                        tint = if (isEnabled) MiuiOrange else MiuiGreen,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "MIUI / HyperOS Super Power Mode",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (isEnabled) "ACTIVE" else "OFF",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isEnabled) MiuiOrange else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(
+                                    if (isEnabled) MiuiOrange.copy(alpha = 0.18f)
+                                    else MaterialTheme.colorScheme.surfaceVariant
+                                )
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                    Text(
+                        text = if (isEnabled)
+                            "Replaces standard powersave with Xiaomi HyperOS system & kernel suite (AOD disabled, Aurogon Freezer, SuperPowerClean, Touch Boost Throttle)"
+                        else
+                            "Enable to replace standard powersave with Xiaomi HyperOS kernel & system power-saving engine",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 15.sp
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Switch(
+                checked = isEnabled,
+                onCheckedChange = onToggle,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = MiuiOrange
+                )
+            )
         }
     }
 }
@@ -805,6 +947,319 @@ private fun PowersaveTweakList(
             isChecked = config.lpmSleepEnabled,
             onCheckedChange = { onUpdateTweak("lpmSleep", it) }
         )
+    }
+}
+
+/**
+ * Dedicated HyperOS / MIUI Super Power Saving Engine Tweaks
+ * Directly implements Xiaomi's Aurogon, SuperPowerClean, setAodEnable, and TouchBoost policies
+ */
+@Composable
+private fun HyperOsPowersaveTweakList(
+    config: TweakConfigEntity,
+    onUpdateTweak: (String, Boolean) -> Unit,
+    onUpdateCoreTopology: (Int, Int) -> Unit,
+    onOpenAppPicker: () -> Unit
+) {
+    Text(
+        text = "HYPEROS / MIUI SUPER POWER SUITE",
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Bold,
+        color = MiuiOrange,
+        letterSpacing = 1.sp,
+        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp, start = 4.dp)
+    )
+
+    val userAllowedList = remember(config.backgroundAllowedApps) {
+        config.backgroundAllowedApps.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+    }
+
+    // 1. Display & Always-On Display (AOD) Engine
+    TweakCategoryGroup(
+        title = "Display & Always-On Display (AOD)",
+        badgeText = "3 Tweaks",
+        icon = Icons.Default.DisplaySettings,
+        iconColor = MiuiAmber,
+        defaultExpanded = true
+    ) {
+        TweakItem(
+            title = "Disable Always-On Display (AOD)",
+            description = "Toggles 'MiuiAod.Utils setAodEnable: false' • Turns off AOD rendering and panel wakeups during battery saving to eliminate idle drain.",
+            icon = Icons.Default.VisibilityOff,
+            iconColor = MiuiAmber,
+            isChecked = config.hyperOsAodDisabled,
+            onCheckedChange = { onUpdateTweak("hyperOsAod", it) }
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
+        TweakItem(
+            title = "Disable RefreshRateSelector Touch Boost",
+            description = "Suppresses CPU/display frequency spikes triggered by touch events in HyperOS. Saves 8-15% battery during active touches.",
+            icon = Icons.Default.TouchApp,
+            iconColor = MiuiCyan,
+            isChecked = config.hyperOsTouchBoostDisabled,
+            onCheckedChange = { onUpdateTweak("hyperOsTouchBoost", it) }
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
+        TweakItem(
+            title = "Lock Refresh Rate to 60Hz",
+            description = "Sets 'miui_refresh_rate 60' and SurfaceFlinger lock. Saves 350-500mA current during screen-on use.",
+            icon = Icons.Default.Speed,
+            iconColor = MiuiGreen,
+            isChecked = config.hyperOsLock60HzEnabled,
+            onCheckedChange = { onUpdateTweak("hyperOsLock60Hz", it) }
+        )
+    }
+
+    // 2. Background App Exception Manager (SuperPowerClean Whitelist)
+    TweakCategoryGroup(
+        title = "Background App Exceptions (SuperPowerClean)",
+        badgeText = "${userAllowedList.size} Allowed",
+        icon = Icons.Default.Apps,
+        iconColor = MiuiBlue,
+        defaultExpanded = true
+    ) {
+        // Permanent System Components Shield (Always in RAM, non-editable)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(MiuiGreen.copy(alpha = 0.08f))
+                .border(1.dp, MiuiGreen.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+                .padding(12.dp)
+        ) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = "Locked",
+                        tint = MiuiGreen,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Permanent System Exception Shield",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MiuiGreen
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "• com.mi.android.globallauncher (HyperOS Launcher)\n" +
+                            "• com.miui.home (MIUI Home Launcher)\n" +
+                            "• com.android.systemui (System UI Core)\n" +
+                            "• miui.systemui.plugin (SystemUI Plugin)\n" +
+                            "These system components are permanently protected in RAM and immune to termination or freezing.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 15.sp
+                )
+            }
+        }
+
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
+
+        // Custom User-Selected Background Apps
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Custom Allowed Background Apps",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = if (userAllowedList.isEmpty()) "No user apps selected (all non-whitelisted apps will be cleaned on screen lock)"
+                        else "${userAllowedList.size} apps selected: ${userAllowedList.joinToString(", ")}",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(
+                    onClick = onOpenAppPicker,
+                    colors = ButtonDefaults.buttonColors(containerColor = MiuiBlue),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.Apps, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Select Apps", fontSize = 12.sp)
+                }
+            }
+        }
+    }
+
+    // 3. Aurogon Process Freezer & SuperPowerClean
+    TweakCategoryGroup(
+        title = "Aurogon Freezer & Process Clean",
+        badgeText = "2 Tweaks",
+        icon = Icons.Default.AcUnit,
+        iconColor = MiuiPurple,
+        defaultExpanded = false
+    ) {
+        TweakItem(
+            title = "Xiaomi Aurogon Immobulus Freezer",
+            description = "Enforces Aurogon cgroup freezer rules. Keeps background processes at 0% CPU without crashing apps, allowing instant resume.",
+            icon = Icons.Default.AcUnit,
+            iconColor = MiuiCyan,
+            isChecked = config.hyperOsAurogonFreezerEnabled,
+            onCheckedChange = { onUpdateTweak("hyperOsAurogon", it) }
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
+        TweakItem(
+            title = "SuperPowerClean Background Purge",
+            description = "Terminates unwhitelisted background processes in volatile RAM on screen lock while preserving messaging apps (WhatsApp, SMS, etc.).",
+            icon = Icons.Default.SecurityUpdateGood,
+            iconColor = MiuiPurple,
+            isChecked = config.hyperOsSuperPowerCleanEnabled,
+            onCheckedChange = { onUpdateTweak("hyperOsSuperPowerClean", it) }
+        )
+    }
+
+    // 4. Qualcomm 5G & Modem Power Optimization (FiveGPowerController)
+    TweakCategoryGroup(
+        title = "Qualcomm 5G & Modem Optimization",
+        badgeText = "1 Tweak",
+        icon = Icons.Default.SignalCellularAlt,
+        iconColor = MiuiBlue,
+        defaultExpanded = false
+    ) {
+        TweakItem(
+            title = "FiveGPowerController Modem Optimization",
+            description = "Restricts 5G carrier aggregation and lowers radio power consumption during screen-off sleep (from HyperOS logs).",
+            icon = Icons.Default.SignalCellularAlt,
+            iconColor = MiuiBlue,
+            isChecked = config.hyperOsFiveGPowerOptEnabled,
+            onCheckedChange = { onUpdateTweak("hyperOsFiveG", it) }
+        )
+    }
+
+    // 5. CPU Frequency & Dynamic Core Parking
+    TweakCategoryGroup(
+        title = "CPU Frequency & Core Parking",
+        badgeText = "${config.offlineCoreCount} Cores • 50% Cap",
+        icon = Icons.Default.Speed,
+        iconColor = MiuiGreen,
+        defaultExpanded = true
+    ) {
+        TweakItem(
+            title = "50% CPU Max Frequency Cap",
+            description = "Caps all CPU clusters at 50% max clock in RAM to save up to 40% battery.",
+            icon = Icons.Default.Speed,
+            iconColor = MiuiCyan,
+            isChecked = config.cpuFreqCapEnabled,
+            onCheckedChange = { onUpdateTweak("cpuFreqCap", it) }
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
+        TweakItem(
+            title = "Dynamic Core Parking",
+            description = "Parks heavy CPU cores in volatile memory. Customise core count and battery threshold below.",
+            icon = Icons.Default.Memory,
+            iconColor = MiuiPurple,
+            isChecked = config.twoCoresOfflineBelow20Enabled,
+            onCheckedChange = { onUpdateTweak("twoCoresOffline", it) }
+        )
+
+        AnimatedVisibility(visible = config.twoCoresOfflineBelow20Enabled) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    text = "Number of Cores to Offline:",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(1 to "1 Core (Core 7)", 2 to "2 Cores (6 & 7)").forEach { (count, label) ->
+                        val selected = config.offlineCoreCount == count
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(
+                                    if (selected) MiuiPurple.copy(alpha = 0.2f)
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                )
+                                .border(
+                                    width = 1.dp,
+                                    color = if (selected) MiuiPurple else Color.Transparent,
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                                .clickable { onUpdateCoreTopology(count, config.offlineBatteryThreshold) }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                fontSize = 11.sp,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (selected) MiuiPurple else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Activation Battery Threshold:",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = if (config.offlineBatteryThreshold >= 100) "Always Active" else "≤ ${config.offlineBatteryThreshold}%",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MiuiPurple
+                    )
+                }
+
+                var sliderVal by remember(config.offlineBatteryThreshold) {
+                    mutableFloatStateOf(config.offlineBatteryThreshold.toFloat())
+                }
+
+                Slider(
+                    value = sliderVal,
+                    onValueChange = { sliderVal = it },
+                    onValueChangeFinished = {
+                        val rounded = (sliderVal / 5f).roundToInt() * 5
+                        onUpdateCoreTopology(config.offlineCoreCount, rounded.coerceIn(5, 100))
+                    },
+                    valueRange = 5f..100f,
+                    steps = 18,
+                    colors = SliderDefaults.colors(
+                        thumbColor = MiuiPurple,
+                        activeTrackColor = MiuiPurple
+                    )
+                )
+            }
+        }
     }
 }
 

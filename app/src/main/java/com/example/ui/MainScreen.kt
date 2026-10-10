@@ -41,6 +41,7 @@ fun MainScreen(
     val cpuFreqHistory by viewModel.cpuFreqHistory.collectAsState()
     val isBusy by viewModel.isBusy.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
+    val installedApps by viewModel.installedApps.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -130,7 +131,14 @@ fun MainScreen(
                         },
                         onSelectPerformanceSubMode = { subMode ->
                             viewModel.onSelectPerformanceSubMode(subMode)
-                        }
+                        },
+                        onToggleHyperOs = { enabled ->
+                            viewModel.onToggleHyperOsPowerSaver(enabled)
+                        },
+                        onSaveBackgroundAllowedApps = { apps ->
+                            viewModel.onUpdateBackgroundAllowedApps(apps)
+                        },
+                        installedApps = installedApps
                     )
                 }
 
