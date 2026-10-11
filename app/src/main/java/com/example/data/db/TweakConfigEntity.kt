@@ -40,6 +40,7 @@ data class TweakConfigEntity(
     val lock60HzRefreshRateEnabled: Boolean = true,
     val backgroundScanningDisabled: Boolean = true,
     val touchDozeModeEnabled: Boolean = true,
+    val controlCenterBlurEnabled: Boolean = false,
 
     // Balanced Mode Specific Toggles & Enhancements
     val balanceCpuTweaksEnabled: Boolean = true,

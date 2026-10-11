@@ -271,6 +271,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     RootBridge.setSystemDarkMode(enabled)
                     current.copy(systemDarkModeEnabled = enabled)
                 }
+                "controlCenterBlur" -> {
+                    RootBridge.setControlCenterBlur(enabled)
+                    current.copy(controlCenterBlurEnabled = enabled)
+                }
                 "lock60Hz" -> {
                     val targetHz = if (enabled) 60 else 0
                     RootBridge.setDisplayRefreshRate(targetHz)
@@ -299,7 +303,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 "hyperOsSuperPowerClean" -> current.copy(hyperOsSuperPowerCleanEnabled = enabled)
                 "hyperOsTouchBoost" -> current.copy(hyperOsTouchBoostDisabled = enabled)
                 "hyperOsFiveG" -> current.copy(hyperOsFiveGPowerOptEnabled = enabled)
-                "hyperOsLock60Hz" -> current.copy(hyperOsLock60HzEnabled = enabled)
+                "hyperOsLock60Hz" -> {
+                    val targetHz = if (enabled) 60 else 0
+                    RootBridge.setDisplayRefreshRate(targetHz)
+                    current.copy(hyperOsLock60HzEnabled = enabled, refreshRateHz = targetHz)
+                }
                 else -> current
             }
             dao.update(updated)

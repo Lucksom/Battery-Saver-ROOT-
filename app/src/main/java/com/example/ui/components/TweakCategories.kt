@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AcUnit
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.DisplaySettings
@@ -911,13 +912,22 @@ private fun PowersaveTweakList(
     // 8. Safe Display & Hardware Extras
     TweakCategoryGroup(
         title = "Hardware & Display Extras",
-        badgeText = "7 Tweaks",
+        badgeText = "8 Tweaks",
         icon = Icons.Default.DisplaySettings,
         iconColor = MiuiBlue
     ) {
         RefreshRateCard(
             currentHz = config.refreshRateHz,
             onSelectHz = onSelectRefreshRate
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
+        TweakItem(
+            title = "Control Center Blur",
+            description = "Enables real-time background blur for HyperOS / MIUI Control Center & shade (disable_window_blurs 0). Disable to save GPU battery drain.",
+            icon = Icons.Default.BlurOn,
+            iconColor = MiuiPurple,
+            isChecked = config.controlCenterBlurEnabled,
+            onCheckedChange = { onUpdateTweak("controlCenterBlur", it) }
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
         TweakItem(
@@ -1003,7 +1013,7 @@ private fun HyperOsPowersaveTweakList(
     // 1. Display, Refresh Rate & System Engine
     TweakCategoryGroup(
         title = "Display, Refresh Rate & System",
-        badgeText = "5 Tweaks",
+        badgeText = "6 Tweaks",
         icon = Icons.Default.DisplaySettings,
         iconColor = MiuiAmber,
         defaultExpanded = true
@@ -1011,6 +1021,15 @@ private fun HyperOsPowersaveTweakList(
         RefreshRateCard(
             currentHz = config.refreshRateHz,
             onSelectHz = onSelectRefreshRate
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
+        TweakItem(
+            title = "Control Center Blur",
+            description = "Enables real-time background blur for HyperOS Control Center & notification shade (disable_window_blurs 0). Disable to save GPU resources.",
+            icon = Icons.Default.BlurOn,
+            iconColor = MiuiPurple,
+            isChecked = config.controlCenterBlurEnabled,
+            onCheckedChange = { onUpdateTweak("controlCenterBlur", it) }
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
         TweakItem(

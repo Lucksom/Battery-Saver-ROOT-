@@ -872,43 +872,114 @@ object RootBridge {
         when (targetHz) {
             60 -> {
                 commands.append("""
+                    settings put secure user_refresh_rate 60 2>/dev/null
+                    settings put system user_refresh_rate 60 2>/dev/null
+                    settings put global user_refresh_rate 60 2>/dev/null
+                    settings put secure miui_refresh_rate 60 2>/dev/null
+                    settings put system miui_refresh_rate 60 2>/dev/null
                     settings put system min_refresh_rate 60.0 2>/dev/null
                     settings put system peak_refresh_rate 60.0 2>/dev/null
-                    settings put system user_refresh_rate 60 2>/dev/null
-                    settings put secure miui_refresh_rate 60 2>/dev/null
+                    settings put secure min_refresh_rate 60.0 2>/dev/null
+                    settings put secure peak_refresh_rate 60.0 2>/dev/null
+                    settings put global min_refresh_rate 60.0 2>/dev/null
+                    settings put global peak_refresh_rate 60.0 2>/dev/null
+                    settings put system min_refresh_rate 60 2>/dev/null
+                    settings put system peak_refresh_rate 60 2>/dev/null
+                    settings put secure min_refresh_rate 60 2>/dev/null
+                    settings put secure peak_refresh_rate 60 2>/dev/null
+                    settings put global min_refresh_rate 60 2>/dev/null
+                    settings put global peak_refresh_rate 60 2>/dev/null
+                    settings put system speed_mode 0 2>/dev/null
+                    settings put secure speed_mode 0 2>/dev/null
                     service call SurfaceFlinger 1035 i32 60 2>/dev/null
                 """.trimIndent()).append("\n")
-                logs.add("Display refresh rate set to 60Hz (miui_refresh_rate 60 • Saves 350-500mA)")
+                logs.add("Display refresh rate set to 60Hz (user_refresh_rate 60, miui_refresh_rate 60 • Saves 350-500mA)")
             }
             90 -> {
                 commands.append("""
+                    settings put secure user_refresh_rate 90 2>/dev/null
+                    settings put system user_refresh_rate 90 2>/dev/null
+                    settings put global user_refresh_rate 90 2>/dev/null
+                    settings put secure miui_refresh_rate 90 2>/dev/null
+                    settings put system miui_refresh_rate 90 2>/dev/null
                     settings put system min_refresh_rate 60.0 2>/dev/null
                     settings put system peak_refresh_rate 90.0 2>/dev/null
-                    settings put system user_refresh_rate 90 2>/dev/null
-                    settings put secure miui_refresh_rate 90 2>/dev/null
+                    settings put secure min_refresh_rate 60.0 2>/dev/null
+                    settings put secure peak_refresh_rate 90.0 2>/dev/null
+                    settings put global min_refresh_rate 60.0 2>/dev/null
+                    settings put global peak_refresh_rate 90.0 2>/dev/null
+                    settings put system min_refresh_rate 60 2>/dev/null
+                    settings put system peak_refresh_rate 90 2>/dev/null
+                    settings put secure min_refresh_rate 60 2>/dev/null
+                    settings put secure peak_refresh_rate 90 2>/dev/null
+                    settings put global min_refresh_rate 60 2>/dev/null
+                    settings put global peak_refresh_rate 90 2>/dev/null
+                    settings put system speed_mode 1 2>/dev/null
+                    settings put secure speed_mode 1 2>/dev/null
                     service call SurfaceFlinger 1035 i32 90 2>/dev/null
                 """.trimIndent()).append("\n")
-                logs.add("Display refresh rate set to 90Hz (miui_refresh_rate 90 • Smooth balance)")
+                logs.add("Display refresh rate set to 90Hz (user_refresh_rate 90, miui_refresh_rate 90 • Smooth balance)")
             }
             120 -> {
                 commands.append("""
+                    settings put secure user_refresh_rate 120 2>/dev/null
+                    settings put system user_refresh_rate 120 2>/dev/null
+                    settings put global user_refresh_rate 120 2>/dev/null
+                    settings put secure miui_refresh_rate 120 2>/dev/null
+                    settings put system miui_refresh_rate 120 2>/dev/null
                     settings put system min_refresh_rate 60.0 2>/dev/null
                     settings put system peak_refresh_rate 120.0 2>/dev/null
-                    settings put system user_refresh_rate 120 2>/dev/null
-                    settings put secure miui_refresh_rate 120 2>/dev/null
+                    settings put secure min_refresh_rate 60.0 2>/dev/null
+                    settings put secure peak_refresh_rate 120.0 2>/dev/null
+                    settings put global min_refresh_rate 60.0 2>/dev/null
+                    settings put global peak_refresh_rate 120.0 2>/dev/null
+                    settings put system min_refresh_rate 60 2>/dev/null
+                    settings put system peak_refresh_rate 120 2>/dev/null
+                    settings put secure min_refresh_rate 60 2>/dev/null
+                    settings put secure peak_refresh_rate 120 2>/dev/null
+                    settings put global min_refresh_rate 60 2>/dev/null
+                    settings put global peak_refresh_rate 120 2>/dev/null
+                    settings put system speed_mode 1 2>/dev/null
+                    settings put secure speed_mode 1 2>/dev/null
                     service call SurfaceFlinger 1035 i32 120 2>/dev/null
                 """.trimIndent()).append("\n")
-                logs.add("Display refresh rate set to 120Hz (miui_refresh_rate 120 • Fluid)")
+                logs.add("Display refresh rate set to 120Hz (user_refresh_rate 120, miui_refresh_rate 120 • Fluid)")
             }
             else -> {
                 commands.append("""
                     settings delete system min_refresh_rate 2>/dev/null
                     settings delete system peak_refresh_rate 2>/dev/null
                     settings delete system user_refresh_rate 2>/dev/null
+                    settings delete system miui_refresh_rate 2>/dev/null
+                    settings delete system speed_mode 2>/dev/null
+                    settings delete secure min_refresh_rate 2>/dev/null
+                    settings delete secure peak_refresh_rate 2>/dev/null
+                    settings delete secure user_refresh_rate 2>/dev/null
                     settings delete secure miui_refresh_rate 2>/dev/null
+                    settings delete secure speed_mode 2>/dev/null
+                    settings delete global min_refresh_rate 2>/dev/null
+                    settings delete global peak_refresh_rate 2>/dev/null
+                    settings delete global user_refresh_rate 2>/dev/null
                 """.trimIndent()).append("\n")
                 logs.add("Display refresh rate restored to dynamic stock")
             }
+        }
+
+        // Control Center Blur (Window Blurs)
+        if (config.controlCenterBlurEnabled) {
+            commands.append("""
+                settings put global disable_window_blurs 0 2>/dev/null
+                settings put system disable_window_blurs 0 2>/dev/null
+                settings put secure disable_window_blurs 0 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("Control Center Blur enabled (disable_window_blurs 0)")
+        } else {
+            commands.append("""
+                settings put global disable_window_blurs 1 2>/dev/null
+                settings put system disable_window_blurs 1 2>/dev/null
+                settings put secure disable_window_blurs 1 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("Control Center Blur disabled for battery saving (disable_window_blurs 1)")
         }
 
         // 16. Deep Sleep App Exception Whitelist (Apps exempted from doze restrictions)
@@ -1352,23 +1423,45 @@ object RootBridge {
             logs.add("SuperPowerClean: Memory cleaned in RAM (Protected: ${allProtectedPkgs.size} apps)")
         }
 
-        // 4. Xiaomi Touch Boost Clamping & THP Touch Doze
+        // Aurogon Process Freezer
+        if (config.hyperOsAurogonFreezerEnabled) {
+            commands.append("""
+                setprop persist.sys.aurogon.enabled 1 2>/dev/null
+                setprop persist.sys.spc.enabled 1 2>/dev/null
+                setprop persist.vendor.power.freezer 1 2>/dev/null
+                device_config put activity_manager use_freezer true 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("HyperOS Aurogon Process Freezer enabled (cgroup process freezing active)")
+        }
+
+        // 4. Xiaomi Touch Boost Clamping & RefreshRateSelector Touch Boost
         if (config.hyperOsTouchBoostDisabled) {
             commands.append("""
                 echo 0 > /sys/module/msm_performance/parameters/touchboost 2>/dev/null
                 echo 0 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null
+                echo 0 > /sys/module/cpu_boost/parameters/sched_boost_on_input 2>/dev/null
                 echo 0 > /sys/devices/system/cpu/cpufreq/schedutil/iowait_boost_enable 2>/dev/null
                 settings put secure touch_boost 0 2>/dev/null
                 settings put system touch_boost 0 2>/dev/null
                 if [ -d /sys/power/pnpmgr ]; then
                     echo 0 > /sys/power/pnpmgr/touch_boost 2>/dev/null
+                    echo 0 > /sys/power/pnpmgr/launch_boost 2>/dev/null
+                    echo 0 > /sys/power/pnpmgr/spc/spc_enabled 2>/dev/null
                 fi
-                # Xiaomi THP Touch Host Processing Doze Mode from logs
+                setprop persist.sys.refresh_rate_touch_boost 0 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("Xiaomi Touch Boost & RefreshRateSelector touch boost disabled")
+        }
+
+        // Xiaomi THP Touch Host Processing Doze Mode
+        if (config.touchDozeModeEnabled) {
+            commands.append("""
                 for thp in /sys/class/touch/touch_dev/thp_doze_mode /sys/class/touch/touch_dev/doze_mode /proc/touchpanel/doze_mode /sys/touchpanel/doze_mode /sys/devices/virtual/touch/touch_dev/touch_doze; do
                     [ -e "${'$'}thp" ] && echo 1 > "${'$'}thp" 2>/dev/null
                 done
+                setprop persist.sys.touch.doze 1 2>/dev/null
             """.trimIndent()).append("\n")
-            logs.add("Xiaomi Touch Boost disabled & THP Touch Doze active (thp_set_doze_mode_func from logs)")
+            logs.add("Xiaomi THP Touch Doze Mode active (thp_set_doze_mode_func from logs)")
         }
 
         // Background BLE & Wi-Fi Scanning (from NearbyDiscovery & BluetoothAdapter logs)
@@ -1395,40 +1488,94 @@ object RootBridge {
         when (hyperOsTargetHz) {
             60 -> {
                 commands.append("""
+                    settings put secure user_refresh_rate 60 2>/dev/null
+                    settings put system user_refresh_rate 60 2>/dev/null
+                    settings put global user_refresh_rate 60 2>/dev/null
                     settings put secure miui_refresh_rate 60 2>/dev/null
+                    settings put system miui_refresh_rate 60 2>/dev/null
                     settings put system min_refresh_rate 60.0 2>/dev/null
                     settings put system peak_refresh_rate 60.0 2>/dev/null
-                    settings put system user_refresh_rate 60 2>/dev/null
+                    settings put secure min_refresh_rate 60.0 2>/dev/null
+                    settings put secure peak_refresh_rate 60.0 2>/dev/null
+                    settings put global min_refresh_rate 60.0 2>/dev/null
+                    settings put global peak_refresh_rate 60.0 2>/dev/null
+                    settings put system min_refresh_rate 60 2>/dev/null
+                    settings put system peak_refresh_rate 60 2>/dev/null
+                    settings put secure min_refresh_rate 60 2>/dev/null
+                    settings put secure peak_refresh_rate 60 2>/dev/null
+                    settings put global min_refresh_rate 60 2>/dev/null
+                    settings put global peak_refresh_rate 60 2>/dev/null
+                    settings put system speed_mode 0 2>/dev/null
+                    settings put secure speed_mode 0 2>/dev/null
                     service call SurfaceFlinger 1035 i32 60 2>/dev/null
                 """.trimIndent()).append("\n")
-                logs.add("HyperOS Display refresh rate clamped to 60Hz (miui_refresh_rate 60)")
+                logs.add("HyperOS Display refresh rate clamped to 60Hz (user_refresh_rate 60, miui_refresh_rate 60)")
             }
             90 -> {
                 commands.append("""
+                    settings put secure user_refresh_rate 90 2>/dev/null
+                    settings put system user_refresh_rate 90 2>/dev/null
+                    settings put global user_refresh_rate 90 2>/dev/null
                     settings put secure miui_refresh_rate 90 2>/dev/null
+                    settings put system miui_refresh_rate 90 2>/dev/null
                     settings put system min_refresh_rate 60.0 2>/dev/null
                     settings put system peak_refresh_rate 90.0 2>/dev/null
-                    settings put system user_refresh_rate 90 2>/dev/null
+                    settings put secure min_refresh_rate 60.0 2>/dev/null
+                    settings put secure peak_refresh_rate 90.0 2>/dev/null
+                    settings put global min_refresh_rate 60.0 2>/dev/null
+                    settings put global peak_refresh_rate 90.0 2>/dev/null
+                    settings put system min_refresh_rate 60 2>/dev/null
+                    settings put system peak_refresh_rate 90 2>/dev/null
+                    settings put secure min_refresh_rate 60 2>/dev/null
+                    settings put secure peak_refresh_rate 90 2>/dev/null
+                    settings put global min_refresh_rate 60 2>/dev/null
+                    settings put global peak_refresh_rate 90 2>/dev/null
+                    settings put system speed_mode 1 2>/dev/null
+                    settings put secure speed_mode 1 2>/dev/null
                     service call SurfaceFlinger 1035 i32 90 2>/dev/null
                 """.trimIndent()).append("\n")
-                logs.add("HyperOS Display refresh rate set to 90Hz (miui_refresh_rate 90)")
+                logs.add("HyperOS Display refresh rate set to 90Hz (user_refresh_rate 90, miui_refresh_rate 90)")
             }
             120 -> {
                 commands.append("""
+                    settings put secure user_refresh_rate 120 2>/dev/null
+                    settings put system user_refresh_rate 120 2>/dev/null
+                    settings put global user_refresh_rate 120 2>/dev/null
                     settings put secure miui_refresh_rate 120 2>/dev/null
+                    settings put system miui_refresh_rate 120 2>/dev/null
                     settings put system min_refresh_rate 60.0 2>/dev/null
                     settings put system peak_refresh_rate 120.0 2>/dev/null
-                    settings put system user_refresh_rate 120 2>/dev/null
+                    settings put secure min_refresh_rate 60.0 2>/dev/null
+                    settings put secure peak_refresh_rate 120.0 2>/dev/null
+                    settings put global min_refresh_rate 60.0 2>/dev/null
+                    settings put global peak_refresh_rate 120.0 2>/dev/null
+                    settings put system min_refresh_rate 60 2>/dev/null
+                    settings put system peak_refresh_rate 120 2>/dev/null
+                    settings put secure min_refresh_rate 60 2>/dev/null
+                    settings put secure peak_refresh_rate 120 2>/dev/null
+                    settings put global min_refresh_rate 60 2>/dev/null
+                    settings put global peak_refresh_rate 120 2>/dev/null
+                    settings put system speed_mode 1 2>/dev/null
+                    settings put secure speed_mode 1 2>/dev/null
                     service call SurfaceFlinger 1035 i32 120 2>/dev/null
                 """.trimIndent()).append("\n")
-                logs.add("HyperOS Display refresh rate set to 120Hz (miui_refresh_rate 120)")
+                logs.add("HyperOS Display refresh rate set to 120Hz (user_refresh_rate 120, miui_refresh_rate 120)")
             }
             else -> {
                 commands.append("""
                     settings delete system min_refresh_rate 2>/dev/null
                     settings delete system peak_refresh_rate 2>/dev/null
                     settings delete system user_refresh_rate 2>/dev/null
+                    settings delete system miui_refresh_rate 2>/dev/null
+                    settings delete system speed_mode 2>/dev/null
+                    settings delete secure min_refresh_rate 2>/dev/null
+                    settings delete secure peak_refresh_rate 2>/dev/null
+                    settings delete secure user_refresh_rate 2>/dev/null
                     settings delete secure miui_refresh_rate 2>/dev/null
+                    settings delete secure speed_mode 2>/dev/null
+                    settings delete global min_refresh_rate 2>/dev/null
+                    settings delete global peak_refresh_rate 2>/dev/null
+                    settings delete global user_refresh_rate 2>/dev/null
                 """.trimIndent()).append("\n")
                 logs.add("HyperOS Display refresh rate restored to dynamic stock")
             }
@@ -1438,12 +1585,19 @@ object RootBridge {
         if (config.systemBatterySaverEnabled || config.systemBatterySaverWithoutDarkEnabled) {
             commands.append("""
                 cmd power set-mode 1 2>/dev/null || settings put global low_power 1 2>/dev/null
+                settings put global low_power 1 2>/dev/null
+                settings put secure low_power 1 2>/dev/null
+                settings put system low_power 1 2>/dev/null
                 settings put secure POWER_SAVE_MODE_OPEN 1 2>/dev/null
                 settings put system POWER_SAVE_MODE_OPEN 1 2>/dev/null
+                settings put global POWER_SAVE_MODE_OPEN 1 2>/dev/null
                 content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:1 2>/dev/null
                 content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:1 2>/dev/null
+                content insert --uri content://com.miui.powercenter.powersaver/status --bind status:i:1 2>/dev/null
                 am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state true 2>/dev/null
                 am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
+                setprop persist.vendor.radio.5g_power_save 1 2>/dev/null
+                setprop persist.radio.power_saving 1 2>/dev/null
             """.trimIndent()).append("\n")
 
             if (config.systemDarkModeEnabled) {
@@ -1471,6 +1625,23 @@ object RootBridge {
             }
         }
 
+        // 8. Control Center Blur (Window Blurs)
+        if (config.controlCenterBlurEnabled) {
+            commands.append("""
+                settings put global disable_window_blurs 0 2>/dev/null
+                settings put system disable_window_blurs 0 2>/dev/null
+                settings put secure disable_window_blurs 0 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("HyperOS Control Center Blur enabled (disable_window_blurs 0)")
+        } else {
+            commands.append("""
+                settings put global disable_window_blurs 1 2>/dev/null
+                settings put system disable_window_blurs 1 2>/dev/null
+                settings put secure disable_window_blurs 1 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("HyperOS Control Center Blur disabled for battery saving (disable_window_blurs 1)")
+        }
+
         val execResult = execute(commands.toString())
         if (execResult.success) {
             logs.add("HyperOS Super Power Saving Engine applied successfully to RAM.")
@@ -1487,8 +1658,10 @@ object RootBridge {
                 cmd uimode night yes 2>/dev/null
                 settings put secure ui_night_mode 2 2>/dev/null
                 settings put system ui_night_mode 2 2>/dev/null
+                settings put global ui_night_mode 2 2>/dev/null
                 settings put secure dark_mode_enable 1 2>/dev/null
                 settings put system dark_mode_enable 1 2>/dev/null
+                settings put global dark_mode_enable 1 2>/dev/null
                 am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled true 2>/dev/null
             """.trimIndent()
         } else {
@@ -1496,8 +1669,10 @@ object RootBridge {
                 cmd uimode night no 2>/dev/null
                 settings put secure ui_night_mode 1 2>/dev/null
                 settings put system ui_night_mode 1 2>/dev/null
+                settings put global ui_night_mode 1 2>/dev/null
                 settings put secure dark_mode_enable 0 2>/dev/null
                 settings put system dark_mode_enable 0 2>/dev/null
+                settings put global dark_mode_enable 0 2>/dev/null
                 am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled false 2>/dev/null
             """.trimIndent()
         }
@@ -1507,31 +1682,85 @@ object RootBridge {
     suspend fun setDisplayRefreshRate(hz: Int): Boolean = withContext(Dispatchers.IO) {
         val cmd = when (hz) {
             60 -> """
+                settings put secure user_refresh_rate 60 2>/dev/null
+                settings put system user_refresh_rate 60 2>/dev/null
+                settings put global user_refresh_rate 60 2>/dev/null
+                settings put secure miui_refresh_rate 60 2>/dev/null
+                settings put system miui_refresh_rate 60 2>/dev/null
                 settings put system min_refresh_rate 60.0 2>/dev/null
                 settings put system peak_refresh_rate 60.0 2>/dev/null
-                settings put system user_refresh_rate 60 2>/dev/null
-                settings put secure miui_refresh_rate 60 2>/dev/null
+                settings put secure min_refresh_rate 60.0 2>/dev/null
+                settings put secure peak_refresh_rate 60.0 2>/dev/null
+                settings put global min_refresh_rate 60.0 2>/dev/null
+                settings put global peak_refresh_rate 60.0 2>/dev/null
+                settings put system min_refresh_rate 60 2>/dev/null
+                settings put system peak_refresh_rate 60 2>/dev/null
+                settings put secure min_refresh_rate 60 2>/dev/null
+                settings put secure peak_refresh_rate 60 2>/dev/null
+                settings put global min_refresh_rate 60 2>/dev/null
+                settings put global peak_refresh_rate 60 2>/dev/null
+                settings put system speed_mode 0 2>/dev/null
+                settings put secure speed_mode 0 2>/dev/null
                 service call SurfaceFlinger 1035 i32 60 2>/dev/null
             """.trimIndent()
             90 -> """
+                settings put secure user_refresh_rate 90 2>/dev/null
+                settings put system user_refresh_rate 90 2>/dev/null
+                settings put global user_refresh_rate 90 2>/dev/null
+                settings put secure miui_refresh_rate 90 2>/dev/null
+                settings put system miui_refresh_rate 90 2>/dev/null
                 settings put system min_refresh_rate 60.0 2>/dev/null
                 settings put system peak_refresh_rate 90.0 2>/dev/null
-                settings put system user_refresh_rate 90 2>/dev/null
-                settings put secure miui_refresh_rate 90 2>/dev/null
+                settings put secure min_refresh_rate 60.0 2>/dev/null
+                settings put secure peak_refresh_rate 90.0 2>/dev/null
+                settings put global min_refresh_rate 60.0 2>/dev/null
+                settings put global peak_refresh_rate 90.0 2>/dev/null
+                settings put system min_refresh_rate 60 2>/dev/null
+                settings put system peak_refresh_rate 90 2>/dev/null
+                settings put secure min_refresh_rate 60 2>/dev/null
+                settings put secure peak_refresh_rate 90 2>/dev/null
+                settings put global min_refresh_rate 60 2>/dev/null
+                settings put global peak_refresh_rate 90 2>/dev/null
+                settings put system speed_mode 1 2>/dev/null
+                settings put secure speed_mode 1 2>/dev/null
                 service call SurfaceFlinger 1035 i32 90 2>/dev/null
             """.trimIndent()
             120 -> """
+                settings put secure user_refresh_rate 120 2>/dev/null
+                settings put system user_refresh_rate 120 2>/dev/null
+                settings put global user_refresh_rate 120 2>/dev/null
+                settings put secure miui_refresh_rate 120 2>/dev/null
+                settings put system miui_refresh_rate 120 2>/dev/null
                 settings put system min_refresh_rate 60.0 2>/dev/null
                 settings put system peak_refresh_rate 120.0 2>/dev/null
-                settings put system user_refresh_rate 120 2>/dev/null
-                settings put secure miui_refresh_rate 120 2>/dev/null
+                settings put secure min_refresh_rate 60.0 2>/dev/null
+                settings put secure peak_refresh_rate 120.0 2>/dev/null
+                settings put global min_refresh_rate 60.0 2>/dev/null
+                settings put global peak_refresh_rate 120.0 2>/dev/null
+                settings put system min_refresh_rate 60 2>/dev/null
+                settings put system peak_refresh_rate 120 2>/dev/null
+                settings put secure min_refresh_rate 60 2>/dev/null
+                settings put secure peak_refresh_rate 120 2>/dev/null
+                settings put global min_refresh_rate 60 2>/dev/null
+                settings put global peak_refresh_rate 120 2>/dev/null
+                settings put system speed_mode 1 2>/dev/null
+                settings put secure speed_mode 1 2>/dev/null
                 service call SurfaceFlinger 1035 i32 120 2>/dev/null
             """.trimIndent()
             else -> """
                 settings delete system min_refresh_rate 2>/dev/null
                 settings delete system peak_refresh_rate 2>/dev/null
                 settings delete system user_refresh_rate 2>/dev/null
+                settings delete system miui_refresh_rate 2>/dev/null
+                settings delete system speed_mode 2>/dev/null
+                settings delete secure min_refresh_rate 2>/dev/null
+                settings delete secure peak_refresh_rate 2>/dev/null
+                settings delete secure user_refresh_rate 2>/dev/null
                 settings delete secure miui_refresh_rate 2>/dev/null
+                settings delete secure speed_mode 2>/dev/null
+                settings delete global min_refresh_rate 2>/dev/null
+                settings delete global peak_refresh_rate 2>/dev/null
+                settings delete global user_refresh_rate 2>/dev/null
             """.trimIndent()
         }
         execute(cmd).success
@@ -1541,10 +1770,15 @@ object RootBridge {
         val cmd = if (enabled) {
             """
                 cmd power set-mode 1 2>/dev/null || settings put global low_power 1 2>/dev/null
+                settings put global low_power 1 2>/dev/null
+                settings put secure low_power 1 2>/dev/null
+                settings put system low_power 1 2>/dev/null
                 settings put secure POWER_SAVE_MODE_OPEN 1 2>/dev/null
                 settings put system POWER_SAVE_MODE_OPEN 1 2>/dev/null
+                settings put global POWER_SAVE_MODE_OPEN 1 2>/dev/null
                 content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:1 2>/dev/null
                 content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:1 2>/dev/null
+                content insert --uri content://com.miui.powercenter.powersaver/status --bind status:i:1 2>/dev/null
                 am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state true 2>/dev/null
                 am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
                 setprop persist.vendor.radio.5g_power_save 1 2>/dev/null
@@ -1553,14 +1787,36 @@ object RootBridge {
         } else {
             """
                 cmd power set-mode 0 2>/dev/null || settings put global low_power 0 2>/dev/null
+                settings put global low_power 0 2>/dev/null
+                settings put secure low_power 0 2>/dev/null
+                settings put system low_power 0 2>/dev/null
                 settings put secure POWER_SAVE_MODE_OPEN 0 2>/dev/null
                 settings put system POWER_SAVE_MODE_OPEN 0 2>/dev/null
+                settings put global POWER_SAVE_MODE_OPEN 0 2>/dev/null
                 content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:0 2>/dev/null
                 content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:0 2>/dev/null
+                content insert --uri content://com.miui.powercenter.powersaver/status --bind status:i:0 2>/dev/null
                 am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state false 2>/dev/null
                 am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
                 setprop persist.vendor.radio.5g_power_save 0 2>/dev/null
                 setprop persist.radio.power_saving 0 2>/dev/null
+            """.trimIndent()
+        }
+        execute(cmd).success
+    }
+
+    suspend fun setControlCenterBlur(enabled: Boolean): Boolean = withContext(Dispatchers.IO) {
+        val cmd = if (enabled) {
+            """
+                settings put global disable_window_blurs 0 2>/dev/null
+                settings put system disable_window_blurs 0 2>/dev/null
+                settings put secure disable_window_blurs 0 2>/dev/null
+            """.trimIndent()
+        } else {
+            """
+                settings put global disable_window_blurs 1 2>/dev/null
+                settings put system disable_window_blurs 1 2>/dev/null
+                settings put secure disable_window_blurs 1 2>/dev/null
             """.trimIndent()
         }
         execute(cmd).success
