@@ -46,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -72,8 +73,8 @@ fun AppPickerDialog(
     // Permanent exceptions are hardcoded and non-removable
     val permanentExceptions = AppInfoRepository.PERMANENT_SYSTEM_EXCEPTIONS
 
-    val filteredApps = remember(installedApps, searchQuery) {
-        if (searchQuery.isBlank()) {
+    val filteredApps = remember(installedApps, searchQuery, selectedPkgs) {
+        val list = if (searchQuery.isBlank()) {
             installedApps
         } else {
             val q = searchQuery.trim().lowercase()
@@ -81,6 +82,12 @@ fun AppPickerDialog(
                 it.appName.lowercase().contains(q) || it.packageName.lowercase().contains(q)
             }
         }
+        // Selected whitelist apps listed at top for easy unchecking
+        list.sortedWith(
+            compareByDescending<InstalledAppItem> { selectedPkgs.contains(it.packageName) && !permanentExceptions.contains(it.packageName) }
+                .thenByDescending { permanentExceptions.contains(it.packageName) }
+                .thenBy { it.appName.lowercase() }
+        )
     }
 
     Dialog(
@@ -207,12 +214,17 @@ fun AppPickerDialog(
                     ) {
                         items(filteredApps, key = { it.packageName }) { app ->
                             val isPermanent = permanentExceptions.contains(app.packageName)
-                            val isSelected = selectedPkgs.contains(app.packageName) || isPermanent
+                            val isUserSelected = selectedPkgs.contains(app.packageName) && !isPermanent
+                            val isSelected = isUserSelected || isPermanent
 
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(14.dp))
+                                    .background(
+                                        if (isUserSelected) MiuiCyan.copy(alpha = 0.1f)
+                                        else Color.Transparent
+                                    )
                                     .clickable(enabled = !isPermanent) {
                                         selectedPkgs = if (selectedPkgs.contains(app.packageName)) {
                                             selectedPkgs - app.packageName

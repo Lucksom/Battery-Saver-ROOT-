@@ -260,8 +260,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 "doubleTapWake" -> current.copy(doubleTapWakePreserved = enabled)
                 "schedtuneTopApp" -> current.copy(schedtuneTopAppEnabled = enabled)
                 "powerEfficientWorkqueue" -> current.copy(powerEfficientWorkqueueEnabled = enabled)
+                "backgroundScanning" -> current.copy(backgroundScanningDisabled = enabled)
+                "touchDozeMode" -> current.copy(touchDozeModeEnabled = enabled)
                 "batterySaverNoDark" -> current.copy(systemBatterySaverWithoutDarkEnabled = enabled)
-                "lock60Hz" -> current.copy(lock60HzRefreshRateEnabled = enabled)
+                "systemBatterySaver" -> {
+                    RootBridge.setSystemBatterySaver(enabled)
+                    current.copy(systemBatterySaverEnabled = enabled)
+                }
+                "systemDarkMode" -> {
+                    RootBridge.setSystemDarkMode(enabled)
+                    current.copy(systemDarkModeEnabled = enabled)
+                }
+                "lock60Hz" -> {
+                    val targetHz = if (enabled) 60 else 0
+                    RootBridge.setDisplayRefreshRate(targetHz)
+                    current.copy(lock60HzRefreshRateEnabled = enabled, refreshRateHz = targetHz)
+                }
                 "deepSleepScreenOff" -> current.copy(deepSleepScreenOffEnabled = enabled)
                 "developerProcessLimit" -> current.copy(developerProcessLimitEnabled = enabled)
                 "balanceCpuTweaks" -> current.copy(balanceCpuTweaksEnabled = enabled)
@@ -310,6 +324,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 "Standard Powersave profile restored"
             }
             if (current.isMasterApplied && current.activeProfile == "POWERSAVE") {
+                RootBridge.applyPowersaveTweaks(getApplication(), updated)
+                refreshTelemetry()
+            }
+        }
+    }
+
+    fun onSelectRefreshRate(hz: Int) {
+        viewModelScope.launch {
+            val current = configState.value
+            val updated = current.copy(
+                refreshRateHz = hz,
+                lock60HzRefreshRateEnabled = (hz == 60),
+                hyperOsLock60HzEnabled = (hz == 60)
+            )
+            dao.update(updated)
+            RootBridge.setDisplayRefreshRate(hz)
+            val msg = when (hz) {
+                60 -> "Display refresh rate locked to 60Hz (Energy Saving)"
+                90 -> "Display refresh rate locked to 90Hz (Smooth Balance)"
+                120 -> "Display refresh rate locked to 120Hz (Ultra Fluidity)"
+                else -> "Display refresh rate restored to dynamic stock"
+            }
+            _statusMessage.value = msg
+            if (current.isMasterApplied) {
                 RootBridge.applyPowersaveTweaks(getApplication(), updated)
                 refreshTelemetry()
             }

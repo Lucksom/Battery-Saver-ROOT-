@@ -241,7 +241,10 @@ object RootBridge {
         execute("pkill -f \"voltpower_doze_daemon\" >/dev/null 2>&1")
         execute("settings put secure aod_mode 1 2>/dev/null; settings put system aod_mode 1 2>/dev/null; settings put secure doze_always_on 1 2>/dev/null; setprop debug.miui.aod_enable 1 2>/dev/null; am broadcast -a miui.intent.action.AOD_STATE_CHANGED --ez enabled true 2>/dev/null")
         execute("setprop persist.vendor.radio.5g_power_save 0 2>/dev/null; setprop persist.radio.power_saving 0 2>/dev/null")
-        execute("echo 1 > /sys/module/msm_performance/parameters/touchboost 2>/dev/null; settings delete secure touch_boost 2>/dev/null")
+        execute("echo 1 > /sys/module/msm_performance/parameters/touchboost 2>/dev/null; settings delete secure touch_boost 2>/dev/null; settings delete system touch_boost 2>/dev/null")
+        execute("settings put global ble_scan_always_enabled 1 2>/dev/null; settings put global wifi_scan_always_enabled 1 2>/dev/null; settings put global bluetooth_scan_always_available 1 2>/dev/null")
+        execute("for thp in /sys/class/touch/touch_dev/thp_doze_mode /sys/class/touch/touch_dev/doze_mode /proc/touchpanel/doze_mode /sys/touchpanel/doze_mode /sys/devices/virtual/touch/touch_dev/touch_doze; do [ -e \"\$thp\" ] && echo 0 > \"\$thp\" 2>/dev/null; done")
+        execute("settings delete secure dark_mode_enable 2>/dev/null; settings delete system dark_mode_enable 2>/dev/null; settings delete secure POWER_SAVE_MODE_OPEN 2>/dev/null; settings delete system POWER_SAVE_MODE_OPEN 2>/dev/null")
         result.success
     }
 
@@ -477,13 +480,36 @@ object RootBridge {
                 for s in /dev/stune/top-app/schedtune.boost /dev/stune/top-app/schedtune.sched_boost_no_override; do
                     [ -e "${'$'}s" ] && echo 0 > "${'$'}s" 2>/dev/null
                 done
+
+                # Xiaomi Touch Boost Settings & Touch Host Processing (THP) Doze Mode from logs
+                settings put secure touch_boost 0 2>/dev/null
+                settings put system touch_boost 0 2>/dev/null
+                for thp in /sys/class/touch/touch_dev/thp_doze_mode /sys/class/touch/touch_dev/doze_mode /proc/touchpanel/doze_mode /sys/touchpanel/doze_mode /sys/devices/virtual/touch/touch_dev/touch_doze; do
+                    [ -e "${'$'}thp" ] && echo 1 > "${'$'}thp" 2>/dev/null
+                done
             """.trimIndent()).append("\n")
-            logs.add("Touch, App-Launch & HyperOS pnpmgr boost disabled (Spikes eliminated)")
+            logs.add("Touch, App-Launch & HyperOS pnpmgr boost disabled; THP Touch Doze enabled (Spikes eliminated)")
         } else {
             commands.append("""
                 restore_from_backup "input_boost|touchboost|pnpmgr|fp_boost|uclamp" "[ -e /sys/module/cpu_boost/parameters/input_boost_ms ] && echo 40 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null; [ -e /sys/module/msm_performance/parameters/touchboost ] && echo 1 > /sys/module/msm_performance/parameters/touchboost 2>/dev/null; [ -d /sys/power/pnpmgr ] && echo 1 > /sys/power/pnpmgr/touch_boost 2>/dev/null"
             """.trimIndent()).append("\n")
             logs.add("Touch & input boost restored from stock backup snapshot")
+        }
+
+        // Background Bluetooth LE & Wi-Fi Scanning (from BluetoothAdapter & NearbyDiscovery logs)
+        if (config.backgroundScanningDisabled) {
+            commands.append("""
+                settings put global ble_scan_always_enabled 0 2>/dev/null
+                settings put global bluetooth_scan_always_available 0 2>/dev/null
+                settings put global wifi_scan_always_enabled 0 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("Auto Bluetooth LE & Wi-Fi background scanning disabled (prevents FastPair/beacon wakeups)")
+        } else {
+            commands.append("""
+                settings put global ble_scan_always_enabled 1 2>/dev/null
+                settings put global bluetooth_scan_always_available 1 2>/dev/null
+                settings put global wifi_scan_always_enabled 1 2>/dev/null
+            """.trimIndent()).append("\n")
         }
 
         // 5. GPU Power Limit & Idler
@@ -778,40 +804,111 @@ object RootBridge {
             logs.add("Double-tap wake gesture preserved")
         }
 
-        // 14. System Battery Saver (Keep Light Theme - Suppress forced Dark Mode)
-        if (config.systemBatterySaverWithoutDarkEnabled) {
+        // 14. System Battery Saver (MIUI PowerSaverProvider + Android Core)
+        if (config.systemBatterySaverEnabled || config.systemBatterySaverWithoutDarkEnabled) {
             commands.append("""
                 cmd power set-mode 1 2>/dev/null || settings put global low_power 1 2>/dev/null
-                cmd uimode night no 2>/dev/null
-                settings put secure ui_night_mode 1 2>/dev/null
-                settings put system ui_night_mode 1 2>/dev/null
+                settings put secure POWER_SAVE_MODE_OPEN 1 2>/dev/null
+                settings put system POWER_SAVE_MODE_OPEN 1 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:1 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:1 2>/dev/null
+                am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state true 2>/dev/null
+                am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
+                setprop persist.vendor.radio.5g_power_save 1 2>/dev/null
+                setprop persist.radio.power_saving 1 2>/dev/null
             """.trimIndent()).append("\n")
-            logs.add("System battery saver enabled (Dark mode suppressed / light theme preserved)")
+
+            if (config.systemDarkModeEnabled) {
+                commands.append("""
+                    cmd uimode night yes 2>/dev/null
+                    settings put secure ui_night_mode 2 2>/dev/null
+                    settings put system ui_night_mode 2 2>/dev/null
+                    settings put secure dark_mode_enable 1 2>/dev/null
+                    settings put system dark_mode_enable 1 2>/dev/null
+                    am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled true 2>/dev/null
+                """.trimIndent()).append("\n")
+                logs.add("System battery saver active with Dark Mode enabled (UiModeManager night mode 2)")
+            } else if (config.systemBatterySaverWithoutDarkEnabled) {
+                commands.append("""
+                    cmd uimode night no 2>/dev/null
+                    settings put secure ui_night_mode 1 2>/dev/null
+                    settings put system ui_night_mode 1 2>/dev/null
+                    settings put secure dark_mode_enable 0 2>/dev/null
+                    settings put system dark_mode_enable 0 2>/dev/null
+                    am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled false 2>/dev/null
+                """.trimIndent()).append("\n")
+                logs.add("System battery saver active (Light mode preserved / dark mode suppressed)")
+            } else {
+                logs.add("System battery saver enabled (PowerSaverProvider active)")
+            }
         } else {
             commands.append("""
                 cmd power set-mode 0 2>/dev/null || settings put global low_power 0 2>/dev/null
+                settings put secure POWER_SAVE_MODE_OPEN 0 2>/dev/null
+                settings put system POWER_SAVE_MODE_OPEN 0 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:0 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:0 2>/dev/null
+                am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state false 2>/dev/null
+                am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
+                setprop persist.vendor.radio.5g_power_save 0 2>/dev/null
+                setprop persist.radio.power_saving 0 2>/dev/null
             """.trimIndent()).append("\n")
+            if (config.systemDarkModeEnabled) {
+                commands.append("""
+                    cmd uimode night yes 2>/dev/null
+                    settings put secure ui_night_mode 2 2>/dev/null
+                    settings put system ui_night_mode 2 2>/dev/null
+                    settings put secure dark_mode_enable 1 2>/dev/null
+                    settings put system dark_mode_enable 1 2>/dev/null
+                    am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled true 2>/dev/null
+                """.trimIndent()).append("\n")
+                logs.add("System-wide Dark Mode active (UiModeManager night mode 2, dark_mode_enable 1)")
+            }
             logs.add("System battery saver restored to normal")
         }
 
-        // 15. Lock Display Refresh Rate to 60Hz
-        if (config.lock60HzRefreshRateEnabled) {
-            commands.append("""
-                settings put system min_refresh_rate 60.0 2>/dev/null
-                settings put system peak_refresh_rate 60.0 2>/dev/null
-                settings put system user_refresh_rate 60 2>/dev/null
-                settings put secure miui_refresh_rate 60 2>/dev/null
-                service call SurfaceFlinger 1035 i32 60 2>/dev/null
-            """.trimIndent()).append("\n")
-            logs.add("Display refresh rate locked to 60Hz (Saves 350-500mA on scroll)")
-        } else {
-            commands.append("""
-                settings delete system min_refresh_rate 2>/dev/null
-                settings delete system peak_refresh_rate 2>/dev/null
-                settings delete system user_refresh_rate 2>/dev/null
-                settings delete secure miui_refresh_rate 2>/dev/null
-            """.trimIndent()).append("\n")
-            logs.add("Display refresh rate restored to dynamic stock")
+        // 15. Display Refresh Rate (60 / 90 / 120 / Dynamic)
+        val targetHz = if (config.lock60HzRefreshRateEnabled && config.refreshRateHz == 0) 60 else config.refreshRateHz
+        when (targetHz) {
+            60 -> {
+                commands.append("""
+                    settings put system min_refresh_rate 60.0 2>/dev/null
+                    settings put system peak_refresh_rate 60.0 2>/dev/null
+                    settings put system user_refresh_rate 60 2>/dev/null
+                    settings put secure miui_refresh_rate 60 2>/dev/null
+                    service call SurfaceFlinger 1035 i32 60 2>/dev/null
+                """.trimIndent()).append("\n")
+                logs.add("Display refresh rate set to 60Hz (miui_refresh_rate 60 • Saves 350-500mA)")
+            }
+            90 -> {
+                commands.append("""
+                    settings put system min_refresh_rate 60.0 2>/dev/null
+                    settings put system peak_refresh_rate 90.0 2>/dev/null
+                    settings put system user_refresh_rate 90 2>/dev/null
+                    settings put secure miui_refresh_rate 90 2>/dev/null
+                    service call SurfaceFlinger 1035 i32 90 2>/dev/null
+                """.trimIndent()).append("\n")
+                logs.add("Display refresh rate set to 90Hz (miui_refresh_rate 90 • Smooth balance)")
+            }
+            120 -> {
+                commands.append("""
+                    settings put system min_refresh_rate 60.0 2>/dev/null
+                    settings put system peak_refresh_rate 120.0 2>/dev/null
+                    settings put system user_refresh_rate 120 2>/dev/null
+                    settings put secure miui_refresh_rate 120 2>/dev/null
+                    service call SurfaceFlinger 1035 i32 120 2>/dev/null
+                """.trimIndent()).append("\n")
+                logs.add("Display refresh rate set to 120Hz (miui_refresh_rate 120 • Fluid)")
+            }
+            else -> {
+                commands.append("""
+                    settings delete system min_refresh_rate 2>/dev/null
+                    settings delete system peak_refresh_rate 2>/dev/null
+                    settings delete system user_refresh_rate 2>/dev/null
+                    settings delete secure miui_refresh_rate 2>/dev/null
+                """.trimIndent()).append("\n")
+                logs.add("Display refresh rate restored to dynamic stock")
+            }
         }
 
         // 16. Deep Sleep App Exception Whitelist (Apps exempted from doze restrictions)
@@ -1255,15 +1352,33 @@ object RootBridge {
             logs.add("SuperPowerClean: Memory cleaned in RAM (Protected: ${allProtectedPkgs.size} apps)")
         }
 
-        // 4. Xiaomi Touch Boost Clamping
+        // 4. Xiaomi Touch Boost Clamping & THP Touch Doze
         if (config.hyperOsTouchBoostDisabled) {
             commands.append("""
                 echo 0 > /sys/module/msm_performance/parameters/touchboost 2>/dev/null
                 echo 0 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null
                 echo 0 > /sys/devices/system/cpu/cpufreq/schedutil/iowait_boost_enable 2>/dev/null
                 settings put secure touch_boost 0 2>/dev/null
+                settings put system touch_boost 0 2>/dev/null
+                if [ -d /sys/power/pnpmgr ]; then
+                    echo 0 > /sys/power/pnpmgr/touch_boost 2>/dev/null
+                fi
+                # Xiaomi THP Touch Host Processing Doze Mode from logs
+                for thp in /sys/class/touch/touch_dev/thp_doze_mode /sys/class/touch/touch_dev/doze_mode /proc/touchpanel/doze_mode /sys/touchpanel/doze_mode /sys/devices/virtual/touch/touch_dev/touch_doze; do
+                    [ -e "${'$'}thp" ] && echo 1 > "${'$'}thp" 2>/dev/null
+                done
             """.trimIndent()).append("\n")
-            logs.add("Xiaomi Touch Boost disabled (Saves 8-15% battery during active touches)")
+            logs.add("Xiaomi Touch Boost disabled & THP Touch Doze active (thp_set_doze_mode_func from logs)")
+        }
+
+        // Background BLE & Wi-Fi Scanning (from NearbyDiscovery & BluetoothAdapter logs)
+        if (config.backgroundScanningDisabled) {
+            commands.append("""
+                settings put global ble_scan_always_enabled 0 2>/dev/null
+                settings put global bluetooth_scan_always_available 0 2>/dev/null
+                settings put global wifi_scan_always_enabled 0 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("HyperOS: Auto Bluetooth LE & Wi-Fi background scanning disabled (prevents beacon wakeups)")
         }
 
         // 5. Qualcomm 5G / Modem Power Optimization (FiveGPowerController)
@@ -1275,49 +1390,85 @@ object RootBridge {
             logs.add("Modem 5G Power Optimization enabled (FiveGPowerController powerSaveOpt)")
         }
 
-        // 6. Display Refresh Rate 60Hz Cap
-        if (config.hyperOsLock60HzEnabled) {
-            commands.append("""
-                settings put secure miui_refresh_rate 60 2>/dev/null
-                settings put system min_refresh_rate 60.0 2>/dev/null
-                settings put system peak_refresh_rate 60.0 2>/dev/null
-                settings put system user_refresh_rate 60 2>/dev/null
-                service call SurfaceFlinger 1035 i32 60 2>/dev/null
-            """.trimIndent()).append("\n")
-            logs.add("Display refresh rate clamped to 60Hz")
-        }
-
-        // 7. CPU Frequency 50% Cap
-        commands.append("""
-            for cpu in /sys/devices/system/cpu/cpu*/cpufreq; do
-                max=`cat ${'$'}cpu/cpuinfo_max_freq 2>/dev/null`
-                if [ -n "${'$'}max" ]; then
-                    target=${'$'}((max * 50 / 100))
-                    echo "${'$'}target" > "${'$'}cpu/scaling_max_freq" 2>/dev/null
-                fi
-                echo "100000" > "${'$'}cpu/scaling_min_freq" 2>/dev/null
-            done
-        """.trimIndent()).append("\n")
-        logs.add("CPU Max Frequency capped to 50% in RAM")
-
-        // 8. Governor & Core Topology (Heavy cores parked if enabled)
-        if (config.twoCoresOfflineBelow20Enabled) {
-            val coresToOffline = if (config.offlineCoreCount == 1) listOf(7) else listOf(6, 7)
-            for (core in coresToOffline) {
-                commands.append("echo 0 > /sys/devices/system/cpu/cpu$core/online 2>/dev/null\n")
+        // 6. HyperOS Display Refresh Rate (60 / 90 / 120 / Dynamic)
+        val hyperOsTargetHz = if (config.hyperOsLock60HzEnabled && config.refreshRateHz == 0) 60 else config.refreshRateHz
+        when (hyperOsTargetHz) {
+            60 -> {
+                commands.append("""
+                    settings put secure miui_refresh_rate 60 2>/dev/null
+                    settings put system min_refresh_rate 60.0 2>/dev/null
+                    settings put system peak_refresh_rate 60.0 2>/dev/null
+                    settings put system user_refresh_rate 60 2>/dev/null
+                    service call SurfaceFlinger 1035 i32 60 2>/dev/null
+                """.trimIndent()).append("\n")
+                logs.add("HyperOS Display refresh rate clamped to 60Hz (miui_refresh_rate 60)")
             }
-            logs.add("HyperOS Dynamic Core Parking: ${config.offlineCoreCount} cores offlined in RAM")
+            90 -> {
+                commands.append("""
+                    settings put secure miui_refresh_rate 90 2>/dev/null
+                    settings put system min_refresh_rate 60.0 2>/dev/null
+                    settings put system peak_refresh_rate 90.0 2>/dev/null
+                    settings put system user_refresh_rate 90 2>/dev/null
+                    service call SurfaceFlinger 1035 i32 90 2>/dev/null
+                """.trimIndent()).append("\n")
+                logs.add("HyperOS Display refresh rate set to 90Hz (miui_refresh_rate 90)")
+            }
+            120 -> {
+                commands.append("""
+                    settings put secure miui_refresh_rate 120 2>/dev/null
+                    settings put system min_refresh_rate 60.0 2>/dev/null
+                    settings put system peak_refresh_rate 120.0 2>/dev/null
+                    settings put system user_refresh_rate 120 2>/dev/null
+                    service call SurfaceFlinger 1035 i32 120 2>/dev/null
+                """.trimIndent()).append("\n")
+                logs.add("HyperOS Display refresh rate set to 120Hz (miui_refresh_rate 120)")
+            }
+            else -> {
+                commands.append("""
+                    settings delete system min_refresh_rate 2>/dev/null
+                    settings delete system peak_refresh_rate 2>/dev/null
+                    settings delete system user_refresh_rate 2>/dev/null
+                    settings delete secure miui_refresh_rate 2>/dev/null
+                """.trimIndent()).append("\n")
+                logs.add("HyperOS Display refresh rate restored to dynamic stock")
+            }
         }
 
-        // 9. System Battery Saver (Preserve Light Theme)
-        if (config.systemBatterySaverWithoutDarkEnabled) {
+        // 7. System Battery Saver (HyperOS PowerSaverProvider)
+        if (config.systemBatterySaverEnabled || config.systemBatterySaverWithoutDarkEnabled) {
             commands.append("""
                 cmd power set-mode 1 2>/dev/null || settings put global low_power 1 2>/dev/null
-                cmd uimode night no 2>/dev/null
-                settings put secure ui_night_mode 1 2>/dev/null
-                settings put system ui_night_mode 1 2>/dev/null
+                settings put secure POWER_SAVE_MODE_OPEN 1 2>/dev/null
+                settings put system POWER_SAVE_MODE_OPEN 1 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:1 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:1 2>/dev/null
+                am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state true 2>/dev/null
+                am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
             """.trimIndent()).append("\n")
-            logs.add("System battery saver active (Light mode preserved)")
+
+            if (config.systemDarkModeEnabled) {
+                commands.append("""
+                    cmd uimode night yes 2>/dev/null
+                    settings put secure ui_night_mode 2 2>/dev/null
+                    settings put system ui_night_mode 2 2>/dev/null
+                    settings put secure dark_mode_enable 1 2>/dev/null
+                    settings put system dark_mode_enable 1 2>/dev/null
+                    am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled true 2>/dev/null
+                """.trimIndent()).append("\n")
+                logs.add("HyperOS Battery Saver: System-wide Dark Mode active (UiModeManager night mode 2)")
+            } else if (config.systemBatterySaverWithoutDarkEnabled) {
+                commands.append("""
+                    cmd uimode night no 2>/dev/null
+                    settings put secure ui_night_mode 1 2>/dev/null
+                    settings put system ui_night_mode 1 2>/dev/null
+                    settings put secure dark_mode_enable 0 2>/dev/null
+                    settings put system dark_mode_enable 0 2>/dev/null
+                    am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled false 2>/dev/null
+                """.trimIndent()).append("\n")
+                logs.add("HyperOS Battery Saver: Light mode preserved")
+            } else {
+                logs.add("HyperOS Battery Saver active")
+            }
         }
 
         val execResult = execute(commands.toString())
@@ -1328,6 +1479,91 @@ object RootBridge {
         }
 
         return logs
+    }
+
+    suspend fun setSystemDarkMode(enabled: Boolean): Boolean = withContext(Dispatchers.IO) {
+        val cmd = if (enabled) {
+            """
+                cmd uimode night yes 2>/dev/null
+                settings put secure ui_night_mode 2 2>/dev/null
+                settings put system ui_night_mode 2 2>/dev/null
+                settings put secure dark_mode_enable 1 2>/dev/null
+                settings put system dark_mode_enable 1 2>/dev/null
+                am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled true 2>/dev/null
+            """.trimIndent()
+        } else {
+            """
+                cmd uimode night no 2>/dev/null
+                settings put secure ui_night_mode 1 2>/dev/null
+                settings put system ui_night_mode 1 2>/dev/null
+                settings put secure dark_mode_enable 0 2>/dev/null
+                settings put system dark_mode_enable 0 2>/dev/null
+                am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled false 2>/dev/null
+            """.trimIndent()
+        }
+        execute(cmd).success
+    }
+
+    suspend fun setDisplayRefreshRate(hz: Int): Boolean = withContext(Dispatchers.IO) {
+        val cmd = when (hz) {
+            60 -> """
+                settings put system min_refresh_rate 60.0 2>/dev/null
+                settings put system peak_refresh_rate 60.0 2>/dev/null
+                settings put system user_refresh_rate 60 2>/dev/null
+                settings put secure miui_refresh_rate 60 2>/dev/null
+                service call SurfaceFlinger 1035 i32 60 2>/dev/null
+            """.trimIndent()
+            90 -> """
+                settings put system min_refresh_rate 60.0 2>/dev/null
+                settings put system peak_refresh_rate 90.0 2>/dev/null
+                settings put system user_refresh_rate 90 2>/dev/null
+                settings put secure miui_refresh_rate 90 2>/dev/null
+                service call SurfaceFlinger 1035 i32 90 2>/dev/null
+            """.trimIndent()
+            120 -> """
+                settings put system min_refresh_rate 60.0 2>/dev/null
+                settings put system peak_refresh_rate 120.0 2>/dev/null
+                settings put system user_refresh_rate 120 2>/dev/null
+                settings put secure miui_refresh_rate 120 2>/dev/null
+                service call SurfaceFlinger 1035 i32 120 2>/dev/null
+            """.trimIndent()
+            else -> """
+                settings delete system min_refresh_rate 2>/dev/null
+                settings delete system peak_refresh_rate 2>/dev/null
+                settings delete system user_refresh_rate 2>/dev/null
+                settings delete secure miui_refresh_rate 2>/dev/null
+            """.trimIndent()
+        }
+        execute(cmd).success
+    }
+
+    suspend fun setSystemBatterySaver(enabled: Boolean): Boolean = withContext(Dispatchers.IO) {
+        val cmd = if (enabled) {
+            """
+                cmd power set-mode 1 2>/dev/null || settings put global low_power 1 2>/dev/null
+                settings put secure POWER_SAVE_MODE_OPEN 1 2>/dev/null
+                settings put system POWER_SAVE_MODE_OPEN 1 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:1 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:1 2>/dev/null
+                am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state true 2>/dev/null
+                am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
+                setprop persist.vendor.radio.5g_power_save 1 2>/dev/null
+                setprop persist.radio.power_saving 1 2>/dev/null
+            """.trimIndent()
+        } else {
+            """
+                cmd power set-mode 0 2>/dev/null || settings put global low_power 0 2>/dev/null
+                settings put secure POWER_SAVE_MODE_OPEN 0 2>/dev/null
+                settings put system POWER_SAVE_MODE_OPEN 0 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:0 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:0 2>/dev/null
+                am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state false 2>/dev/null
+                am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
+                setprop persist.vendor.radio.5g_power_save 0 2>/dev/null
+                setprop persist.radio.power_saving 0 2>/dev/null
+            """.trimIndent()
+        }
+        execute(cmd).success
     }
 
     private fun getBatteryCapacity(context: Context): Int {

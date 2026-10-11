@@ -33,8 +33,13 @@ data class TweakConfigEntity(
     val doubleTapWakePreserved: Boolean = true,
     val schedtuneTopAppEnabled: Boolean = true,
     val powerEfficientWorkqueueEnabled: Boolean = true,
+    val systemBatterySaverEnabled: Boolean = true,
     val systemBatterySaverWithoutDarkEnabled: Boolean = true,
+    val systemDarkModeEnabled: Boolean = false,
+    val refreshRateHz: Int = 60, // 60, 90, 120, or 0 for Dynamic/Default
     val lock60HzRefreshRateEnabled: Boolean = true,
+    val backgroundScanningDisabled: Boolean = true,
+    val touchDozeModeEnabled: Boolean = true,
 
     // Balanced Mode Specific Toggles & Enhancements
     val balanceCpuTweaksEnabled: Boolean = true,

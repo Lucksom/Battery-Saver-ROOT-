@@ -99,6 +99,7 @@ fun TweakCategories(
     onSelectPerformanceSubMode: (String) -> Unit = {},
     onToggleHyperOs: (Boolean) -> Unit = {},
     onSaveBackgroundAllowedApps: (Set<String>) -> Unit = {},
+    onSelectRefreshRate: (Int) -> Unit = {},
     installedApps: List<InstalledAppItem> = emptyList(),
     modifier: Modifier = Modifier
 ) {
@@ -197,14 +198,15 @@ fun TweakCategories(
                     HyperOsPowersaveTweakList(
                         config = config,
                         onUpdateTweak = onUpdateTweak,
-                        onUpdateCoreTopology = onUpdateCoreTopology,
+                        onSelectRefreshRate = onSelectRefreshRate,
                         onOpenAppPicker = { showAppPickerDialog = true }
                     )
                 } else {
                     PowersaveTweakList(
                         config = config,
                         onUpdateTweak = onUpdateTweak,
-                        onUpdateCoreTopology = onUpdateCoreTopology
+                        onUpdateCoreTopology = onUpdateCoreTopology,
+                        onSelectRefreshRate = onSelectRefreshRate
                     )
                 }
             }
@@ -630,7 +632,8 @@ private fun BalanceTweakList(
 private fun PowersaveTweakList(
     config: TweakConfigEntity,
     onUpdateTweak: (String, Boolean) -> Unit,
-    onUpdateCoreTopology: (Int, Int) -> Unit
+    onUpdateCoreTopology: (Int, Int) -> Unit,
+    onSelectRefreshRate: (Int) -> Unit
 ) {
     Text(
         text = "POWERSAVE KERNEL CONTROLS",
@@ -882,7 +885,7 @@ private fun PowersaveTweakList(
     // 7. Network Optimization
     TweakCategoryGroup(
         title = "Network Optimization",
-        badgeText = "1 Tweak",
+        badgeText = "2 Tweaks",
         icon = Icons.Default.NetworkWifi,
         iconColor = MiuiGreen
     ) {
@@ -894,15 +897,47 @@ private fun PowersaveTweakList(
             isChecked = config.tcpBbrCongestionEnabled,
             onCheckedChange = { onUpdateTweak("tcpBbr", it) }
         )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
+        TweakItem(
+            title = "Disable Auto Bluetooth & Wi-Fi Scanning",
+            description = "Stops continuous background BLE & Wi-Fi scanning (prevents BluetoothAdapter and NearbyDiscovery battery wakeups from logs).",
+            icon = Icons.Default.SignalCellularAlt,
+            iconColor = MiuiBlue,
+            isChecked = config.backgroundScanningDisabled,
+            onCheckedChange = { onUpdateTweak("backgroundScanning", it) }
+        )
     }
 
     // 8. Safe Display & Hardware Extras
     TweakCategoryGroup(
         title = "Hardware & Display Extras",
-        badgeText = "5 Tweaks",
+        badgeText = "7 Tweaks",
         icon = Icons.Default.DisplaySettings,
         iconColor = MiuiBlue
     ) {
+        RefreshRateCard(
+            currentHz = config.refreshRateHz,
+            onSelectHz = onSelectRefreshRate
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
+        TweakItem(
+            title = "Xiaomi THP Touch Doze Mode",
+            description = "Enables Touch Host Processing (THP) doze mode (thp_set_doze_mode_func from logs) to reduce touch digitizer idle drain.",
+            icon = Icons.Default.TouchApp,
+            iconColor = MiuiCyan,
+            isChecked = config.touchDozeModeEnabled,
+            onCheckedChange = { onUpdateTweak("touchDozeMode", it) }
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
+        TweakItem(
+            title = "System-Wide Dark Mode",
+            description = "Enables system-wide dark theme via UiModeManager (night mode 2) & dark_mode_enable (from HyperOS logs).",
+            icon = Icons.Default.DisplaySettings,
+            iconColor = MiuiPurple,
+            isChecked = config.systemDarkModeEnabled,
+            onCheckedChange = { onUpdateTweak("systemDarkMode", it) }
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
         TweakItem(
             title = "Power Efficient Workqueue",
             description = "Pins kernel workqueues to efficiency cores and enables deepest C-states",
@@ -910,15 +945,6 @@ private fun PowersaveTweakList(
             iconColor = MiuiBlue,
             isChecked = config.powerEfficientWorkqueueEnabled,
             onCheckedChange = { onUpdateTweak("powerEfficientWorkqueue", it) }
-        )
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
-        TweakItem(
-            title = "Lock Refresh Rate to 60 Hz",
-            description = "Forces system and SurfaceFlinger display rendering to 60 Hz. Saves 350-500 mA current during scrolling.",
-            icon = Icons.Default.Speed,
-            iconColor = MiuiAmber,
-            isChecked = config.lock60HzRefreshRateEnabled,
-            onCheckedChange = { onUpdateTweak("lock60Hz", it) }
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
         TweakItem(
@@ -958,7 +984,7 @@ private fun PowersaveTweakList(
 private fun HyperOsPowersaveTweakList(
     config: TweakConfigEntity,
     onUpdateTweak: (String, Boolean) -> Unit,
-    onUpdateCoreTopology: (Int, Int) -> Unit,
+    onSelectRefreshRate: (Int) -> Unit,
     onOpenAppPicker: () -> Unit
 ) {
     Text(
@@ -974,14 +1000,46 @@ private fun HyperOsPowersaveTweakList(
         config.backgroundAllowedApps.split(",").map { it.trim() }.filter { it.isNotEmpty() }
     }
 
-    // 1. Display & Always-On Display (AOD) Engine
+    // 1. Display, Refresh Rate & System Engine
     TweakCategoryGroup(
-        title = "Display & Always-On Display (AOD)",
-        badgeText = "3 Tweaks",
+        title = "Display, Refresh Rate & System",
+        badgeText = "5 Tweaks",
         icon = Icons.Default.DisplaySettings,
         iconColor = MiuiAmber,
         defaultExpanded = true
     ) {
+        RefreshRateCard(
+            currentHz = config.refreshRateHz,
+            onSelectHz = onSelectRefreshRate
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
+        TweakItem(
+            title = "Xiaomi THP Touch Doze Mode",
+            description = "Enables Touch Host Processing doze mode (thp_set_doze_mode_func from logs) to lower touch digitizer idle drain.",
+            icon = Icons.Default.TouchApp,
+            iconColor = MiuiCyan,
+            isChecked = config.touchDozeModeEnabled,
+            onCheckedChange = { onUpdateTweak("touchDozeMode", it) }
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
+        TweakItem(
+            title = "System-Wide Dark Mode",
+            description = "Enables system-wide dark theme via UiModeManager (night mode 2) & dark_mode_enable (from HyperOS logs).",
+            icon = Icons.Default.DisplaySettings,
+            iconColor = MiuiPurple,
+            isChecked = config.systemDarkModeEnabled,
+            onCheckedChange = { onUpdateTweak("systemDarkMode", it) }
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
+        TweakItem(
+            title = "System Battery Saver (MIUI PowerMode)",
+            description = "Triggers HyperOS / Android system battery saver (PowerSaverProvider METHOD_CHANGE_POWER_MODE & low_power 1).",
+            icon = Icons.Default.BatteryChargingFull,
+            iconColor = MiuiGreen,
+            isChecked = config.systemBatterySaverEnabled,
+            onCheckedChange = { onUpdateTweak("systemBatterySaver", it) }
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
         TweakItem(
             title = "Disable Always-On Display (AOD)",
             description = "Toggles 'MiuiAod.Utils setAodEnable: false' • Turns off AOD rendering and panel wakeups during battery saving to eliminate idle drain.",
@@ -998,15 +1056,6 @@ private fun HyperOsPowersaveTweakList(
             iconColor = MiuiCyan,
             isChecked = config.hyperOsTouchBoostDisabled,
             onCheckedChange = { onUpdateTweak("hyperOsTouchBoost", it) }
-        )
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
-        TweakItem(
-            title = "Lock Refresh Rate to 60Hz",
-            description = "Sets 'miui_refresh_rate 60' and SurfaceFlinger lock. Saves 350-500mA current during screen-on use.",
-            icon = Icons.Default.Speed,
-            iconColor = MiuiGreen,
-            isChecked = config.hyperOsLock60HzEnabled,
-            onCheckedChange = { onUpdateTweak("hyperOsLock60Hz", it) }
         )
     }
 
@@ -1128,10 +1177,10 @@ private fun HyperOsPowersaveTweakList(
         )
     }
 
-    // 4. Qualcomm 5G & Modem Power Optimization (FiveGPowerController)
+    // 4. Qualcomm 5G, Connectivity & Modem Optimization
     TweakCategoryGroup(
-        title = "Qualcomm 5G & Modem Optimization",
-        badgeText = "1 Tweak",
+        title = "Wireless, 5G & Connectivity Optimization",
+        badgeText = "2 Tweaks",
         icon = Icons.Default.SignalCellularAlt,
         iconColor = MiuiBlue,
         defaultExpanded = false
@@ -1144,122 +1193,15 @@ private fun HyperOsPowersaveTweakList(
             isChecked = config.hyperOsFiveGPowerOptEnabled,
             onCheckedChange = { onUpdateTweak("hyperOsFiveG", it) }
         )
-    }
-
-    // 5. CPU Frequency & Dynamic Core Parking
-    TweakCategoryGroup(
-        title = "CPU Frequency & Core Parking",
-        badgeText = "${config.offlineCoreCount} Cores • 50% Cap",
-        icon = Icons.Default.Speed,
-        iconColor = MiuiGreen,
-        defaultExpanded = true
-    ) {
-        TweakItem(
-            title = "50% CPU Max Frequency Cap",
-            description = "Caps all CPU clusters at 50% max clock in RAM to save up to 40% battery.",
-            icon = Icons.Default.Speed,
-            iconColor = MiuiCyan,
-            isChecked = config.cpuFreqCapEnabled,
-            onCheckedChange = { onUpdateTweak("cpuFreqCap", it) }
-        )
         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
         TweakItem(
-            title = "Dynamic Core Parking",
-            description = "Parks heavy CPU cores in volatile memory. Customise core count and battery threshold below.",
-            icon = Icons.Default.Memory,
-            iconColor = MiuiPurple,
-            isChecked = config.twoCoresOfflineBelow20Enabled,
-            onCheckedChange = { onUpdateTweak("twoCoresOffline", it) }
+            title = "Disable Auto Bluetooth & Wi-Fi Scanning",
+            description = "Stops continuous background BLE & Wi-Fi scanning (prevents NearbyDiscovery & FastPair battery wakeups from logs).",
+            icon = Icons.Default.NetworkWifi,
+            iconColor = MiuiCyan,
+            isChecked = config.backgroundScanningDisabled,
+            onCheckedChange = { onUpdateTweak("backgroundScanning", it) }
         )
-
-        AnimatedVisibility(visible = config.twoCoresOfflineBelow20Enabled) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                Text(
-                    text = "Number of Cores to Offline:",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    listOf(1 to "1 Core (Core 7)", 2 to "2 Cores (6 & 7)").forEach { (count, label) ->
-                        val selected = config.offlineCoreCount == count
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(
-                                    if (selected) MiuiPurple.copy(alpha = 0.2f)
-                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                                )
-                                .border(
-                                    width = 1.dp,
-                                    color = if (selected) MiuiPurple else Color.Transparent,
-                                    shape = RoundedCornerShape(10.dp)
-                                )
-                                .clickable { onUpdateCoreTopology(count, config.offlineBatteryThreshold) }
-                                .padding(vertical = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = label,
-                                fontSize = 11.sp,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (selected) MiuiPurple else MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Activation Battery Threshold:",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = if (config.offlineBatteryThreshold >= 100) "Always Active" else "≤ ${config.offlineBatteryThreshold}%",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MiuiPurple
-                    )
-                }
-
-                var sliderVal by remember(config.offlineBatteryThreshold) {
-                    mutableFloatStateOf(config.offlineBatteryThreshold.toFloat())
-                }
-
-                Slider(
-                    value = sliderVal,
-                    onValueChange = { sliderVal = it },
-                    onValueChangeFinished = {
-                        val rounded = (sliderVal / 5f).roundToInt() * 5
-                        onUpdateCoreTopology(config.offlineCoreCount, rounded.coerceIn(5, 100))
-                    },
-                    valueRange = 5f..100f,
-                    steps = 18,
-                    colors = SliderDefaults.colors(
-                        thumbColor = MiuiPurple,
-                        activeTrackColor = MiuiPurple
-                    )
-                )
-            }
-        }
     }
 }
 
@@ -1681,6 +1623,121 @@ private fun TweakCategoryGroup(
                         thickness = 0.8.dp
                     )
                     content()
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Display Refresh Rate Selector (60 / 90 / 120 / Auto Dynamic)
+ * Applies peak_refresh_rate, min_refresh_rate & miui_refresh_rate via SurfaceFlinger
+ */
+@Composable
+fun RefreshRateCard(
+    currentHz: Int,
+    onSelectHz: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MiuiAmber.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Speed,
+                        contentDescription = null,
+                        tint = MiuiAmber,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = "Display Refresh Rate",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Sets peak_refresh_rate & miui_refresh_rate via SurfaceFlinger",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(
+                    60 to "60 Hz",
+                    90 to "90 Hz",
+                    120 to "120 Hz",
+                    0 to "Auto"
+                ).forEach { (hz, label) ->
+                    val isSelected = (currentHz == hz)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(
+                                if (isSelected) MiuiAmber.copy(alpha = 0.22f)
+                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = if (isSelected) MiuiAmber else Color.Transparent,
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .clickable { onSelectHz(hz) }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = label,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) MiuiAmber else MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = when (hz) {
+                                    60 -> "Battery"
+                                    90 -> "Balanced"
+                                    120 -> "Smooth"
+                                    else -> "Dynamic"
+                                },
+                                fontSize = 9.sp,
+                                color = if (isSelected) MiuiAmber else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
             }
         }

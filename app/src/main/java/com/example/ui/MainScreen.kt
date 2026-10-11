@@ -138,6 +138,9 @@ fun MainScreen(
                         onSaveBackgroundAllowedApps = { apps ->
                             viewModel.onUpdateBackgroundAllowedApps(apps)
                         },
+                        onSelectRefreshRate = { hz ->
+                            viewModel.onSelectRefreshRate(hz)
+                        },
                         installedApps = installedApps
                     )
                 }
