@@ -12,6 +12,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -86,6 +87,7 @@ import com.example.ui.theme.MiuiAmber
 import com.example.ui.theme.MiuiBlue
 import com.example.ui.theme.MiuiCyan
 import com.example.ui.theme.MiuiGreen
+import com.example.ui.theme.MiuiGreenDark
 import com.example.ui.theme.MiuiOrange
 import com.example.ui.theme.MiuiPurple
 import com.example.ui.theme.MiuiRed
@@ -224,18 +226,21 @@ fun HyperOsModeBanner(
     onToggle: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isDark = isSystemInDarkTheme()
+
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isEnabled) MiuiOrange.copy(alpha = 0.12f)
+            containerColor = if (isEnabled) MiuiOrange.copy(alpha = if (isDark) 0.12f else 0.08f)
             else MaterialTheme.colorScheme.surface
         ),
         border = androidx.compose.foundation.BorderStroke(
             width = 1.dp,
             color = if (isEnabled) MiuiOrange.copy(alpha = 0.5f)
-            else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
-        )
+            else if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 2.5.dp)
     ) {
         Row(
             modifier = Modifier
@@ -1233,6 +1238,7 @@ private fun PerformanceTweakList(
     onUpdateTweak: (String, Boolean) -> Unit,
     onSelectSubMode: (String) -> Unit
 ) {
+    val isDark = isSystemInDarkTheme()
     val activeSubMode = config.performanceSubMode.uppercase()
     val isUltra = activeSubMode == "ULTRA"
     val isHeavy = activeSubMode == "HEAVY"
@@ -1241,7 +1247,7 @@ private fun PerformanceTweakList(
     val subModeColor = when {
         isUltra -> MiuiRed
         isHeavy -> MiuiOrange
-        else -> MiuiGreen
+        else -> if (isDark) MiuiGreen else MiuiGreenDark
     }
 
     Text(
@@ -1262,8 +1268,9 @@ private fun PerformanceTweakList(
         ),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
-        )
+            if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 2.dp)
     ) {
         Row(
             modifier = Modifier
@@ -1275,7 +1282,7 @@ private fun PerformanceTweakList(
                 title = "Lite",
                 subtitle = "90/120Hz Fluid",
                 icon = Icons.Default.Speed,
-                accentColor = MiuiGreen,
+                accentColor = if (isDark) MiuiGreen else MiuiGreenDark,
                 isSelected = isLite,
                 onClick = { onSelectSubMode("LITE") },
                 modifier = Modifier.weight(1f)
@@ -1308,12 +1315,13 @@ private fun PerformanceTweakList(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
-            containerColor = subModeColor.copy(alpha = 0.08f)
+            containerColor = if (isDark) subModeColor.copy(alpha = 0.08f) else Color(0xFFF6F8FC)
         ),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            subModeColor.copy(alpha = 0.25f)
-        )
+            if (isDark) subModeColor.copy(alpha = 0.25f) else MaterialTheme.colorScheme.outline
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 1.5.dp)
     ) {
         Row(
             modifier = Modifier
@@ -1574,13 +1582,19 @@ private fun TweakCategoryGroup(
         label = "ArrowRotation"
     )
 
+    val isDark = isSystemInDarkTheme()
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 2.5.dp)
     ) {
         Column {
             Row(
@@ -1658,6 +1672,8 @@ fun RefreshRateCard(
     onSelectHz: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isDark = isSystemInDarkTheme()
+
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -1666,8 +1682,9 @@ fun RefreshRateCard(
         ),
         border = androidx.compose.foundation.BorderStroke(
             width = 1.dp,
-            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
-        )
+            color = if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 2.dp)
     ) {
         Column(
             modifier = Modifier
@@ -1726,12 +1743,14 @@ fun RefreshRateCard(
                             .weight(1f)
                             .clip(RoundedCornerShape(12.dp))
                             .background(
-                                if (isSelected) MiuiAmber.copy(alpha = 0.22f)
-                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                if (isSelected) MiuiAmber.copy(alpha = if (isDark) 0.22f else 0.16f)
+                                else if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                else Color(0xFFF3F5FA)
                             )
                             .border(
                                 width = 1.dp,
-                                color = if (isSelected) MiuiAmber else Color.Transparent,
+                                color = if (isSelected) MiuiAmber
+                                        else if (isDark) Color.Transparent else Color(0xFFDFE4ED),
                                 shape = RoundedCornerShape(12.dp)
                             )
                             .clickable { onSelectHz(hz) }

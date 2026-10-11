@@ -6,6 +6,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,6 +56,7 @@ import com.example.ui.theme.MiuiAmber
 import com.example.ui.theme.MiuiBlue
 import com.example.ui.theme.MiuiCyan
 import com.example.ui.theme.MiuiGreen
+import com.example.ui.theme.MiuiGreenDark
 import com.example.ui.theme.MiuiOrange
 import java.util.Locale
 
@@ -120,18 +122,20 @@ fun CircularBatteryDial(
     telemetry: DeviceTelemetry,
     modifier: Modifier = Modifier
 ) {
+    val isDark = isSystemInDarkTheme()
     val animatedProgress by animateFloatAsState(
         targetValue = (telemetry.batteryLevel.coerceIn(0, 100)) / 100f,
         animationSpec = tween(durationMillis = 800),
         label = "BatteryProgress"
     )
 
-    val ringTrackColor = Color(0xFF1F2433)
-    val gradientColors = listOf(
-        MiuiGreen,
-        MiuiCyan,
-        MiuiBlue
-    )
+    // Base track circle: In dark mode subtle dark slate, in light mode clean light slate
+    val ringTrackColor = if (isDark) Color(0xFF1F2433) else Color(0xFFDCE2EC)
+    val gradientColors = if (isDark) {
+        listOf(MiuiGreen, MiuiCyan, MiuiBlue)
+    } else {
+        listOf(MiuiGreenDark, Color(0xFF0091EA), MiuiBlue)
+    }
 
     Box(
         modifier = modifier
@@ -179,31 +183,42 @@ fun CircularBatteryDial(
                 text = "${telemetry.batteryLevel}%",
                 fontSize = 40.sp,
                 fontWeight = FontWeight.ExtraBold,
-                color = Color.White
+                color = MaterialTheme.colorScheme.onSurface
             )
 
-            // Charging Speed / Discharging Current
+            // Charging Speed / Discharging Current Badge
+            val speedColor = if (telemetry.isCharging) {
+                if (isDark) MiuiGreen else MiuiGreenDark
+            } else {
+                MiuiBlue
+            }
+
             Box(
                 modifier = Modifier
                     .padding(top = 2.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(MiuiCyan.copy(alpha = 0.12f))
-                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                    .background(speedColor.copy(alpha = if (isDark) 0.16f else 0.10f))
+                    .border(
+                        1.dp,
+                        speedColor.copy(alpha = if (isDark) 0.35f else 0.25f),
+                        RoundedCornerShape(10.dp)
+                    )
+                    .padding(horizontal = 10.dp, vertical = 2.5.dp)
             ) {
                 Text(
                     text = telemetry.chargingSpeedLabel,
                     fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MiuiCyan
+                    fontWeight = FontWeight.Bold,
+                    color = speedColor
                 )
             }
 
             // Voltage & Capacity
             Text(
                 text = "${String.format(Locale.US, "%,d", telemetry.batteryVoltageMv)} mV · ${String.format(Locale.US, "%,d", telemetry.batteryCapacityMah)} mAh",
-                fontSize = 10.sp,
-                color = Color(0xFF9DA4B0),
-                modifier = Modifier.padding(top = 4.dp)
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 5.dp)
             )
         }
     }
@@ -214,6 +229,13 @@ fun MetricQuickCardsRow(
     telemetry: DeviceTelemetry,
     modifier: Modifier = Modifier
 ) {
+    val isDark = isSystemInDarkTheme()
+    val thermalColor = if (telemetry.batteryTempC < 38f) {
+        if (isDark) MiuiGreen else MiuiGreenDark
+    } else {
+        MiuiAmber
+    }
+
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -223,7 +245,7 @@ fun MetricQuickCardsRow(
             modifier = Modifier.weight(1f),
             label = "THERMAL",
             value = "${telemetry.batteryTempC}°C",
-            valueColor = if (telemetry.batteryTempC < 38f) MiuiGreen else MiuiAmber,
+            valueColor = thermalColor,
             subtitle = if (telemetry.batteryTempC < 38f) "Optimal Zone" else "Warm Zone"
         )
 
@@ -255,13 +277,19 @@ private fun MetricCard(
     subtitle: String,
     modifier: Modifier = Modifier
 ) {
+    val isDark = isSystemInDarkTheme()
+
     Card(
-        modifier = modifier.height(76.dp),
-        shape = RoundedCornerShape(14.dp),
+        modifier = modifier.height(78.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF161A24)
+            containerColor = MaterialTheme.colorScheme.surface
         ),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF222838))
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 2.5.dp)
     ) {
         Column(
             modifier = Modifier
@@ -273,7 +301,7 @@ private fun MetricCard(
                 text = label,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF9DA4B0),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 letterSpacing = 0.5.sp
             )
             Text(
@@ -285,7 +313,7 @@ private fun MetricCard(
             Text(
                 text = subtitle,
                 fontSize = 9.sp,
-                color = Color(0xFF6B7280)
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
             )
         }
     }
@@ -297,13 +325,19 @@ fun DashboardProfileSelectorCard(
     onSelectProfile: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isDark = isSystemInDarkTheme()
+
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF161A24)
+            containerColor = MaterialTheme.colorScheme.surface
         ),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF222838))
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 2.5.dp)
     ) {
         Column(
             modifier = Modifier
@@ -319,12 +353,17 @@ fun DashboardProfileSelectorCard(
                     text = "Active Profile",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFFF0F3F8)
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
-                        .background(MiuiBlue.copy(alpha = 0.15f))
+                        .background(MiuiBlue.copy(alpha = if (isDark) 0.18f else 0.12f))
+                        .border(
+                            1.dp,
+                            MiuiBlue.copy(alpha = if (isDark) 0.4f else 0.3f),
+                            RoundedCornerShape(10.dp)
+                        )
                         .padding(horizontal = 10.dp, vertical = 3.dp)
                 ) {
                     Text(
@@ -357,7 +396,7 @@ fun DashboardProfileSelectorCard(
                     title = "⚖ Balanced",
                     subtitle = "Auto Governed",
                     isSelected = activeProfile == "BALANCE",
-                    activeColor = MiuiCyan,
+                    activeColor = if (isDark) MiuiCyan else Color(0xFF0091EA),
                     onClick = { onSelectProfile("BALANCE") }
                 )
 
@@ -383,16 +422,19 @@ private fun ProfileChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isDark = isSystemInDarkTheme()
+
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
             .background(
-                if (isSelected) activeColor.copy(alpha = 0.18f)
-                else Color(0xFF1B202D)
+                if (isSelected) activeColor.copy(alpha = if (isDark) 0.18f else 0.12f)
+                else if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                else Color(0xFFF3F5FA)
             )
             .border(
                 width = if (isSelected) 1.5.dp else 1.dp,
-                color = if (isSelected) activeColor else Color(0xFF252C3D),
+                color = if (isSelected) activeColor else if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.4f) else Color(0xFFD3D9E2),
                 shape = RoundedCornerShape(12.dp)
             )
             .clickable { onClick() }
@@ -404,12 +446,12 @@ private fun ProfileChip(
                 text = title,
                 fontSize = 11.sp,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
-                color = if (isSelected) activeColor else Color(0xFF9DA4B0)
+                color = if (isSelected) activeColor else MaterialTheme.colorScheme.onSurface
             )
             Text(
                 text = subtitle,
                 fontSize = 9.sp,
-                color = if (isSelected) Color(0xFFF0F3F8) else Color(0xFF6B7280),
+                color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 2.dp)
             )
         }
@@ -421,13 +463,20 @@ fun DashboardCpuTelemetryCard(
     telemetry: DeviceTelemetry,
     modifier: Modifier = Modifier
 ) {
+    val isDark = isSystemInDarkTheme()
+    val greenColor = if (isDark) MiuiGreen else MiuiGreenDark
+
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF161A24)
+            containerColor = MaterialTheme.colorScheme.surface
         ),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF222838))
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 2.5.dp)
     ) {
         Column(
             modifier = Modifier
@@ -443,13 +492,13 @@ fun DashboardCpuTelemetryCard(
                     text = "Octa-Core CPU Telemetry",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFFF0F3F8)
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = telemetry.activeGovernor,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = MiuiGreen
+                    color = greenColor
                 )
             }
 
@@ -465,7 +514,7 @@ fun DashboardCpuTelemetryCard(
                 label = "Cores 0-3 (Cortex-A510)",
                 freqText = "${String.format(Locale.US, "%,d", littleFreq)} MHz",
                 progress = littleProgress,
-                barColor = MiuiCyan
+                barColor = if (isDark) MiuiCyan else Color(0xFF0097A7)
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -499,7 +548,10 @@ fun DashboardCpuTelemetryCard(
             )
 
             Spacer(modifier = Modifier.height(14.dp))
-            HorizontalDivider(color = Color(0xFF222838), thickness = 1.dp)
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
+                thickness = 1.dp
+            )
             Spacer(modifier = Modifier.height(10.dp))
 
             // Footer GPU and ZRAM
@@ -511,13 +563,13 @@ fun DashboardCpuTelemetryCard(
                 Text(
                     text = telemetry.gpuFreqInfo,
                     fontSize = 10.sp,
-                    color = Color(0xFF9DA4B0)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
                     text = telemetry.zramInfo,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = MiuiGreen
+                    color = greenColor
                 )
             }
         }
@@ -540,7 +592,7 @@ private fun CpuClusterRow(
             Text(
                 text = label,
                 fontSize = 10.sp,
-                color = Color(0xFF9DA4B0)
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
                 text = freqText,
@@ -557,7 +609,7 @@ private fun CpuClusterRow(
                 .height(6.dp)
                 .clip(RoundedCornerShape(3.dp)),
             color = barColor,
-            trackColor = Color(0xFF1F2433)
+            trackColor = MaterialTheme.colorScheme.surfaceVariant
         )
     }
 }
@@ -568,13 +620,20 @@ fun DashboardRealTimeLogsCard(
     onNavigateToLogs: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isDark = isSystemInDarkTheme()
+    val greenColor = if (isDark) MiuiGreen else MiuiGreenDark
+
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF161A24)
+            containerColor = MaterialTheme.colorScheme.surface
         ),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF222838))
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 2.5.dp)
     ) {
         Column(
             modifier = Modifier
@@ -591,13 +650,13 @@ fun DashboardRealTimeLogsCard(
                         modifier = Modifier
                             .size(7.dp)
                             .clip(CircleShape)
-                            .background(MiuiGreen)
+                            .background(greenColor)
                     )
                     Text(
                         text = "Real-Time Execution Logs",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFFF0F3F8),
+                        color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(start = 7.dp)
                     )
                 }
@@ -605,27 +664,35 @@ fun DashboardRealTimeLogsCard(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .background(MiuiGreen.copy(alpha = 0.15f))
+                        .background(greenColor.copy(alpha = if (isDark) 0.15f else 0.10f))
+                        .border(
+                            1.dp,
+                            greenColor.copy(alpha = if (isDark) 0.35f else 0.25f),
+                            RoundedCornerShape(8.dp)
+                        )
                         .padding(horizontal = 7.dp, vertical = 2.dp)
                 ) {
                     Text(
                         text = "LIVE TAIL",
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MiuiGreen
+                        color = greenColor
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Dark Monospace Terminal Box
+            // Professional Monospace Terminal Box
+            val terminalBg = if (isDark) Color(0xFF0F1219) else Color(0xFF191D26)
+            val terminalBorder = if (isDark) Color(0xFF1F2533) else Color(0xFF2C3342)
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF0F1219))
-                    .border(1.dp, Color(0xFF1F2533), RoundedCornerShape(10.dp))
+                    .background(terminalBg)
+                    .border(1.dp, terminalBorder, RoundedCornerShape(10.dp))
                     .padding(10.dp)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -635,7 +702,7 @@ fun DashboardRealTimeLogsCard(
                             text = "[SYSTEM] Ready. Listening for root events...",
                             fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace,
-                            color = Color(0xFF6B7280)
+                            color = Color(0xFF8C95A6)
                         )
                     } else {
                         logsToShow.forEach { entry ->

@@ -2,6 +2,7 @@ package com.example.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,6 +45,8 @@ fun TelemetryCard(
     telemetry: DeviceTelemetry,
     modifier: Modifier = Modifier
 ) {
+    val isDark = isSystemInDarkTheme()
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -72,8 +75,9 @@ fun TelemetryCard(
                 ),
                 border = androidx.compose.foundation.BorderStroke(
                     1.dp,
-                    MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
-                )
+                    if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 2.5.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -118,8 +122,9 @@ fun TelemetryCard(
                 ),
                 border = androidx.compose.foundation.BorderStroke(
                     1.dp,
-                    MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
-                )
+                    if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 2.5.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -168,8 +173,9 @@ fun TelemetryCard(
             ),
             border = androidx.compose.foundation.BorderStroke(
                 1.dp,
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
-            )
+                if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 2.5.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(

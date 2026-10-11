@@ -4,6 +4,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +21,7 @@ import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,11 +50,18 @@ fun VoltPowerBottomBar(
     onTabSelected: (VoltPowerTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isDark = isSystemInDarkTheme()
+    val unselectedColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .border(width = 1.dp, color = Color(0xFF1F2433)),
-        color = Color(0xFF11141C)
+            .border(
+                width = 1.dp,
+                color = if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
+            ),
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 10.dp
     ) {
         Row(
             modifier = Modifier
@@ -66,11 +75,11 @@ fun VoltPowerBottomBar(
             VoltPowerTab.values().forEach { tab ->
                 val isSelected = (currentTab == tab)
                 val textColor by animateColorAsState(
-                    targetValue = if (isSelected) MiuiBlue else Color(0xFF6B7280),
+                    targetValue = if (isSelected) MiuiBlue else unselectedColor,
                     label = "tabTextColor"
                 )
                 val iconTint by animateColorAsState(
-                    targetValue = if (isSelected) MiuiBlue else Color(0xFF6B7280),
+                    targetValue = if (isSelected) MiuiBlue else unselectedColor,
                     label = "tabIconTint"
                 )
 
@@ -90,7 +99,7 @@ fun VoltPowerBottomBar(
                             .size(32.dp)
                             .clip(CircleShape)
                             .background(
-                                if (isSelected) MiuiBlue.copy(alpha = 0.2f)
+                                if (isSelected) MiuiBlue.copy(alpha = if (isDark) 0.2f else 0.12f)
                                 else Color.Transparent
                             ),
                         contentAlignment = Alignment.Center

@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +34,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -56,6 +58,7 @@ import com.example.ui.theme.MiuiAmber
 import com.example.ui.theme.MiuiBlue
 import com.example.ui.theme.MiuiCyan
 import com.example.ui.theme.MiuiGreen
+import com.example.ui.theme.MiuiGreenDark
 import com.example.ui.theme.MiuiOrange
 import com.example.ui.theme.MiuiPurple
 
@@ -86,6 +89,9 @@ fun LogsScreen(
     ) {
         Spacer(modifier = Modifier.height(10.dp))
 
+        val isDark = isSystemInDarkTheme()
+        val greenColor = if (isDark) MiuiGreen else MiuiGreenDark
+
         // Title and Action Bar
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -98,20 +104,20 @@ fun LogsScreen(
                         modifier = Modifier
                             .size(8.dp)
                             .clip(CircleShape)
-                            .background(MiuiGreen)
+                            .background(greenColor)
                     )
                     Text(
                         text = "Real-Time Execution Logs",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFFF0F3F8),
+                        color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(start = 8.dp)
                     )
                 }
                 Text(
                     text = "${filteredLogs.size} recorded events in volatile memory",
                     fontSize = 11.sp,
-                    color = Color(0xFF9DA4B0)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -130,7 +136,7 @@ fun LogsScreen(
                     modifier = Modifier
                         .size(38.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF1B202D))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Icon(
                         imageVector = Icons.Default.ContentCopy,
@@ -148,7 +154,7 @@ fun LogsScreen(
                     modifier = Modifier
                         .size(38.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF1B202D))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Icon(
                         imageVector = Icons.Default.DeleteOutline,
@@ -166,12 +172,12 @@ fun LogsScreen(
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
-            placeholder = { Text("Filter logs or shell commands...", fontSize = 12.sp, color = Color(0xFF6B7280)) },
+            placeholder = { Text("Filter logs or shell commands...", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
             leadingIcon = {
                 Icon(
                     imageVector = Icons.Default.Search,
                     contentDescription = "Search",
-                    tint = Color(0xFF9DA4B0),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp)
                 )
             },
@@ -181,7 +187,7 @@ fun LogsScreen(
                         Icon(
                             imageVector = Icons.Default.Clear,
                             contentDescription = "Clear search",
-                            tint = Color(0xFF9DA4B0),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -192,12 +198,12 @@ fun LogsScreen(
                 .height(50.dp),
             shape = RoundedCornerShape(12.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = Color(0xFF161A24),
-                unfocusedContainerColor = Color(0xFF161A24),
-                focusedBorderColor = MiuiBlue,
-                unfocusedBorderColor = Color(0xFF222838),
-                focusedTextColor = Color(0xFFF0F3F8),
-                unfocusedTextColor = Color(0xFFF0F3F8)
+                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f),
+                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                unfocusedTextColor = MaterialTheme.colorScheme.onSurface
             ),
             singleLine = true
         )
@@ -259,13 +265,13 @@ fun LogsScreen(
                     Icon(
                         imageVector = Icons.Default.Terminal,
                         contentDescription = "Empty",
-                        tint = Color(0xFF4B5563),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                         modifier = Modifier.size(48.dp)
                     )
                     Text(
                         text = "No logs match current filter",
                         fontSize = 14.sp,
-                        color = Color(0xFF9DA4B0),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 10.dp)
                     )
                 }
@@ -294,16 +300,18 @@ private fun FilterChip(
     activeColor: Color = MiuiBlue,
     modifier: Modifier = Modifier
 ) {
+    val isDark = isSystemInDarkTheme()
+
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
             .background(
-                if (isSelected) activeColor.copy(alpha = 0.2f)
-                else Color(0xFF161A24)
+                if (isSelected) activeColor.copy(alpha = if (isDark) 0.2f else 0.12f)
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (isDark) 0.6f else 0.5f)
             )
             .border(
                 1.dp,
-                if (isSelected) activeColor else Color(0xFF222838),
+                if (isSelected) activeColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
                 RoundedCornerShape(8.dp)
             )
             .clickable { onClick() }
@@ -314,16 +322,18 @@ private fun FilterChip(
             text = label,
             fontSize = 9.sp,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
-            color = if (isSelected) activeColor else Color(0xFF9DA4B0)
+            color = if (isSelected) activeColor else MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
 
 @Composable
 private fun LogCardItem(logItem: LogEntry) {
+    val isDark = isSystemInDarkTheme()
+    val greenColor = if (isDark) MiuiGreen else MiuiGreenDark
     val categoryColor = when (logItem.category) {
-        LogCategory.ROOT -> MiuiGreen
-        LogCategory.TWEAK -> MiuiCyan
+        LogCategory.ROOT -> greenColor
+        LogCategory.TWEAK -> if (isDark) MiuiCyan else Color(0xFF00838F)
         LogCategory.PROFILE -> MiuiBlue
         LogCategory.SYSTEM -> MiuiPurple
         LogCategory.ERROR -> MiuiOrange
@@ -333,9 +343,13 @@ private fun LogCardItem(logItem: LogEntry) {
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF141720)
+            containerColor = MaterialTheme.colorScheme.surface
         ),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF202636))
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 2.dp)
     ) {
         Column(
             modifier = Modifier
@@ -351,7 +365,12 @@ private fun LogCardItem(logItem: LogEntry) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
-                            .background(categoryColor.copy(alpha = 0.15f))
+                            .background(categoryColor.copy(alpha = if (isDark) 0.15f else 0.10f))
+                            .border(
+                                1.dp,
+                                categoryColor.copy(alpha = if (isDark) 0.3f else 0.2f),
+                                RoundedCornerShape(6.dp)
+                            )
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
@@ -366,7 +385,7 @@ private fun LogCardItem(logItem: LogEntry) {
                         text = logItem.timestamp,
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
-                        color = Color(0xFF9DA4B0),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(start = 8.dp)
                     )
                 }
@@ -374,26 +393,29 @@ private fun LogCardItem(logItem: LogEntry) {
                 Icon(
                     imageVector = if (logItem.isSuccess) Icons.Default.CheckCircle else Icons.Default.ErrorOutline,
                     contentDescription = "Status",
-                    tint = if (logItem.isSuccess) MiuiGreen else MiuiOrange,
+                    tint = if (logItem.isSuccess) greenColor else MiuiOrange,
                     modifier = Modifier.size(14.dp)
                 )
             }
 
             if (!logItem.command.isNullOrBlank()) {
+                val cmdBoxBg = if (isDark) Color(0xFF0C0E14) else Color(0xFFF3F5FA)
+                val cmdBoxBorder = if (isDark) Color(0xFF1E2331) else Color(0xFFDFE4ED)
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF0C0E14))
-                        .border(1.dp, Color(0xFF1E2331), RoundedCornerShape(8.dp))
+                        .background(cmdBoxBg)
+                        .border(1.dp, cmdBoxBorder, RoundedCornerShape(8.dp))
                         .padding(horizontal = 8.dp, vertical = 6.dp)
                 ) {
                     Text(
                         text = "$ ${logItem.command}",
                         fontSize = 10.sp,
                         fontFamily = FontFamily.Monospace,
-                        color = MiuiGreen,
+                        color = greenColor,
                         maxLines = 3
                     )
                 }
@@ -403,7 +425,7 @@ private fun LogCardItem(logItem: LogEntry) {
                 text = logItem.message,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Normal,
-                color = Color(0xFFE2E6EE),
+                color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(top = 6.dp)
             )
         }

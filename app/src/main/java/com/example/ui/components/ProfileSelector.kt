@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.MiuiBlue
 import com.example.ui.theme.MiuiGreen
+import com.example.ui.theme.MiuiGreenDark
 import com.example.ui.theme.MiuiOrange
 
 @Composable
@@ -51,6 +53,7 @@ fun ProfileSelector(
     onToggleMaster: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isDark = isSystemInDarkTheme()
     val masterScale by animateFloatAsState(
         targetValue = if (isMasterApplied) 1.01f else 1.0f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
@@ -76,10 +79,10 @@ fun ProfileSelector(
             ),
             border = androidx.compose.foundation.BorderStroke(
                 1.dp,
-                if (isMasterApplied) MiuiGreen.copy(alpha = 0.45f)
-                else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                if (isMasterApplied) (if (isDark) MiuiGreen.copy(alpha = 0.5f) else MiuiGreenDark)
+                else if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
             ),
-            elevation = CardDefaults.cardElevation(defaultElevation = if (isMasterApplied) 4.dp else 2.dp)
+            elevation = CardDefaults.cardElevation(defaultElevation = if (isMasterApplied) 4.dp else if (isDark) 0.dp else 2.5.dp)
         ) {
             Row(
                 modifier = Modifier
@@ -156,8 +159,9 @@ fun ProfileSelector(
             ),
             border = androidx.compose.foundation.BorderStroke(
                 1.dp,
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
-            )
+                if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 2.dp)
         ) {
             Row(
                 modifier = Modifier
@@ -205,13 +209,15 @@ private fun ProfileSegmentButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isDark = isSystemInDarkTheme()
     val bgColor by animateColorAsState(
-        targetValue = if (isSelected) accentColor.copy(alpha = 0.16f) else Color.Transparent,
+        targetValue = if (isSelected) accentColor.copy(alpha = if (isDark) 0.18f else 0.12f)
+                      else if (isDark) Color.Transparent else Color(0xFFF3F5FA),
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
         label = "SegmentBg"
     )
     val contentColor by animateColorAsState(
-        targetValue = if (isSelected) accentColor else MaterialTheme.colorScheme.onSurfaceVariant,
+        targetValue = if (isSelected) accentColor else MaterialTheme.colorScheme.onSurface,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
         label = "SegmentContent"
     )
@@ -222,8 +228,9 @@ private fun ProfileSegmentButton(
             .clip(RoundedCornerShape(15.dp))
             .background(bgColor)
             .border(
-                width = if (isSelected) 1.5.dp else 0.dp,
-                color = if (isSelected) accentColor.copy(alpha = 0.5f) else Color.Transparent,
+                width = if (isSelected) 1.5.dp else 1.dp,
+                color = if (isSelected) accentColor.copy(alpha = 0.5f)
+                        else if (isDark) Color.Transparent else Color(0xFFDFE4ED),
                 shape = RoundedCornerShape(15.dp)
             )
             .hyperBounceClick(scaleDown = 0.94f, onClick = onClick),

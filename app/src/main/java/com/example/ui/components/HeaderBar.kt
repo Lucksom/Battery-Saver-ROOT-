@@ -3,6 +3,7 @@ package com.example.ui.components
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -32,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.MiuiAmber
 import com.example.ui.theme.MiuiGreen
+import com.example.ui.theme.MiuiGreenDark
 
 @Composable
 fun HeaderBar(
@@ -41,6 +44,10 @@ fun HeaderBar(
     onRevertStock: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isDark = isSystemInDarkTheme()
+    val badgeGreen = if (isDark) MiuiGreen else MiuiGreenDark
+    val badgeColor = if (isRootGranted) badgeGreen else MiuiAmber
+
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.background
@@ -48,7 +55,8 @@ fun HeaderBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
+                .statusBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 14.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -64,13 +72,10 @@ fun HeaderBar(
                         modifier = Modifier
                             .padding(start = 10.dp)
                             .clip(RoundedCornerShape(11.dp))
-                            .background(
-                                if (isRootGranted) MiuiGreen.copy(alpha = 0.15f)
-                                else MiuiAmber.copy(alpha = 0.15f)
-                            )
+                            .background(badgeColor.copy(alpha = if (isDark) 0.15f else 0.10f))
                             .border(
                                 1.dp,
-                                if (isRootGranted) MiuiGreen else MiuiAmber,
+                                badgeColor.copy(alpha = if (isDark) 0.8f else 0.5f),
                                 RoundedCornerShape(11.dp)
                             )
                             .padding(horizontal = 9.dp, vertical = 3.dp)
@@ -80,13 +85,13 @@ fun HeaderBar(
                                 modifier = Modifier
                                     .size(7.dp)
                                     .clip(CircleShape)
-                                    .background(if (isRootGranted) MiuiGreen else MiuiAmber)
+                                    .background(badgeColor)
                             )
                             Text(
                                 text = if (isRootGranted) "ROOT ACTIVE" else "NO ROOT",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isRootGranted) MiuiGreen else MiuiAmber,
+                                color = badgeColor,
                                 modifier = Modifier.padding(start = 5.dp)
                             )
                         }

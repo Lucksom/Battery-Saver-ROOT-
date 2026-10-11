@@ -7,6 +7,8 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -150,6 +152,8 @@ fun CpuFrequencyGraphCard(
         else -> null
     }
 
+    val isDark = isSystemInDarkTheme()
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -160,8 +164,9 @@ fun CpuFrequencyGraphCard(
         ),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
-        )
+            if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 2.5.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             // Header Row
@@ -243,7 +248,12 @@ fun CpuFrequencyGraphCard(
                     .fillMaxWidth()
                     .height(130.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                    .background(if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f) else Color(0xFFF3F5FA))
+                    .border(
+                        1.dp,
+                        if (isDark) Color.Transparent else Color(0xFFDFE4ED),
+                        RoundedCornerShape(16.dp)
+                    )
             ) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val width = size.width
