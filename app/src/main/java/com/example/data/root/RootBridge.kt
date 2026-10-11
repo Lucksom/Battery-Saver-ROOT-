@@ -51,19 +51,41 @@ object RootBridge {
             val stderr = errorReader.readText()
             val exitCode = process.waitFor()
 
-            CommandResult(
+            val result = CommandResult(
                 success = (exitCode == 0),
                 stdout = stdout.trim(),
                 stderr = stderr.trim(),
                 exitCode = exitCode
             )
+
+            // Stream meaningful shell execution to real-time logs
+            val isSilentProbe = command.startsWith("cat ") || command.startsWith("[ -e") || command == "id"
+            if (!isSilentProbe || !result.success) {
+                com.example.data.log.LogRepository.addLog(
+                    category = if (result.success) com.example.data.log.LogCategory.ROOT else com.example.data.log.LogCategory.ERROR,
+                    message = if (result.success) {
+                        if (result.stdout.isNotEmpty()) "Stdout: ${result.stdout.take(80)}" else "Exit 0 (Success)"
+                    } else "Exit $exitCode: ${result.stderr.take(80)}",
+                    command = command,
+                    isSuccess = result.success
+                )
+            }
+
+            result
         } catch (e: Exception) {
-            CommandResult(
+            val errRes = CommandResult(
                 success = false,
                 stdout = "",
                 stderr = e.message ?: "Failed to execute root command",
                 exitCode = -1
             )
+            com.example.data.log.LogRepository.addLog(
+                category = com.example.data.log.LogCategory.ERROR,
+                message = "Execution exception: ${e.message}",
+                command = command,
+                isSuccess = false
+            )
+            errRes
         }
     }
 

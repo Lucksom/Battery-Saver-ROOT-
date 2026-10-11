@@ -1,13 +1,21 @@
 package com.example.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -18,18 +26,23 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.BackupStatusBanner
-import com.example.ui.components.CpuFrequencyGraphCard
+import com.example.ui.components.DashboardView
 import com.example.ui.components.HeaderBar
-import com.example.ui.components.ProfileSelector
-import com.example.ui.components.TelemetryCard
+import com.example.ui.components.LogsScreen
+import com.example.ui.components.ProfileView
 import com.example.ui.components.TweakCategories
+import com.example.ui.components.VoltPowerBottomBar
+import com.example.ui.components.VoltPowerTab
 
 @Composable
 fun MainScreen(
@@ -42,6 +55,16 @@ fun MainScreen(
     val isBusy by viewModel.isBusy.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
     val installedApps by viewModel.installedApps.collectAsState()
+    val logs by viewModel.logs.collectAsState()
+
+    var currentTab by rememberSaveable { mutableStateOf(VoltPowerTab.DASHBOARD) }
+
+    // Predictive back / BackHandler: if not on Dashboard, return to Dashboard
+    if (currentTab != VoltPowerTab.DASHBOARD) {
+        BackHandler {
+            currentTab = VoltPowerTab.DASHBOARD
+        }
+    }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -73,6 +96,12 @@ fun MainScreen(
                     viewModel.onRevertToStock()
                 }
             )
+        },
+        bottomBar = {
+            VoltPowerBottomBar(
+                currentTab = currentTab,
+                onTabSelected = { currentTab = it }
+            )
         }
     ) { innerPadding ->
         Box(
@@ -80,84 +109,105 @@ fun MainScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                item {
-                    BackupStatusBanner(
-                        backupExists = telemetry.backupFileExists || config.backupCreated,
-                        backupFilePath = config.backupFilePath,
-                        onRevertStock = { viewModel.onRevertToStock() }
-                    )
-                }
+            AnimatedContent(
+                targetState = currentTab,
+                transitionSpec = { fadeIn() togetherWith fadeOut() },
+                label = "TabContentTransition"
+            ) { targetTab ->
+                when (targetTab) {
+                    VoltPowerTab.DASHBOARD -> {
+                        val scrollState = rememberScrollState()
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(scrollState)
+                        ) {
+                            DashboardView(
+                                telemetry = telemetry,
+                                config = config,
+                                recentLogs = logs,
+                                onSelectProfile = { viewModel.onSelectProfile(it) },
+                                onNavigateToLogs = { currentTab = VoltPowerTab.LOGS }
+                            )
 
-                item {
-                    ProfileSelector(
-                        activeProfile = config.activeProfile,
-                        isMasterApplied = config.isMasterApplied,
-                        onSelectProfile = { viewModel.onSelectProfile(it) },
-                        onToggleMaster = { viewModel.onToggleMaster(it) }
-                    )
-                }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 20.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "VoltPower • 100% Volatile RAM Execution",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                            }
+                        }
+                    }
 
-                item {
-                    TelemetryCard(
-                        telemetry = telemetry
-                    )
-                }
+                    VoltPowerTab.TWEAKS -> {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            item {
+                                BackupStatusBanner(
+                                    backupExists = telemetry.backupFileExists || config.backupCreated,
+                                    backupFilePath = config.backupFilePath,
+                                    onRevertStock = { viewModel.onRevertToStock() }
+                                )
+                            }
 
-                item {
-                    CpuFrequencyGraphCard(
-                        history = cpuFreqHistory,
-                        activeProfile = config.activeProfile,
-                        performanceSubMode = config.performanceSubMode,
-                        isMasterApplied = config.isMasterApplied,
-                        cpuFreqCapEnabled = config.cpuFreqCapEnabled,
-                        activeGovernor = telemetry.activeGovernor
-                    )
-                }
+                            item {
+                                TweakCategories(
+                                    config = config,
+                                    onUpdateTweak = { key, enabled ->
+                                        viewModel.onUpdateTweak(key, enabled)
+                                    },
+                                    onUpdateCoreTopology = { coreCount, threshold ->
+                                        viewModel.onUpdateCoreTopology(coreCount, threshold)
+                                    },
+                                    onUpdateDeepSleepWhitelist = { whitelist ->
+                                        viewModel.onUpdateDeepSleepWhitelist(whitelist)
+                                    },
+                                    onSelectPerformanceSubMode = { subMode ->
+                                        viewModel.onSelectPerformanceSubMode(subMode)
+                                    },
+                                    onToggleHyperOs = { enabled ->
+                                        viewModel.onToggleHyperOsPowerSaver(enabled)
+                                    },
+                                    onSaveBackgroundAllowedApps = { apps ->
+                                        viewModel.onUpdateBackgroundAllowedApps(apps)
+                                    },
+                                    onSelectRefreshRate = { hz ->
+                                        viewModel.onSelectRefreshRate(hz)
+                                    },
+                                    installedApps = installedApps
+                                )
+                            }
 
-                item {
-                    TweakCategories(
-                        config = config,
-                        onUpdateTweak = { key, enabled ->
-                            viewModel.onUpdateTweak(key, enabled)
-                        },
-                        onUpdateCoreTopology = { coreCount, threshold ->
-                            viewModel.onUpdateCoreTopology(coreCount, threshold)
-                        },
-                        onUpdateDeepSleepWhitelist = { whitelist ->
-                            viewModel.onUpdateDeepSleepWhitelist(whitelist)
-                        },
-                        onSelectPerformanceSubMode = { subMode ->
-                            viewModel.onSelectPerformanceSubMode(subMode)
-                        },
-                        onToggleHyperOs = { enabled ->
-                            viewModel.onToggleHyperOsPowerSaver(enabled)
-                        },
-                        onSaveBackgroundAllowedApps = { apps ->
-                            viewModel.onUpdateBackgroundAllowedApps(apps)
-                        },
-                        onSelectRefreshRate = { hz ->
-                            viewModel.onSelectRefreshRate(hz)
-                        },
-                        installedApps = installedApps
-                    )
-                }
+                            item {
+                                Spacer(modifier = Modifier.height(28.dp))
+                            }
+                        }
+                    }
 
-                item {
-                    Spacer(modifier = Modifier.height(32.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "VoltPower • 100% Volatile RAM Execution",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    VoltPowerTab.PROFILE -> {
+                        ProfileView(
+                            config = config,
+                            telemetry = telemetry,
+                            cpuFreqHistory = cpuFreqHistory,
+                            onSelectProfile = { viewModel.onSelectProfile(it) },
+                            onToggleMaster = { viewModel.onToggleMaster(it) },
+                            onSelectPerformanceSubMode = { viewModel.onSelectPerformanceSubMode(it) },
+                            onRevertStock = { viewModel.onRevertToStock() }
+                        )
+                    }
+
+                    VoltPowerTab.LOGS -> {
+                        LogsScreen(
+                            logs = logs,
+                            onClearLogs = { viewModel.onClearLogs() }
                         )
                     }
                 }

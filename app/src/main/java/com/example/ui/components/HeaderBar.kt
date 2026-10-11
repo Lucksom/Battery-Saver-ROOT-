@@ -2,6 +2,7 @@ package com.example.ui.components
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,42 +63,33 @@ fun HeaderBar(
                     Box(
                         modifier = Modifier
                             .padding(start = 10.dp)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(11.dp))
                             .background(
                                 if (isRootGranted) MiuiGreen.copy(alpha = 0.15f)
                                 else MiuiAmber.copy(alpha = 0.15f)
                             )
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .border(
+                                1.dp,
+                                if (isRootGranted) MiuiGreen else MiuiAmber,
+                                RoundedCornerShape(11.dp)
+                            )
+                            .padding(horizontal = 9.dp, vertical = 3.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Shield,
-                                contentDescription = "Root Status",
-                                tint = if (isRootGranted) MiuiGreen else MiuiAmber,
-                                modifier = Modifier.size(12.dp)
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isRootGranted) MiuiGreen else MiuiAmber)
                             )
                             Text(
-                                text = if (isRootGranted) "ROOT" else "NO ROOT",
+                                text = if (isRootGranted) "ROOT ACTIVE" else "NO ROOT",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isRootGranted) MiuiGreen else MiuiAmber,
-                                modifier = Modifier.padding(start = 4.dp)
+                                modifier = Modifier.padding(start = 5.dp)
                             )
                         }
-                    }
-                    Box(
-                        modifier = Modifier
-                            .padding(start = 6.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.primaryContainer)
-                            .padding(horizontal = 6.dp, vertical = 3.dp)
-                    ) {
-                        Text(
-                            text = "v1.1.0",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
                     }
                 }
                 Text(

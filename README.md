@@ -1,74 +1,74 @@
 # VoltPower ⚡
 
-> **Modern Kernel, Battery & HyperOS Super Power Saving Engine for Android**  
-> Engineered with MIUIX design principles, root-level sysfs/settings controls, and intelligent power management.
+> **Comprehensive Android Optimizer & Hardware Performance Manager**  
+> Engineered with MIUIX design principles, root-level performance controls, and intelligent system resource optimization.
 
 ---
 
-## 📱 Screenshots
+## 📱 Interface Preview
 
 <div align="center">
   <table>
-    <thead>
-      <tr>
-        <th align="center">Dashboard &amp; Telemetry</th>
-        <th align="center">HyperOS Power Saver</th>
-        <th align="center">Kernel &amp; Whitelist</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td align="center">
-          <img src="docs/screenshot_dashboard.svg" width="220" alt="VoltPower Dashboard" />
-        </td>
-        <td align="center">
-          <img src="docs/screenshot_powersave.svg" width="220" alt="HyperOS Power Saver Tweaks" />
-        </td>
-        <td align="center">
-          <img src="docs/screenshot_advanced.svg" width="220" alt="Kernel &amp; App Whitelist" />
-        </td>
-      </tr>
-    </tbody>
+    <tr>
+      <td align="center" width="33%">
+        <b>Dashboard &amp; Telemetry</b><br/>
+        <img src="docs/screenshot_dashboard.svg" width="180" alt="VoltPower Dashboard" />
+      </td>
+      <td align="center" width="33%">
+        <b>System &amp; Display Tweaks</b><br/>
+        <img src="docs/screenshot_powersave.svg" width="180" alt="System Tweaks" />
+      </td>
+      <td align="center" width="33%">
+        <b>Kernel &amp; Whitelist</b><br/>
+        <img src="docs/screenshot_advanced.svg" width="180" alt="Kernel &amp; Whitelist" />
+      </td>
+    </tr>
   </table>
 </div>
 
 ---
 
-## ⚡ Features Overview
+## 🚀 Features Overview
 
-### 🔋 HyperOS Super Power Saving Engine
-- **Universal Refresh Rate Sync**: Flawlessly sets and locks display refresh rate (**60 Hz**, **90 Hz**, **120 Hz**, or **Dynamic**) across both `secure` and `system` tables (`user_refresh_rate`, `miui_refresh_rate`, `peak_refresh_rate`, `min_refresh_rate`), ensuring 60 Hz applies immediately on HyperOS and MIUI without clamping back to 90 Hz.
-- **Control Center Blur Toggle**:
-  - **Enable**: `su -c 'settings put global disable_window_blurs 0'` (restores real-time Gaussian blurs on Control Center & shade).
-  - **Disable**: `su -c 'settings put global disable_window_blurs 1'` (cuts GPU render overhead for extended battery runtime).
-- **Xiaomi THP Touch Doze Mode**: Engages Touch Host Processing (`thp_set_doze_mode_func 1`) to eliminate touchscreen digitizer idle power drain while asleep.
-- **Touch Boost Clamping**: Prevents excessive 2.0 GHz+ CPU spikes on touch events (`msm_performance/parameters/touchboost 0`, `input_boost_freq 0`).
-- **Aurogon Background Freezer**: Harnesses HyperOS native task suspension (`persist.sys.aurogon.enabled 1`, `persist.sys.spc.enabled 1`) with cgroup v2 freezing.
-- **5G SA/NSA Radio Power Optimization**: Autonomous modem radio sleep (`persist.vendor.radio.5g_power_save 1`).
-- **Preserve Light Theme**: Keeps light mode active while running battery saving without forced system-wide dark mode inversions.
-- **Disable Background Scanning**: Throttles Wi-Fi and Bluetooth background location polling (`ble_scan_always_enabled 0`, `wifi_scan_always_enabled 0`).
-- **Deep Sleep on Screen-Off**: Triggers instant `deviceidle force-idle` when the display turns off.
+### 📊 Real-Time Hardware Telemetry & Diagnostics
+- **Dynamic Battery Arc**: Live percentage indicator with real-time gradient gauge.
+- **Charging & Discharging Speed**: Instantaneous power telemetry in mA and Watts with speed rating badges.
+- **Battery Health & Capacity**: Battery health condition percentage, total millivolt readings, and capacity metrics.
+- **Battery Cycle Counter**: Live hardware cycle count tracking.
+- **Thermal Monitor**: Real-time battery and hardware thermal monitoring with safety zone indicators.
+- **Octa-Core CPU Telemetry**: Live frequencies and utilization meters across Little, Mid, and Prime cores.
+- **GPU & Memory Status**: Real-time Adreno GPU frequency states and active ZRAM compression status.
 
-### 🛡️ Deep Sleep App Exception Whitelist
-- **Instant Doze Exemption**: Add messaging apps, alarm clocks, or music players to `dumpsys deviceidle whitelist` so notifications arrive on time.
-- **Prioritized App Sorting**: Selected and whitelisted packages are pinned to the top of the app picker for quick reviewing and unchecking.
+### ⚡ System & Display Optimization
+- **Universal Refresh Rate Lock**: Force and lock display refresh rates at 60Hz, 90Hz, 120Hz, or Dynamic mode without OS overrides.
+- **Control Center Blur Toggle**: Switch real-time background Gaussian blur on the Control Center to either enhance visual aesthetics or reduce GPU rendering overhead.
+- **Theme Preservation**: Retain preferred light or dark themes without forced system-wide inversions during power optimization.
+- **Sensor & Radio Power Management**: Throttle unnecessary background Bluetooth and Wi-Fi scanning during standby.
+- **Modern Radio Optimization**: Intelligent 5G SA and NSA modem sleep when high data bandwidth is not needed.
 
-### ⚙️ Kernel, CPU & Memory Controls
-- **Schedutil Rate Limiting**: Fine-tunes `up_rate_limit_us` (1,000 µs) and `down_rate_limit_us` (20,000 µs) to prevent erratic governor ramp-ups.
-- **Dynamic FSync**: Buffers write cache in memory during active screen time and flushes to storage on screen-off.
-- **Storage I/O Scheduler**: Optimizes queue depths, readahead buffers, and scheduler policies (BFQ, Kyber, MQ-Deadline).
-- **Memory & Swap Tuning**: Configures ZRAM compression ratios and LowMemoryKiller (LMK) minfree watermarks.
+### ⚙️ Kernel, CPU & Memory Tuning
+- **CPU Governor Rate Limiting**: Stabilize governor frequency ramp-ups to prevent micro-stutters and unnecessary power spikes.
+- **Touch Boost Clamping**: Prevent excessive multi-core CPU clock bursts on minor touch gestures for cooler operation.
+- **Dynamic Storage FSync**: In-memory write buffer acceleration during active screen usage with automated safe disk flushing on screen-off.
+- **Storage I/O Scheduler**: Optimized queue depths and scheduler policies for ultra-fast application launching.
+- **ZRAM & Memory Management**: Enhanced swap compression algorithms and memory watermarks to keep background apps responsive.
 
-### 📊 Real-Time Telemetry & Profiles
-- **Live Battery Gauges**: Accurate charging wattage, thermal temperatures, battery health, and millivolt status.
-- **Per-Core CPU Clocks**: Real-time frequencies for Little, Mid, and Prime cores.
-- **Profile Presets**: Switch instantly between **Powersave**, **Balanced**, **Performance**, and **Custom**.
-- **Live Root Execution Logs**: Real-time terminal output with zero-overhead root execution.
+### 🛡️ Background Management & App Whitelist
+- **Background Task Suspension**: Deep application freezing that eliminates rogue background CPU drain while preserving system responsiveness.
+- **Automated Deep Sleep**: Triggers instant power-saving sleep states the moment the display turns off.
+- **Touch Digitizer Idle Sleep**: Engages hardware touch controller low-power sleep while the screen is inactive.
+- **App Exemption Whitelist**: Ensure critical messaging, alarms, and navigation apps remain active with prioritized pinned selection.
+
+### 🎯 Profiles & Live Execution Logs
+- **Instant Profile Switcher**: One-tap switching between **Powersave**, **Balanced**, **Performance**, and **Custom** presets.
+- **Master Optimization Switch**: Instantly toggle all optimization engines in memory without altering baseline configurations.
+- **Live Terminal Inspector**: Real-time live log stream with category filters (System, CPU, Tweaks, Power), keyword search, pause mode, and one-tap clipboard export.
+- **Stock Settings Restore**: Safe one-tap revert to original system defaults at any time.
 
 ---
 
 ## 🛠️ Root Requirements
 
-VoltPower operates via standard root access (`su`):
-- Supported managers: **Magisk**, **KernelSU**, and **APatch**.
-- Seamless execution with graceful non-root fallback for telemetry monitoring.
+VoltPower functions with root access:
+- Compatible with **Magisk**, **KernelSU**, and **APatch**.
+- Automatically detects root privileges with real-time status indicators and non-root monitoring fallback.

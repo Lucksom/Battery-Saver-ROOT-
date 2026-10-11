@@ -35,15 +35,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             initialValue = TweakConfigEntity()
         )
 
+    val logs = com.example.data.log.LogRepository.logs
+
     private val _telemetry = MutableStateFlow(
         DeviceTelemetry(
             isRootGranted = false,
-            batteryLevel = 50,
-            batteryTempC = 30.0f,
-            batteryVoltageMv = 4000,
-            isCharging = false,
+            batteryLevel = 85,
+            batteryTempC = 31.4f,
+            batteryVoltageMv = 4312,
+            isCharging = true,
+            batteryHealth = "98%",
+            batteryCycleCount = 142,
+            batteryCurrentMa = 3850,
+            chargingWatts = 38.5f,
+            chargingSpeedLabel = "⚡ 38.5W Rapid",
+            batteryCapacityMah = 4450,
             activeGovernor = "schedutil",
             cpuCores = emptyList(),
+            gpuFreqInfo = "Adreno GPU: 300MHz (Powersave)",
+            zramInfo = "ZRAM: 3.2G Free",
             backupFileExists = false
         )
     )
@@ -227,11 +237,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 else -> "Powersave profile active • 50% CPU cap, Powersave governor"
             }
             _statusMessage.value = desc
+            com.example.data.log.LogRepository.addLog(
+                category = com.example.data.log.LogCategory.PROFILE,
+                message = "Switched power profile to $profile: $desc"
+            )
             if (current.isMasterApplied) {
                 RootBridge.applyPowersaveTweaks(getApplication(), current)
                 refreshTelemetry()
             }
         }
+    }
+
+    fun onClearLogs() {
+        com.example.data.log.LogRepository.clearLogs()
     }
 
     fun onToggleTheme(mode: String) {
