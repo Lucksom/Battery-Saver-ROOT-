@@ -245,7 +245,7 @@ fun HyperOsModeBanner(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -255,50 +255,55 @@ fun HyperOsModeBanner(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(46.dp)
-                        .clip(RoundedCornerShape(14.dp))
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(13.dp))
                         .background(if (isEnabled) MiuiOrange.copy(alpha = 0.2f) else MiuiGreen.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = if (isEnabled) Icons.Default.ElectricBolt else Icons.Default.EnergySavingsLeaf,
-                        contentDescription = null,
+                        contentDescription = "HyperOS Mode",
                         tint = if (isEnabled) MiuiOrange else MiuiGreen,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         Text(
-                            text = "MIUI / HyperOS Super Power Mode",
+                            text = "MIUI / HyperOS Mode",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = if (isEnabled) "ACTIVE" else "OFF",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isEnabled) MiuiOrange else MaterialTheme.colorScheme.onSurfaceVariant,
+                        Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
+                                .clip(RoundedCornerShape(6.dp))
                                 .background(
                                     if (isEnabled) MiuiOrange.copy(alpha = 0.18f)
                                     else MaterialTheme.colorScheme.surfaceVariant
                                 )
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
+                        ) {
+                            Text(
+                                text = if (isEnabled) "ACTIVE" else "OFF",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isEnabled) MiuiOrange else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = if (isEnabled)
-                            "Replaces standard powersave with Xiaomi HyperOS system & kernel suite (AOD disabled, Aurogon Freezer, SuperPowerClean, Touch Boost Throttle)"
-                        else
-                            "Enable to replace standard powersave with Xiaomi HyperOS kernel & system power-saving engine",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        lineHeight = 15.sp
+                        text = "Only for Miui/HyperOS",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (isEnabled) MiuiOrange else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }

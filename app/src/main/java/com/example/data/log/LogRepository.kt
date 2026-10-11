@@ -22,8 +22,26 @@ data class LogEntry(
     val category: LogCategory,
     val message: String,
     val command: String? = null,
+    val paramName: String? = null,
+    val paramValue: String? = null,
     val isSuccess: Boolean = true
-)
+) {
+    val displayName: String
+        get() = paramName ?: when {
+            message.contains(":") -> message.substringBefore(":").trim()
+            message.contains("=") -> message.substringBefore("=").trim()
+            else -> message
+        }
+
+    val displayValue: String
+        get() = paramValue ?: when {
+            command != null && command.contains("=") -> command.substringAfter("=").trim()
+            message.contains(":") -> message.substringAfter(":").trim()
+            message.contains("=") -> message.substringAfter("=").trim()
+            command != null -> command
+            else -> if (isSuccess) "Active (OK)" else "Disabled"
+        }
+}
 
 object LogRepository {
     private val counter = AtomicLong(1)
@@ -33,42 +51,52 @@ object LogRepository {
         listOf(
             LogEntry(
                 id = counter.getAndIncrement(),
-                timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(System.currentTimeMillis() - 12000)),
+                timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(System.currentTimeMillis() - 14000)),
                 category = LogCategory.SYSTEM,
-                message = "VoltPower core engine initialized in volatile RAM",
-                command = null,
+                message = "Kernel Engine Initialization",
+                paramName = "VoltPower Core Engine",
+                paramValue = "Mounted in volatile RAM",
+                command = "mount -t tmpfs tmpfs /dev/voltpower",
                 isSuccess = true
             ),
             LogEntry(
                 id = counter.getAndIncrement(),
-                timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(System.currentTimeMillis() - 8000)),
-                category = LogCategory.ROOT,
-                message = "Root privilege verified: uid=0(root)",
-                command = "su -c 'id'",
+                timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(System.currentTimeMillis() - 10000)),
+                category = LogCategory.TWEAK,
+                message = "Display Refresh Rate",
+                paramName = "peak_refresh_rate",
+                paramValue = "120 Hz Dynamic",
+                command = "settings put system peak_refresh_rate 120.0",
                 isSuccess = true
             ),
             LogEntry(
                 id = counter.getAndIncrement(),
-                timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(System.currentTimeMillis() - 5000)),
+                timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(System.currentTimeMillis() - 7000)),
+                category = LogCategory.TWEAK,
+                message = "CPU Frequency Governor",
+                paramName = "scaling_governor",
+                paramValue = "schedutil",
+                command = "echo schedutil > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor",
+                isSuccess = true
+            ),
+            LogEntry(
+                id = counter.getAndIncrement(),
+                timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(System.currentTimeMillis() - 4000)),
+                category = LogCategory.TWEAK,
+                message = "Window Blur Acceleration",
+                paramName = "disable_window_blurs",
+                paramValue = "0 (Hardware Accelerated)",
+                command = "settings put global disable_window_blurs 0",
+                isSuccess = true
+            ),
+            LogEntry(
+                id = counter.getAndIncrement(),
+                timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(System.currentTimeMillis() - 1500)),
                 category = LogCategory.SYSTEM,
-                message = "Hardware telemetry stream mounted: /sys/class/power_supply/battery",
-                command = null,
-                isSuccess = true
-            ),
-            LogEntry(
-                id = counter.getAndIncrement(),
-                timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(System.currentTimeMillis() - 2000)),
-                category = LogCategory.TWEAK,
-                message = "Display refresh rate synced with system settings",
-                command = "settings get system user_refresh_rate",
-                isSuccess = true
-            ),
-            LogEntry(
-                id = counter.getAndIncrement(),
-                timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date()),
-                category = LogCategory.TWEAK,
-                message = "Control center blur engine verified",
-                command = "settings get global disable_window_blurs",
+                message = "Battery Sysfs Stream",
+                paramName = "power_supply/battery",
+                paramValue = "Hardware telemetry active",
+                command = "cat /sys/class/power_supply/battery/uevent",
                 isSuccess = true
             )
         )
@@ -79,6 +107,8 @@ object LogRepository {
         category: LogCategory,
         message: String,
         command: String? = null,
+        paramName: String? = null,
+        paramValue: String? = null,
         isSuccess: Boolean = true
     ) {
         val entry = LogEntry(
@@ -87,6 +117,8 @@ object LogRepository {
             category = category,
             message = message,
             command = command,
+            paramName = paramName,
+            paramValue = paramValue,
             isSuccess = isSuccess
         )
         val current = _logs.value.toMutableList()
@@ -95,6 +127,22 @@ object LogRepository {
             current.removeAt(current.lastIndex)
         }
         _logs.value = current
+    }
+
+    fun addLog(
+        category: LogCategory,
+        message: String,
+        command: String? = null,
+        isSuccess: Boolean = true
+    ) {
+        addLog(
+            category = category,
+            message = message,
+            command = command,
+            paramName = null,
+            paramValue = null,
+            isSuccess = isSuccess
+        )
     }
 
     fun clearLogs() {

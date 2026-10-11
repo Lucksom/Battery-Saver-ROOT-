@@ -706,10 +706,9 @@ fun DashboardRealTimeLogsCard(
                         )
                     } else {
                         logsToShow.forEach { entry ->
-                            val prefixColor = if (entry.isSuccess) MiuiGreen else MiuiOrange
-                            val cmdText = entry.command?.let { " $it" } ?: ""
+                            val prefixColor = if (entry.isSuccess) (if (isDark) MiuiGreen else Color(0xFF81C784)) else MiuiOrange
                             Text(
-                                text = "[${entry.timestamp}] ${entry.message}$cmdText",
+                                text = "[${entry.timestamp}] ${entry.displayName}: ${entry.displayValue}",
                                 fontSize = 10.sp,
                                 fontFamily = FontFamily.Monospace,
                                 color = prefixColor,

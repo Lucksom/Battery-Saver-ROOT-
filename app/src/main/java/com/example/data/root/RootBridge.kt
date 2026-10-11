@@ -32,12 +32,59 @@ object RootBridge {
         "android"
     )
 
-    suspend fun isRootAvailable(): Boolean = withContext(Dispatchers.IO) {
-        val result = execute("id")
-        result.success && result.stdout.contains("uid=0")
+    private var cachedRootStatus: Boolean? = null
+    private var lastRootCheckTimestamp = 0L
+
+    suspend fun isRootAvailable(forceCheck: Boolean = false): Boolean = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        if (!forceCheck && cachedRootStatus != null && (now - lastRootCheckTimestamp < 60_000L)) {
+            return@withContext cachedRootStatus == true
+        }
+
+        // 1. Probe known su binary locations first
+        val hasSuBinary = listOf(
+            "/system/bin/su",
+            "/system/xbin/su",
+            "/sbin/su",
+            "/system/sd/xbin/su",
+            "/data/local/xbin/su",
+            "/data/local/bin/su",
+            "/data/local/su",
+            "/su/bin/su",
+            "/magisk/.core/bin/su"
+        ).any { File(it).exists() }
+
+        if (!hasSuBinary) {
+            cachedRootStatus = false
+            lastRootCheckTimestamp = now
+            return@withContext false
+        }
+
+        // 2. Test root execution silently without logging failures
+        val result = executeInternal("id", isSilent = true)
+        val isRoot = result.success && result.stdout.contains("uid=0")
+        cachedRootStatus = isRoot
+        lastRootCheckTimestamp = now
+        isRoot
     }
 
     suspend fun execute(command: String): CommandResult = withContext(Dispatchers.IO) {
+        executeInternal(command, isSilent = false)
+    }
+
+    private suspend fun executeInternal(command: String, isSilent: Boolean): CommandResult = withContext(Dispatchers.IO) {
+        val isProbe = isSilent || command.startsWith("cat ") || command.startsWith("[ -e") || command == "id"
+
+        // If root is confirmed absent and this is not a probe check, don't execute
+        if (cachedRootStatus == false && !isProbe) {
+            return@withContext CommandResult(
+                success = false,
+                stdout = "",
+                stderr = "Root privilege not granted",
+                exitCode = 13
+            )
+        }
+
         try {
             val process = Runtime.getRuntime().exec("su")
             val outputStream = DataOutputStream(process.outputStream)
@@ -58,9 +105,8 @@ object RootBridge {
                 exitCode = exitCode
             )
 
-            // Stream meaningful shell execution to real-time logs
-            val isSilentProbe = command.startsWith("cat ") || command.startsWith("[ -e") || command == "id"
-            if (!isSilentProbe || !result.success) {
+            // Stream meaningful shell execution to real-time logs (never silent probes)
+            if (!isProbe) {
                 com.example.data.log.LogRepository.addLog(
                     category = if (result.success) com.example.data.log.LogCategory.ROOT else com.example.data.log.LogCategory.ERROR,
                     message = if (result.success) {
@@ -79,12 +125,15 @@ object RootBridge {
                 stderr = e.message ?: "Failed to execute root command",
                 exitCode = -1
             )
-            com.example.data.log.LogRepository.addLog(
-                category = com.example.data.log.LogCategory.ERROR,
-                message = "Execution exception: ${e.message}",
-                command = command,
-                isSuccess = false
-            )
+            // NEVER stream silent probe exceptions into user logs!
+            if (!isProbe) {
+                com.example.data.log.LogRepository.addLog(
+                    category = com.example.data.log.LogCategory.ERROR,
+                    message = "Execution exception: ${e.message}",
+                    command = command,
+                    isSuccess = false
+                )
+            }
             errRes
         }
     }
@@ -96,13 +145,15 @@ object RootBridge {
                 return@withContext file.readText().trim()
             } catch (_: Exception) { }
         }
-        val res = execute("cat \"$path\" 2>/dev/null")
+        if (cachedRootStatus == false) return@withContext null
+        val res = executeInternal("cat \"$path\" 2>/dev/null", isSilent = true)
         if (res.success && res.stdout.isNotEmpty()) res.stdout else null
     }
 
     suspend fun nodeExists(path: String): Boolean = withContext(Dispatchers.IO) {
         if (File(path).exists()) return@withContext true
-        val res = execute("[ -e \"$path\" ] && echo 1 || echo 0")
+        if (cachedRootStatus == false) return@withContext false
+        val res = executeInternal("[ -e \"$path\" ] && echo 1 || echo 0", isSilent = true)
         res.stdout == "1"
     }
 

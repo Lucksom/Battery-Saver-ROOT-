@@ -155,6 +155,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 RootBridge.applyPowersaveTweaks(getApplication(), toApply)
                 dao.updateBackupStatus(true, RootBridge.BACKUP_FILE_PATH)
                 _statusMessage.value = "Tweaks active in RAM! Stock backup saved."
+                com.example.data.log.LogRepository.addLog(
+                    category = com.example.data.log.LogCategory.TWEAK,
+                    message = "Master Power Tweak Engine",
+                    paramName = "master_tweak_engine",
+                    paramValue = "APPLIED (RAM Active)",
+                    command = "apply_all_tweaks --profile ${toApply.activeProfile}",
+                    isSuccess = true
+                )
             } else {
                 _statusMessage.value = "Restoring factory kernel parameters from backup..."
                 RootBridge.revertAllTweaks(getApplication())
@@ -184,6 +192,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 dao.update(allOff)
                 _statusMessage.value = "All tweaks reverted from backup file & all toggles turned off."
+                com.example.data.log.LogRepository.addLog(
+                    category = com.example.data.log.LogCategory.TWEAK,
+                    message = "Master Power Tweak Engine",
+                    paramName = "master_tweak_engine",
+                    paramValue = "REVERTED (Stock Clocks)",
+                    command = "revert_all_tweaks --stock",
+                    isSuccess = true
+                )
             }
             refreshTelemetry()
             _isBusy.value = false
@@ -239,7 +255,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _statusMessage.value = desc
             com.example.data.log.LogRepository.addLog(
                 category = com.example.data.log.LogCategory.PROFILE,
-                message = "Switched power profile to $profile: $desc"
+                message = "Power Profile",
+                paramName = "active_profile",
+                paramValue = profile,
+                command = "set_governor_profile $profile",
+                isSuccess = true
             )
             if (current.isMasterApplied) {
                 RootBridge.applyPowersaveTweaks(getApplication(), current)
@@ -330,6 +350,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             dao.update(updated)
 
+            com.example.data.log.LogRepository.addLog(
+                category = com.example.data.log.LogCategory.TWEAK,
+                message = toggleKey,
+                paramName = toggleKey,
+                paramValue = if (enabled) "Enabled (Active)" else "Disabled (Stock)",
+                command = "set $toggleKey=$enabled",
+                isSuccess = true
+            )
+
             // If master is currently active, dynamically push change into RAM
             if (current.isMasterApplied) {
                 _statusMessage.value = if (enabled) "Tweak applied to RAM" else "Stock values restored for this tweak"
@@ -349,6 +378,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 "Standard Powersave profile restored"
             }
+            com.example.data.log.LogRepository.addLog(
+                category = com.example.data.log.LogCategory.TWEAK,
+                message = "HyperOS Power Saver",
+                paramName = "hyperos_super_power",
+                paramValue = if (enabled) "Active (Super Power)" else "Disabled (Standard)",
+                command = "set miui_super_power_save=$enabled",
+                isSuccess = true
+            )
             if (current.isMasterApplied && current.activeProfile == "POWERSAVE") {
                 RootBridge.applyPowersaveTweaks(getApplication(), updated)
                 refreshTelemetry()
@@ -373,6 +410,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 else -> "Display refresh rate restored to dynamic stock"
             }
             _statusMessage.value = msg
+            com.example.data.log.LogRepository.addLog(
+                category = com.example.data.log.LogCategory.TWEAK,
+                message = "Display Refresh Rate",
+                paramName = "peak_refresh_rate",
+                paramValue = if (hz > 0) "$hz Hz" else "Auto Dynamic",
+                command = "settings put system peak_refresh_rate ${hz}.0",
+                isSuccess = true
+            )
             if (current.isMasterApplied) {
                 RootBridge.applyPowersaveTweaks(getApplication(), updated)
                 refreshTelemetry()
