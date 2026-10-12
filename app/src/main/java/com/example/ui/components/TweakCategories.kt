@@ -126,53 +126,45 @@ fun TweakCategories(
     }
 
     if (showWhitelistDialog) {
-        AlertDialog(
-            onDismissRequest = { showWhitelistDialog = false },
-            title = {
-                Text(
-                    text = "Deep Sleep App Whitelist",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp
+        OverlayDialog(
+            title = "Deep Sleep App Whitelist",
+            summary = "Enter package names separated by commas. These apps will NOT be restricted during 5-minute deep sleep doze (they receive notifications and calls normally):",
+            show = showWhitelistDialog,
+            onDismissRequest = { showWhitelistDialog = false }
+        ) {
+            OutlinedTextField(
+                value = whitelistText,
+                onValueChange = { whitelistText = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Package Names") },
+                placeholder = { Text("com.whatsapp, org.telegram.messenger, com.spotify.music") }
+            )
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                MiuixTextButton(
+                    text = "Cancel",
+                    onClick = { showWhitelistDialog = false }
                 )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "Enter package names separated by commas. These apps will NOT be restricted during 5-minute deep sleep doze (they receive notifications and calls normally):",
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    OutlinedTextField(
-                        value = whitelistText,
-                        onValueChange = { whitelistText = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Package Names") },
-                        placeholder = { Text("com.whatsapp, org.telegram.messenger, com.spotify.music") }
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
+                Spacer(modifier = Modifier.width(8.dp))
+                MiuixTextButton(
+                    text = "Save Whitelist",
+                    isPrimary = true,
                     onClick = {
                         onUpdateDeepSleepWhitelist(whitelistText)
                         showWhitelistDialog = false
                     }
-                ) {
-                    Text("Save Whitelist")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showWhitelistDialog = false }) {
-                    Text("Cancel")
-                }
+                )
             }
-        )
+        }
     }
 
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp),
+        modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         when (config.activeProfile) {
