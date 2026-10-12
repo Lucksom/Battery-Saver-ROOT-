@@ -83,10 +83,10 @@ object LogRepository {
                 id = counter.getAndIncrement(),
                 timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(System.currentTimeMillis() - 4000)),
                 category = LogCategory.TWEAK,
-                message = "Window Blur Acceleration",
+                message = "Control Center Blur",
                 paramName = "disable_window_blurs",
-                paramValue = "0 (Hardware Accelerated)",
-                command = "settings put global disable_window_blurs 0",
+                paramValue = "1 (Removed Blur)",
+                command = "settings put global disable_window_blurs 1",
                 isSuccess = true
             ),
             LogEntry(

@@ -33,16 +33,15 @@
 ### 📊 Real-Time Hardware Telemetry & Diagnostics
 - **Dynamic Battery Arc**: Live percentage indicator with real-time gradient gauge.
 - **Charging & Discharging Speed**: Instantaneous power telemetry in mA and Watts with speed rating badges.
-- **Battery Health & Capacity**: Battery health condition percentage, total millivolt readings, and capacity metrics.
-- **Battery Cycle Counter**: Live hardware cycle count tracking.
+- **Bus Voltage & Voltage Metering**: Total millivolt bus voltage monitoring.
 - **Thermal Monitor**: Real-time battery and hardware thermal monitoring with safety zone indicators.
 - **Octa-Core CPU Telemetry**: Live frequencies and utilization meters across Little, Mid, and Prime cores.
 - **GPU & Memory Status**: Real-time Adreno GPU frequency states and active ZRAM compression status.
 
 ### ⚡ System & Display Optimization
 - **Universal Refresh Rate Lock**: Force and lock display refresh rates at 60Hz, 90Hz, 120Hz, or Dynamic mode without OS overrides.
-- **Control Center Blur Toggle**: Switch real-time background Gaussian blur on the Control Center to either enhance visual aesthetics or reduce GPU rendering overhead.
-- **Theme Preservation**: Retain preferred light or dark themes without forced system-wide inversions during power optimization.
+- **Remove Control Center Blur**: Remove real-time background Gaussian blur on HyperOS / MIUI Control Center to eliminate GPU overhead and save battery (`disable_window_blurs 1`).
+- **Theme Preservation & Monet**: Retain preferred light or dark themes and Monet wallpaper palette integration with Material 3.0.
 - **Sensor & Radio Power Management**: Throttle unnecessary background Bluetooth and Wi-Fi scanning during standby.
 - **Modern Radio Optimization**: Intelligent 5G SA and NSA modem sleep when high data bandwidth is not needed.
 
@@ -62,7 +61,7 @@
 ### 🎯 Profiles & Live Execution Logs
 - **Instant Profile Switcher**: One-tap switching between **Powersave**, **Balanced**, **Performance**, and **Custom** presets.
 - **Master Optimization Switch**: Instantly toggle all optimization engines in memory without altering baseline configurations.
-- **Live Terminal Inspector**: Real-time live log stream with category filters (System, CPU, Tweaks, Power), keyword search, pause mode, and one-tap clipboard export.
+- **Live Execution Inspector**: Real-time unified live tweak execution card on Dashboard with exact tweak names, applied values, execution status, and timestamps.
 - **Stock Settings Restore**: Safe one-tap revert to original system defaults at any time.
 
 ---

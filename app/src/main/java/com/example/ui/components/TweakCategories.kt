@@ -12,7 +12,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
+import com.example.ui.theme.isAppDark
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AcUnit
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.BlurOff
 import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DashboardCustomize
@@ -226,21 +227,24 @@ fun HyperOsModeBanner(
     onToggle: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = isAppDark()
 
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isEnabled) MiuiOrange.copy(alpha = if (isDark) 0.12f else 0.08f)
-            else MaterialTheme.colorScheme.surface
+            containerColor = if (isEnabled) {
+                if (isDark) Color(0xFF261D18) else Color(0xFFFFF7F0)
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
         ),
         border = androidx.compose.foundation.BorderStroke(
-            width = 1.dp,
-            color = if (isEnabled) MiuiOrange.copy(alpha = 0.5f)
-            else if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
+            width = if (isEnabled) 1.5.dp else 1.dp,
+            color = if (isEnabled) MiuiOrange
+            else if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else Color(0xFFD6DCE6)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 2.5.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 4.dp)
     ) {
         Row(
             modifier = Modifier
@@ -257,13 +261,16 @@ fun HyperOsModeBanner(
                     modifier = Modifier
                         .size(44.dp)
                         .clip(RoundedCornerShape(13.dp))
-                        .background(if (isEnabled) MiuiOrange.copy(alpha = 0.2f) else MiuiGreen.copy(alpha = 0.15f)),
+                        .background(
+                            if (isEnabled) MiuiOrange.copy(alpha = 0.16f)
+                            else if (isDark) Color(0xFF222630) else Color(0xFFEFF2F7)
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = if (isEnabled) Icons.Default.ElectricBolt else Icons.Default.EnergySavingsLeaf,
                         contentDescription = "HyperOS Mode",
-                        tint = if (isEnabled) MiuiOrange else MiuiGreen,
+                        tint = if (isEnabled) MiuiOrange else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(22.dp)
                     )
                 }
@@ -275,7 +282,7 @@ fun HyperOsModeBanner(
                     ) {
                         Text(
                             text = "MIUI / HyperOS Mode",
-                            fontSize = 14.sp,
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
@@ -285,8 +292,8 @@ fun HyperOsModeBanner(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(
-                                    if (isEnabled) MiuiOrange.copy(alpha = 0.18f)
-                                    else MaterialTheme.colorScheme.surfaceVariant
+                                    if (isEnabled) MiuiOrange.copy(alpha = 0.14f)
+                                    else if (isDark) Color(0xFF222630) else Color(0xFFEFF2F7)
                                 )
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
@@ -313,7 +320,9 @@ fun HyperOsModeBanner(
                 onCheckedChange = onToggle,
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = Color.White,
-                    checkedTrackColor = MiuiOrange
+                    checkedTrackColor = MiuiOrange,
+                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
                 )
             )
         }
@@ -329,15 +338,6 @@ private fun BalanceTweakList(
     onUpdateTweak: (String, Boolean) -> Unit,
     onOpenWhitelistDialog: () -> Unit
 ) {
-    Text(
-        text = "BALANCE KERNEL OPTIMIZATIONS",
-        fontSize = 12.sp,
-        fontWeight = FontWeight.Bold,
-        color = MiuiCyan,
-        letterSpacing = 1.sp,
-        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp, start = 4.dp)
-    )
-
     // 1. CPU & Energy Scaling
     TweakCategoryGroup(
         title = "CPU Energy Scaling & Clocks",
@@ -646,15 +646,6 @@ private fun PowersaveTweakList(
     onUpdateCoreTopology: (Int, Int) -> Unit,
     onSelectRefreshRate: (Int) -> Unit
 ) {
-    Text(
-        text = "POWERSAVE KERNEL CONTROLS",
-        fontSize = 12.sp,
-        fontWeight = FontWeight.Bold,
-        color = MiuiGreen,
-        letterSpacing = 1.sp,
-        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp, start = 4.dp)
-    )
-
     // 1. CPU Frequency & Clocks
     TweakCategoryGroup(
         title = "CPU Clocks & Governors",
@@ -932,9 +923,9 @@ private fun PowersaveTweakList(
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
         TweakItem(
-            title = "Control Center Blur",
-            description = "Enables real-time background blur for HyperOS / MIUI Control Center & shade (disable_window_blurs 0). Disable to save GPU battery drain.",
-            icon = Icons.Default.BlurOn,
+            title = "Remove Control Center Blur",
+            description = "Removes background window blur in HyperOS / MIUI Control Center & shade (disable_window_blurs = 1) to eliminate GPU overhead and save battery.",
+            icon = Icons.Default.BlurOff,
             iconColor = MiuiPurple,
             isChecked = config.controlCenterBlurEnabled,
             onCheckedChange = { onUpdateTweak("controlCenterBlur", it) }
@@ -1007,15 +998,6 @@ private fun HyperOsPowersaveTweakList(
     onSelectRefreshRate: (Int) -> Unit,
     onOpenAppPicker: () -> Unit
 ) {
-    Text(
-        text = "HYPEROS / MIUI SUPER POWER SUITE",
-        fontSize = 12.sp,
-        fontWeight = FontWeight.Bold,
-        color = MiuiOrange,
-        letterSpacing = 1.sp,
-        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp, start = 4.dp)
-    )
-
     val userAllowedList = remember(config.backgroundAllowedApps) {
         config.backgroundAllowedApps.split(",").map { it.trim() }.filter { it.isNotEmpty() }
     }
@@ -1034,9 +1016,9 @@ private fun HyperOsPowersaveTweakList(
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 16.dp))
         TweakItem(
-            title = "Control Center Blur",
-            description = "Enables real-time background blur for HyperOS Control Center & notification shade (disable_window_blurs 0). Disable to save GPU resources.",
-            icon = Icons.Default.BlurOn,
+            title = "Remove Control Center Blur",
+            description = "Removes background window blur in HyperOS Control Center & notification shade (disable_window_blurs = 1) to eliminate GPU overhead and save battery.",
+            icon = Icons.Default.BlurOff,
             iconColor = MiuiPurple,
             isChecked = config.controlCenterBlurEnabled,
             onCheckedChange = { onUpdateTweak("controlCenterBlur", it) }
@@ -1243,7 +1225,7 @@ private fun PerformanceTweakList(
     onUpdateTweak: (String, Boolean) -> Unit,
     onSelectSubMode: (String) -> Unit
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = isAppDark()
     val activeSubMode = config.performanceSubMode.uppercase()
     val isUltra = activeSubMode == "ULTRA"
     val isHeavy = activeSubMode == "HEAVY"
@@ -1255,15 +1237,6 @@ private fun PerformanceTweakList(
         else -> if (isDark) MiuiGreen else MiuiGreenDark
     }
 
-    Text(
-        text = "PERFORMANCE OPTIMIZATION TIER",
-        fontSize = 12.sp,
-        fontWeight = FontWeight.Bold,
-        color = subModeColor,
-        letterSpacing = 1.sp,
-        modifier = Modifier.padding(top = 10.dp, bottom = 4.dp, start = 4.dp)
-    )
-
     // Sub-Mode Segmented Selector (Lite, Heavy, Ultra)
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1273,9 +1246,9 @@ private fun PerformanceTweakList(
         ),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
+            if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else Color(0xFFD6DCE6)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 4.dp)
     ) {
         Row(
             modifier = Modifier
@@ -1320,13 +1293,13 @@ private fun PerformanceTweakList(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isDark) subModeColor.copy(alpha = 0.08f) else Color(0xFFF6F8FC)
+            containerColor = if (isDark) subModeColor.copy(alpha = 0.12f) else Color(0xFFF6F8FC)
         ),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            if (isDark) subModeColor.copy(alpha = 0.25f) else MaterialTheme.colorScheme.outline
+            if (isDark) subModeColor.copy(alpha = 0.35f) else Color(0xFFD6DCE6)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 1.5.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 4.dp)
     ) {
         Row(
             modifier = Modifier
@@ -1587,19 +1560,19 @@ private fun TweakCategoryGroup(
         label = "ArrowRotation"
     )
 
-    val isDark = isSystemInDarkTheme()
+    val isDark = isAppDark()
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
+            if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else Color(0xFFD6DCE6)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 2.5.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 4.dp)
     ) {
         Column {
             Row(
@@ -1677,7 +1650,7 @@ fun RefreshRateCard(
     onSelectHz: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = isAppDark()
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -1687,9 +1660,9 @@ fun RefreshRateCard(
         ),
         border = androidx.compose.foundation.BorderStroke(
             width = 1.dp,
-            color = if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
+            color = if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else Color(0xFFD6DCE6)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 4.dp)
     ) {
         Column(
             modifier = Modifier
@@ -1749,13 +1722,13 @@ fun RefreshRateCard(
                             .clip(RoundedCornerShape(12.dp))
                             .background(
                                 if (isSelected) MiuiAmber.copy(alpha = if (isDark) 0.22f else 0.16f)
-                                else if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                                else Color(0xFFF3F5FA)
+                                else if (isDark) Color(0xFF1E2330)
+                                else Color(0xFFF2F5FA)
                             )
                             .border(
                                 width = 1.dp,
                                 color = if (isSelected) MiuiAmber
-                                        else if (isDark) Color.Transparent else Color(0xFFDFE4ED),
+                                        else if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.35f) else Color(0xFFDFE4ED),
                                 shape = RoundedCornerShape(12.dp)
                             )
                             .clickable { onSelectHz(hz) }

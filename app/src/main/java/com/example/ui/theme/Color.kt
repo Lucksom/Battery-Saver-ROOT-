@@ -3,20 +3,20 @@ package com.example.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // MIUIX Light Palette (High-contrast, clean elevation against crisp white cards)
-val MiuiLightBackground = Color(0xFFEFF2F6)
+val MiuiLightBackground = Color(0xFFF0F3F7)
 val MiuiLightSurface = Color(0xFFFFFFFF)
-val MiuiLightSurfaceVariant = Color(0xFFE2E7F0)
+val MiuiLightSurfaceVariant = Color(0xFFE5EAF2)
 val MiuiLightOnSurface = Color(0xFF14171F)
 val MiuiLightOnSurfaceVariant = Color(0xFF5A6372)
-val MiuiLightOutline = Color(0xFFCCD4E2)
+val MiuiLightOutline = Color(0xFFD3DAE6)
 
-// MIUIX Dark Palette
-val MiuiDarkBackground = Color(0xFF0C0E12)
-val MiuiDarkSurface = Color(0xFF15181F)
-val MiuiDarkSurfaceVariant = Color(0xFF1F232B)
+// MIUIX Dark Palette (Deep obsidian background + elevated slate cards with distinct contrast)
+val MiuiDarkBackground = Color(0xFF0C0E14)
+val MiuiDarkSurface = Color(0xFF181C26)
+val MiuiDarkSurfaceVariant = Color(0xFF222735)
 val MiuiDarkOnSurface = Color(0xFFF0F3F8)
 val MiuiDarkOnSurfaceVariant = Color(0xFF9DA4B0)
-val MiuiDarkOutline = Color(0xFF282C37)
+val MiuiDarkOutline = Color(0xFF2E3444)
 
 // Dynamic Accents
 val MiuiGreen = Color(0xFF00E676)

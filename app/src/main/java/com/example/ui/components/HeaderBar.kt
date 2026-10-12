@@ -3,7 +3,6 @@ package com.example.ui.components
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.theme.MiuiAmber
 import com.example.ui.theme.MiuiGreen
 import com.example.ui.theme.MiuiGreenDark
+import com.example.ui.theme.isAppDark
 
 @Composable
 fun HeaderBar(
@@ -44,7 +44,7 @@ fun HeaderBar(
     onRevertStock: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = isAppDark()
     val badgeGreen = if (isDark) MiuiGreen else MiuiGreenDark
     val badgeColor = if (isRootGranted) badgeGreen else MiuiAmber
 

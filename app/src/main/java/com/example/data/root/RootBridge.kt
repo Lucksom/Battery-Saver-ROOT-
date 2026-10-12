@@ -3,6 +3,8 @@ package com.example.data.root
 import android.content.Context
 import android.os.BatteryManager
 import com.example.data.db.TweakConfigEntity
+import com.example.data.log.LogCategory
+import com.example.data.log.LogRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
@@ -1038,21 +1040,21 @@ object RootBridge {
             }
         }
 
-        // Control Center Blur (Window Blurs)
+        // Remove Control Center Blur (Window Blurs) - Blur is on by default in HyperOS; toggle removes blur to save GPU power
         if (config.controlCenterBlurEnabled) {
-            commands.append("""
-                settings put global disable_window_blurs 0 2>/dev/null
-                settings put system disable_window_blurs 0 2>/dev/null
-                settings put secure disable_window_blurs 0 2>/dev/null
-            """.trimIndent()).append("\n")
-            logs.add("Control Center Blur enabled (disable_window_blurs 0)")
-        } else {
             commands.append("""
                 settings put global disable_window_blurs 1 2>/dev/null
                 settings put system disable_window_blurs 1 2>/dev/null
                 settings put secure disable_window_blurs 1 2>/dev/null
             """.trimIndent()).append("\n")
-            logs.add("Control Center Blur disabled for battery saving (disable_window_blurs 1)")
+            logs.add("Control Center Blur removed for GPU battery saving (disable_window_blurs 1)")
+        } else {
+            commands.append("""
+                settings put global disable_window_blurs 0 2>/dev/null
+                settings put system disable_window_blurs 0 2>/dev/null
+                settings put secure disable_window_blurs 0 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("Control Center Blur restored (disable_window_blurs 0)")
         }
 
         // 16. Deep Sleep App Exception Whitelist (Apps exempted from doze restrictions)
@@ -1526,15 +1528,17 @@ object RootBridge {
             logs.add("Xiaomi Touch Boost & RefreshRateSelector touch boost disabled")
         }
 
-        // Xiaomi THP Touch Host Processing Doze Mode
+        // Xiaomi THP Touch Host Processing Doze Mode & Power Save
         if (config.touchDozeModeEnabled) {
             commands.append("""
                 for thp in /sys/class/touch/touch_dev/thp_doze_mode /sys/class/touch/touch_dev/doze_mode /proc/touchpanel/doze_mode /sys/touchpanel/doze_mode /sys/devices/virtual/touch/touch_dev/touch_doze; do
                     [ -e "${'$'}thp" ] && echo 1 > "${'$'}thp" 2>/dev/null
                 done
+                # TouchFeature mode 34 value 2 (from HyperOS logcat: AIDL TouchFeatureImpl mode:34 value:2)
+                service call miui.touch.feature.ITouchFeature 1 i32 0 i32 34 i32 2 2>/dev/null
                 setprop persist.sys.touch.doze 1 2>/dev/null
             """.trimIndent()).append("\n")
-            logs.add("Xiaomi THP Touch Doze Mode active (thp_set_doze_mode_func from logs)")
+            logs.add("Xiaomi THP Touch Doze Mode active (TouchFeature mode 34 value 2)")
         }
 
         // Background BLE & Wi-Fi Scanning (from NearbyDiscovery & BluetoothAdapter logs)
@@ -1664,14 +1668,35 @@ object RootBridge {
                 settings put secure POWER_SAVE_MODE_OPEN 1 2>/dev/null
                 settings put system POWER_SAVE_MODE_OPEN 1 2>/dev/null
                 settings put global POWER_SAVE_MODE_OPEN 1 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:3 2>/dev/null
                 content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:1 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:3 2>/dev/null
                 content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:1 2>/dev/null
                 content insert --uri content://com.miui.powercenter.powersaver/status --bind status:i:1 2>/dev/null
                 am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state true 2>/dev/null
                 am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
                 setprop persist.vendor.radio.5g_power_save 1 2>/dev/null
                 setprop persist.radio.power_saving 1 2>/dev/null
+
+                # HyperOS Master Account Sync Disable (prevents background network wakeups)
+                settings put global master_sync_automatically 0 2>/dev/null
+                settings put secure master_sync_automatically 0 2>/dev/null
+
+                # HyperOS Location Throttle (FOREGROUND_ONLY mode)
+                settings put global location_mode 3 2>/dev/null
+                settings put global location_background_throttle_interval_ms 300000 2>/dev/null
+
+                # HyperOS Audio HAL Power Save (Audio_Power_Save_Mode=1, Audio_Power_Save_Level=1)
+                service call audio 100 s16 "Audio_Power_Save_Mode=1;Audio_Power_Save_Level=1" 2>/dev/null
+                setprop vendor.audio.power_save 1 2>/dev/null
+                setprop persist.vendor.audio.power_save 1 2>/dev/null
+
+                # HyperOS Wi-Fi Antenna Power Save (setWifiAntHalfStatus: true, SISO antenna)
+                setprop persist.vendor.wifi.powersave 1 2>/dev/null
+                setprop persist.sys.wifi_half_ant 1 2>/dev/null
+                settings put global wifi_power_save 1 2>/dev/null
             """.trimIndent()).append("\n")
+            logs.add("HyperOS: Power mode 3 active, Master Sync suspended, Location throttled to foreground, Audio HAL & Wi-Fi antenna power saving engaged")
 
             if (config.systemDarkModeEnabled) {
                 commands.append("""
@@ -1698,21 +1723,21 @@ object RootBridge {
             }
         }
 
-        // 8. Control Center Blur (Window Blurs)
+        // 8. Control Center Blur (Window Blurs) - Toggle removes blur to eliminate GPU rendering load
         if (config.controlCenterBlurEnabled) {
-            commands.append("""
-                settings put global disable_window_blurs 0 2>/dev/null
-                settings put system disable_window_blurs 0 2>/dev/null
-                settings put secure disable_window_blurs 0 2>/dev/null
-            """.trimIndent()).append("\n")
-            logs.add("HyperOS Control Center Blur enabled (disable_window_blurs 0)")
-        } else {
             commands.append("""
                 settings put global disable_window_blurs 1 2>/dev/null
                 settings put system disable_window_blurs 1 2>/dev/null
                 settings put secure disable_window_blurs 1 2>/dev/null
             """.trimIndent()).append("\n")
-            logs.add("HyperOS Control Center Blur disabled for battery saving (disable_window_blurs 1)")
+            logs.add("HyperOS Control Center Blur removed for battery saving (disable_window_blurs 1)")
+        } else {
+            commands.append("""
+                settings put global disable_window_blurs 0 2>/dev/null
+                settings put system disable_window_blurs 0 2>/dev/null
+                settings put secure disable_window_blurs 0 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("HyperOS Control Center Blur restored to stock (disable_window_blurs 0)")
         }
 
         val execResult = execute(commands.toString())
@@ -1879,20 +1904,30 @@ object RootBridge {
     }
 
     suspend fun setControlCenterBlur(enabled: Boolean): Boolean = withContext(Dispatchers.IO) {
-        val cmd = if (enabled) {
-            """
-                settings put global disable_window_blurs 0 2>/dev/null
-                settings put system disable_window_blurs 0 2>/dev/null
-                settings put secure disable_window_blurs 0 2>/dev/null
-            """.trimIndent()
-        } else {
+        val removeBlur = enabled
+        val cmd = if (removeBlur) {
             """
                 settings put global disable_window_blurs 1 2>/dev/null
                 settings put system disable_window_blurs 1 2>/dev/null
                 settings put secure disable_window_blurs 1 2>/dev/null
             """.trimIndent()
+        } else {
+            """
+                settings put global disable_window_blurs 0 2>/dev/null
+                settings put system disable_window_blurs 0 2>/dev/null
+                settings put secure disable_window_blurs 0 2>/dev/null
+            """.trimIndent()
         }
-        execute(cmd).success
+        val result = execute(cmd)
+        LogRepository.addLog(
+            category = LogCategory.TWEAK,
+            message = if (removeBlur) "Control Center Blur removed (disable_window_blurs 1)" else "Control Center Blur restored (disable_window_blurs 0)",
+            command = cmd,
+            paramName = "disable_window_blurs",
+            paramValue = if (removeBlur) "1 (Removed Blur)" else "0 (Stock Blur)",
+            isSuccess = result.success
+        )
+        result.success
     }
 
     private fun getBatteryCapacity(context: Context): Int {

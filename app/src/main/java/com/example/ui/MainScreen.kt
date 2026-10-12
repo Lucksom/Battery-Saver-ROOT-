@@ -38,8 +38,6 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.components.BackupStatusBanner
 import com.example.ui.components.DashboardView
 import com.example.ui.components.HeaderBar
-import com.example.ui.components.LogsScreen
-import com.example.ui.components.ProfileView
 import com.example.ui.components.TweakCategories
 import com.example.ui.components.VoltPowerBottomBar
 import com.example.ui.components.VoltPowerTab
@@ -127,7 +125,10 @@ fun MainScreen(
                                 config = config,
                                 recentLogs = logs,
                                 onSelectProfile = { viewModel.onSelectProfile(it) },
-                                onNavigateToLogs = { currentTab = VoltPowerTab.LOGS }
+                                onToggleMaster = { viewModel.onToggleMaster(it) },
+                                onRevertStock = { viewModel.onRevertToStock() },
+                                onSelectPerformanceSubMode = { viewModel.onSelectPerformanceSubMode(it) },
+                                onClearLogs = { viewModel.onClearLogs() }
                             )
 
                             Box(
@@ -190,25 +191,6 @@ fun MainScreen(
                                 Spacer(modifier = Modifier.height(28.dp))
                             }
                         }
-                    }
-
-                    VoltPowerTab.PROFILE -> {
-                        ProfileView(
-                            config = config,
-                            telemetry = telemetry,
-                            cpuFreqHistory = cpuFreqHistory,
-                            onSelectProfile = { viewModel.onSelectProfile(it) },
-                            onToggleMaster = { viewModel.onToggleMaster(it) },
-                            onSelectPerformanceSubMode = { viewModel.onSelectPerformanceSubMode(it) },
-                            onRevertStock = { viewModel.onRevertToStock() }
-                        )
-                    }
-
-                    VoltPowerTab.LOGS -> {
-                        LogsScreen(
-                            logs = logs,
-                            onClearLogs = { viewModel.onClearLogs() }
-                        )
                     }
                 }
             }
