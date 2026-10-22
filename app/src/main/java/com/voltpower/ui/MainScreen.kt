@@ -1876,11 +1876,35 @@ private fun ExpressiveBentoSection(telemetry: DeviceTelemetry) {
     val roles = LocalMonetRoles.current
     val hasRoot = telemetry.isRootGranted
 
-    val gpuMhz = if (hasRoot) {
+    val gpuMhz = if (telemetry.gpuFreqMhz > 0) {
+        telemetry.gpuFreqMhz.toString()
+    } else if (hasRoot) {
         Regex("(\\d+)\\s*MHz", RegexOption.IGNORE_CASE)
-            .find(telemetry.gpuFreqInfo)?.groupValues?.getOrNull(1) ?: "315"
+            .find(telemetry.gpuFreqInfo)?.groupValues?.getOrNull(1)
+            ?.takeIf { it != "0" } ?: "—"
     } else {
         "—"
+    }
+
+    val storageUsedStr = if (telemetry.storageTotalGb > 0f) {
+        if (telemetry.storageUsedGb >= 100f) {
+            String.format(Locale.US, "%.0f", telemetry.storageUsedGb)
+        } else {
+            String.format(Locale.US, "%.1f", telemetry.storageUsedGb)
+        }
+    } else {
+        "—"
+    }
+
+    val storageTotalStr = if (telemetry.storageTotalGb > 0f) {
+        val roundedTotal = telemetry.storageTotalGb.roundToInt()
+        if (abs(telemetry.storageTotalGb - roundedTotal) < 0.15f || telemetry.storageTotalGb >= 32f) {
+            "/$roundedTotal GB"
+        } else {
+            String.format(Locale.US, "/%.1f GB", telemetry.storageTotalGb)
+        }
+    } else {
+        " GB"
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -2062,7 +2086,7 @@ private fun ExpressiveBentoSection(telemetry: DeviceTelemetry) {
             }
         }
 
-        // Row 1 of 2x2 Bento: GPU (.b.p) + ZRAM (.b.t)
+        // Row 1 of 2x2 Bento: GPU (.b.p) + STORAGE (.b.t)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -2116,7 +2140,7 @@ private fun ExpressiveBentoSection(telemetry: DeviceTelemetry) {
                         )
                     }
                     Text(
-                        text = "Adreno · pwrlevel 6",
+                        text = telemetry.gpuSubtitle,
                         fontFamily = PlusJakartaSansFontFamily,
                         fontWeight = FontWeight.Medium,
                         fontSize = 11.5.sp,
@@ -2126,7 +2150,7 @@ private fun ExpressiveBentoSection(telemetry: DeviceTelemetry) {
                 }
             }
 
-            // ZRAM Card (.b.t)
+            // STORAGE Card (.b.t) — Replaces ZRAM, shows Used / Total Storage
             Surface(
                 shape = RoundedCornerShape(32.dp),
                 color = roles.tc,
@@ -2140,7 +2164,7 @@ private fun ExpressiveBentoSection(telemetry: DeviceTelemetry) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "ZRAM",
+                            text = "STORAGE",
                             fontFamily = JetBrainsMonoFontFamily,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 10.5.sp,
@@ -2148,7 +2172,7 @@ private fun ExpressiveBentoSection(telemetry: DeviceTelemetry) {
                             color = roles.onTc.copy(alpha = 0.7f)
                         )
                         Icon(
-                            imageVector = Icons.Filled.Memory,
+                            imageVector = Icons.Filled.Storage,
                             contentDescription = null,
                             tint = roles.onTc.copy(alpha = 0.6f),
                             modifier = Modifier.size(22.dp)
@@ -2159,14 +2183,14 @@ private fun ExpressiveBentoSection(telemetry: DeviceTelemetry) {
                         modifier = Modifier.padding(top = 14.dp)
                     ) {
                         Text(
-                            text = "2.1",
+                            text = storageUsedStr,
                             fontFamily = SpaceGroteskFontFamily,
                             fontWeight = FontWeight.Bold,
                             fontSize = 30.sp,
                             letterSpacing = (-1.2).sp
                         )
                         Text(
-                            text = "/4 GB",
+                            text = storageTotalStr,
                             fontFamily = SpaceGroteskFontFamily,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
@@ -2175,7 +2199,7 @@ private fun ExpressiveBentoSection(telemetry: DeviceTelemetry) {
                         )
                     }
                     Text(
-                        text = "52% used",
+                        text = "${telemetry.storageUsedPercent}% used",
                         fontFamily = PlusJakartaSansFontFamily,
                         fontWeight = FontWeight.Medium,
                         fontSize = 11.5.sp,
@@ -2755,6 +2779,15 @@ private fun ExpressiveTweaksPage(
                 isChecked = { it.controlCenterBlurEnabled }
             ),
             TweakItemSpec(
+                key = "batterySaverNoDark",
+                category = TweakCategoryFilter.BAT,
+                title = "Enable system battery saver",
+                subtitle = "Activate Android & HyperOS low power mode",
+                sysfsCode = "",
+                icon = Icons.Filled.Eco,
+                isChecked = { it.systemBatterySaverWithoutDarkEnabled }
+            ),
+            TweakItemSpec(
                 key = "systemDarkMode",
                 category = TweakCategoryFilter.BAT,
                 title = "Force AMOLED dark mode",
@@ -2762,15 +2795,6 @@ private fun ExpressiveTweaksPage(
                 sysfsCode = "",
                 icon = Icons.Filled.DarkMode,
                 isChecked = { it.systemDarkModeEnabled }
-            ),
-            TweakItemSpec(
-                key = "batterySaverNoDark",
-                category = TweakCategoryFilter.BAT,
-                title = "Preserve light mode in battery saver",
-                subtitle = "Keep light theme active when battery saver turns on",
-                sysfsCode = "",
-                icon = Icons.Filled.LightMode,
-                isChecked = { it.systemBatterySaverWithoutDarkEnabled }
             )
         )
     }

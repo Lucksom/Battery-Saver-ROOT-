@@ -459,7 +459,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             "backgroundScanning" -> if (enabled) "Disable Wi-Fi & BLE background scan" else "Background scan restored"
             "touchDozeMode" -> if (enabled) "Xiaomi THP touch doze mode enabled" else "Xiaomi THP touch doze mode disabled"
             "systemBatterySaver" -> if (enabled) "HyperOS PowerKeeper SuperSave enabled" else "HyperOS PowerKeeper SuperSave disabled"
-            "batterySaverNoDark" -> if (enabled) "Preserve light mode in battery saver" else "Battery saver dark mode default"
+            "batterySaverNoDark" -> if (enabled) "Android & HyperOS system battery saver enabled" else "Android & HyperOS system battery saver disabled"
             "systemDarkMode" -> if (enabled) "Force AMOLED dark mode enabled" else "Force AMOLED dark mode disabled"
             "controlCenterBlur" -> if (enabled) "Remove Control Center blur" else "Control Center blur restored"
             "lock60Hz" -> if (enabled) "Refresh rate set 60Hz" else "Refresh rate set Auto"
@@ -513,7 +513,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 "powerEfficientWorkqueue" -> current.copy(powerEfficientWorkqueueEnabled = enabled)
                 "backgroundScanning" -> current.copy(backgroundScanningDisabled = enabled)
                 "touchDozeMode" -> current.copy(touchDozeModeEnabled = enabled)
-                "batterySaverNoDark" -> current.copy(systemBatterySaverWithoutDarkEnabled = enabled)
+                "batterySaverNoDark" -> {
+                    if (_telemetry.value.isRootGranted) {
+                        RootBridge.setSystemBatterySaver(enabled)
+                    }
+                    current.copy(systemBatterySaverWithoutDarkEnabled = enabled)
+                }
                 "hyperOsAodDisabled" -> current.copy(hyperOsAodDisabled = enabled)
                 "hyperOsAurogonFreezer" -> current.copy(hyperOsAurogonFreezerEnabled = enabled)
                 "hyperOsSuperPowerClean" -> current.copy(hyperOsSuperPowerCleanEnabled = enabled)
@@ -589,7 +594,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     hyperOsLock60HzEnabled = enabled,
                     refreshRateHz = if (enabled) 60 else 0,
                     controlCenterBlurEnabled = enabled,
-                    systemBatterySaverEnabled = enabled
+                    systemBatterySaverEnabled = enabled,
+                    systemBatterySaverWithoutDarkEnabled = enabled
                 )
                 else -> current
             }
@@ -624,7 +630,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 hyperOsLock60HzEnabled = enabled,
                 refreshRateHz = if (enabled) 60 else 0,
                 controlCenterBlurEnabled = enabled,
-                systemBatterySaverEnabled = enabled
+                systemBatterySaverEnabled = enabled,
+                systemBatterySaverWithoutDarkEnabled = enabled
             )
             dao.update(updated)
             val logMsg = if (enabled) {

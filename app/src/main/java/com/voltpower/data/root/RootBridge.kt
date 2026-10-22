@@ -124,7 +124,18 @@ object RootBridge {
         val governor: String
     )
 
-    suspend fun readOctaCoreSysfsBatch(): List<CoreSysfsSnapshot>? = withContext(Dispatchers.IO) {
+    data class HardwareSysfsBatch(
+        val cores: List<CoreSysfsSnapshot>,
+        val gpuFreqRaw: String,
+        val gpuBusyRaw: String,
+        val gpuPwrLevelRaw: String,
+        val gpuModelOrGovRaw: String,
+        val batDesignRaw: String,
+        val batFullRaw: String,
+        val batCounterRaw: String
+    )
+
+    suspend fun readHardwareSysfsBatch(): HardwareSysfsBatch? = withContext(Dispatchers.IO) {
         if (cachedRootStatus != true) return@withContext null
         val script = buildString {
             for (i in 0..7) {
@@ -132,23 +143,118 @@ object RootBridge {
                 append("c=\$(cat /sys/devices/system/cpu/cpu$i/cpufreq/scaling_cur_freq 2>/dev/null || cat /sys/devices/system/cpu/cpu$i/cpufreq/cpuinfo_cur_freq 2>/dev/null || echo 0); ")
                 append("m=\$(cat /sys/devices/system/cpu/cpu$i/cpufreq/cpuinfo_max_freq 2>/dev/null || cat /sys/devices/system/cpu/cpu$i/cpufreq/scaling_max_freq 2>/dev/null || echo 0); ")
                 append("g=\$(cat /sys/devices/system/cpu/cpu$i/cpufreq/scaling_governor 2>/dev/null || echo schedutil); ")
-                append("echo \"$i|\$o|\$c|\$m|\$g\"; ")
+                append("echo \"CORE|$i|\$o|\$c|\$m|\$g\"; ")
             }
+            append(
+                "gf=\$(cat /sys/class/kgsl/kgsl-3d0/gpuclk 2>/dev/null || " +
+                    "cat /sys/class/kgsl/kgsl-3d0/devfreq/cur_freq 2>/dev/null || " +
+                    "cat /sys/class/kgsl/kgsl-3d0/clock_mhz 2>/dev/null || " +
+                    "cat /sys/kernel/gpu/gpu_clock 2>/dev/null || " +
+                    "cat /sys/class/devfreq/*gpu*/cur_freq 2>/dev/null | head -n 1 || " +
+                    "cat /sys/class/devfreq/*.mali/cur_freq 2>/dev/null | head -n 1 || " +
+                    "cat /sys/devices/platform/*.gpu/devfreq/*/cur_freq 2>/dev/null | head -n 1 || " +
+                    "cat /sys/devices/platform/ged/hal/current_freqency 2>/dev/null || " +
+                    "grep -m1 -oE 'freq = [0-9]+' /proc/gpufreqv2/gpufreq_status 2>/dev/null || " +
+                    "echo ''); "
+            )
+            append(
+                "gb=\$(cat /sys/class/kgsl/kgsl-3d0/gpu_busy_percentage 2>/dev/null || " +
+                    "cat /sys/kernel/gpu/gpu_busy 2>/dev/null || " +
+                    "cat /sys/class/kgsl/kgsl-3d0/gpubusy 2>/dev/null || " +
+                    "cat /sys/devices/platform/ged/hal/gpu_utilization 2>/dev/null || " +
+                    "cat /sys/class/devfreq/*gpu*/load 2>/dev/null | head -n 1 || " +
+                    "echo ''); "
+            )
+            append(
+                "gp=\$(cat /sys/class/kgsl/kgsl-3d0/min_pwrlevel 2>/dev/null || " +
+                    "cat /sys/class/kgsl/kgsl-3d0/default_pwrlevel 2>/dev/null || " +
+                    "echo ''); "
+            )
+            append(
+                "gm=\$(cat /sys/kernel/gpu/gpu_model 2>/dev/null || " +
+                    "cat /sys/class/kgsl/kgsl-3d0/gpu_model 2>/dev/null || " +
+                    "cat /sys/class/kgsl/kgsl-3d0/devfreq/governor 2>/dev/null || " +
+                    "cat /sys/class/devfreq/*gpu*/governor 2>/dev/null | head -n 1 || " +
+                    "echo ''); "
+            )
+            append("echo \"GPU|\$gf|\$gb|\$gp|\$gm\"; ")
+            append(
+                "bd=\$(cat /sys/class/power_supply/battery/charge_full_design 2>/dev/null || " +
+                    "cat /sys/class/power_supply/bms/charge_full_design 2>/dev/null || " +
+                    "cat /sys/class/power_supply/max170xx_battery/charge_full_design 2>/dev/null || " +
+                    "cat /sys/class/power_supply/battery/batt_full_capacity 2>/dev/null || " +
+                    "cat /sys/class/power_supply/battery/fg_fullcapnom 2>/dev/null || " +
+                    "echo ''); "
+            )
+            append(
+                "bf=\$(cat /sys/class/power_supply/battery/charge_full 2>/dev/null || " +
+                    "cat /sys/class/power_supply/bms/charge_full 2>/dev/null || " +
+                    "cat /sys/class/power_supply/max170xx_battery/charge_full 2>/dev/null || " +
+                    "echo ''); "
+            )
+            append(
+                "bc=\$(cat /sys/class/power_supply/battery/charge_counter 2>/dev/null || " +
+                    "cat /sys/class/power_supply/bms/charge_counter 2>/dev/null || " +
+                    "echo ''); "
+            )
+            append("echo \"BAT|\$bd|\$bf|\$bc\"; ")
         }
         val res = executeInternal(script, isSilent = true)
         if (!res.success || res.stdout.isBlank()) return@withContext null
-        val parsed = res.stdout.lines().mapNotNull { line ->
-            val parts = line.trim().split("|")
-            if (parts.size >= 5) {
-                val idx = parts[0].toIntOrNull() ?: return@mapNotNull null
-                val on = parts[1].trim() != "0"
-                val cur = parts[2].trim().toIntOrNull() ?: 0
-                val max = parts[3].trim().toIntOrNull() ?: 0
-                val gov = parts[4].trim().ifBlank { "schedutil" }
-                CoreSysfsSnapshot(idx, on, cur, max, gov)
-            } else null
+
+        val cores = mutableListOf<CoreSysfsSnapshot>()
+        var gpuFreqRaw = ""
+        var gpuBusyRaw = ""
+        var gpuPwrLevelRaw = ""
+        var gpuModelOrGovRaw = ""
+        var batDesignRaw = ""
+        var batFullRaw = ""
+        var batCounterRaw = ""
+
+        for (rawLine in res.stdout.lines()) {
+            val line = rawLine.trim()
+            when {
+                line.startsWith("CORE|") -> {
+                    val parts = line.split("|")
+                    if (parts.size >= 6) {
+                        val idx = parts[1].toIntOrNull() ?: continue
+                        val on = parts[2].trim() != "0"
+                        val cur = parts[3].trim().toIntOrNull() ?: 0
+                        val max = parts[4].trim().toIntOrNull() ?: 0
+                        val gov = parts[5].trim().ifBlank { "schedutil" }
+                        cores.add(CoreSysfsSnapshot(idx, on, cur, max, gov))
+                    }
+                }
+                line.startsWith("GPU|") -> {
+                    val parts = line.split("|")
+                    gpuFreqRaw = parts.getOrNull(1)?.trim().orEmpty()
+                    gpuBusyRaw = parts.getOrNull(2)?.trim().orEmpty()
+                    gpuPwrLevelRaw = parts.getOrNull(3)?.trim().orEmpty()
+                    gpuModelOrGovRaw = parts.getOrNull(4)?.trim().orEmpty()
+                }
+                line.startsWith("BAT|") -> {
+                    val parts = line.split("|")
+                    batDesignRaw = parts.getOrNull(1)?.trim().orEmpty()
+                    batFullRaw = parts.getOrNull(2)?.trim().orEmpty()
+                    batCounterRaw = parts.getOrNull(3)?.trim().orEmpty()
+                }
+            }
         }
-        if (parsed.size == 8) parsed else null
+
+        HardwareSysfsBatch(
+            cores = cores,
+            gpuFreqRaw = gpuFreqRaw,
+            gpuBusyRaw = gpuBusyRaw,
+            gpuPwrLevelRaw = gpuPwrLevelRaw,
+            gpuModelOrGovRaw = gpuModelOrGovRaw,
+            batDesignRaw = batDesignRaw,
+            batFullRaw = batFullRaw,
+            batCounterRaw = batCounterRaw
+        )
+    }
+
+    suspend fun readOctaCoreSysfsBatch(): List<CoreSysfsSnapshot>? = withContext(Dispatchers.IO) {
+        readHardwareSysfsBatch()?.cores?.takeIf { it.size == 8 }
     }
 
     suspend fun readNode(path: String): String? = withContext(Dispatchers.IO) {
@@ -929,16 +1035,6 @@ object RootBridge {
                     am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled true 2>/dev/null
                 """.trimIndent()).append("\n")
                 logs.add("System battery saver active with Dark Mode enabled (UiModeManager night mode 2)")
-            } else if (config.systemBatterySaverWithoutDarkEnabled) {
-                commands.append("""
-                    cmd uimode night no 2>/dev/null
-                    settings put secure ui_night_mode 1 2>/dev/null
-                    settings put system ui_night_mode 1 2>/dev/null
-                    settings put secure dark_mode_enable 0 2>/dev/null
-                    settings put system dark_mode_enable 0 2>/dev/null
-                    am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled false 2>/dev/null
-                """.trimIndent()).append("\n")
-                logs.add("System battery saver active (Light mode preserved / dark mode suppressed)")
             } else {
                 logs.add("System battery saver enabled (PowerSaverProvider active)")
             }
@@ -1771,15 +1867,6 @@ object RootBridge {
                     settings put secure dark_mode_enable 1 2>/dev/null
                     settings put system dark_mode_enable 1 2>/dev/null
                     am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled true 2>/dev/null
-                """.trimIndent()).append("\n")
-            } else if (config.systemBatterySaverWithoutDarkEnabled) {
-                commands.append("""
-                    cmd uimode night no 2>/dev/null
-                    settings put secure ui_night_mode 1 2>/dev/null
-                    settings put system ui_night_mode 1 2>/dev/null
-                    settings put secure dark_mode_enable 0 2>/dev/null
-                    settings put system dark_mode_enable 0 2>/dev/null
-                    am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled false 2>/dev/null
                 """.trimIndent()).append("\n")
             }
         }
