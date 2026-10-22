@@ -1,8 +1,9 @@
 package com.example.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -47,7 +48,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -55,8 +55,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.MiuiGreen
 import com.example.ui.theme.MiuiGreenDark
+import com.example.ui.theme.PlusJakartaSansFontFamily
+import com.example.ui.theme.SpaceGroteskFontFamily
 import com.example.ui.theme.isAppDark
 
 /**
@@ -76,11 +79,12 @@ fun SmallTitle(
             .padding(insideMargin)
     ) {
         Text(
-            text = text,
-            fontSize = 12.sp,
+            text = text.uppercase(),
+            fontFamily = SpaceGroteskFontFamily,
+            fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
             color = textColor,
-            letterSpacing = 0.8.sp
+            letterSpacing = 1.0.sp
         )
     }
 }
@@ -91,7 +95,7 @@ fun SmallTitle(
 @Composable
 fun MiuixCard(
     modifier: Modifier = Modifier,
-    cornerRadius: Dp = 22.dp,
+    cornerRadius: Dp = 24.dp,
     insideMargin: PaddingValues = PaddingValues(0.dp),
     colors: CardColors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     border: BorderStroke? = null,
@@ -101,7 +105,7 @@ fun MiuixCard(
     val isDark = isAppDark()
     val resolvedBorder = border ?: BorderStroke(
         1.dp,
-        if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else Color(0xFFD6DCE6)
+        if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.6f) else Color(0xFFD2DBE8)
     )
 
     Card(
@@ -129,16 +133,28 @@ fun SwitchPreference(
     modifier: Modifier = Modifier,
     summary: String? = null,
     enabled: Boolean = true,
+    accentColor: Color? = null,
     startAction: (@Composable () -> Unit)? = null,
     endActions: (@Composable () -> Unit)? = null
 ) {
     val isDark = isAppDark()
-    val greenColor = if (isDark) MiuiGreen else MiuiGreenDark
+    val defaultGreen = if (isDark) MiuiGreen else MiuiGreenDark
+    val activeTrack = accentColor ?: defaultGreen
     val interactionSource = remember { MutableInteractionSource() }
+
+    val rowBgColor by animateColorAsState(
+        targetValue = if (checked && enabled) {
+            activeTrack.copy(alpha = if (isDark) 0.05f else 0.035f)
+        } else {
+            Color.Transparent
+        },
+        label = "SwitchRowBg"
+    )
 
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .background(rowBgColor)
             .clickable(
                 interactionSource = interactionSource,
                 indication = ripple(),
@@ -146,7 +162,7 @@ fun SwitchPreference(
             ) {
                 onCheckedChange(!checked)
             }
-            .padding(horizontal = 16.dp, vertical = 13.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -156,25 +172,27 @@ fun SwitchPreference(
         ) {
             if (startAction != null) {
                 startAction()
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(14.dp))
             }
 
-            Column(modifier = Modifier.padding(end = 8.dp)) {
+            Column(modifier = Modifier.padding(end = 10.dp)) {
                 Text(
                     text = title,
+                    fontFamily = SpaceGroteskFontFamily,
                     fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Bold,
                     color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 if (!summary.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(3.dp))
                     Text(
                         text = summary,
-                        fontSize = 11.sp,
+                        fontFamily = PlusJakartaSansFontFamily,
+                        fontSize = 11.5.sp,
                         color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                        lineHeight = 14.sp
+                        lineHeight = 15.sp
                     )
                 }
             }
@@ -192,9 +210,11 @@ fun SwitchPreference(
                 enabled = enabled,
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = Color.White,
-                    checkedTrackColor = greenColor,
-                    uncheckedThumbColor = MaterialTheme.colorScheme.outline,
-                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                    checkedTrackColor = defaultGreen,
+                    checkedBorderColor = Color.Transparent,
+                    uncheckedThumbColor = if (isDark) Color(0xFF8E99AB) else Color(0xFF727E91),
+                    uncheckedTrackColor = if (isDark) Color(0xFF1F2637) else Color(0xFFE2E8F2),
+                    uncheckedBorderColor = Color.Transparent
                 )
             )
         }
@@ -236,25 +256,27 @@ fun ArrowPreference(
         ) {
             if (startAction != null) {
                 startAction()
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(14.dp))
             }
 
             Column(modifier = Modifier.padding(end = 8.dp)) {
                 Text(
                     text = title,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = SpaceGroteskFontFamily,
+                    fontSize = 14.5.sp,
+                    fontWeight = FontWeight.Bold,
                     color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 if (!summary.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(3.dp))
                     Text(
                         text = summary,
-                        fontSize = 11.sp,
+                        fontFamily = PlusJakartaSansFontFamily,
+                        fontSize = 11.5.sp,
                         color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                        lineHeight = 14.sp
+                        lineHeight = 15.sp
                     )
                 }
             }
@@ -306,13 +328,15 @@ fun SliderPreference(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
+                    fontFamily = SpaceGroteskFontFamily,
                     fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Bold,
                     color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
                 )
                 if (!summary.isNullOrBlank()) {
                     Text(
                         text = summary,
+                        fontFamily = PlusJakartaSansFontFamily,
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -320,12 +344,20 @@ fun SliderPreference(
             }
 
             if (valueDisplay != null) {
-                Text(
-                    text = valueDisplay,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = accentColor
-                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(accentColor.copy(alpha = 0.14f))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = valueDisplay,
+                        fontFamily = JetBrainsMonoFontFamily,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = accentColor
+                    )
+                }
             }
         }
 
@@ -367,8 +399,9 @@ fun MiuixTextButton(
     ) {
         Text(
             text = text,
-            fontSize = 15.sp,
-            fontWeight = if (isPrimary) FontWeight.Bold else FontWeight.Medium,
+            fontFamily = SpaceGroteskFontFamily,
+            fontSize = 14.sp,
+            fontWeight = if (isPrimary) FontWeight.Bold else FontWeight.SemiBold,
             color = if (enabled) textColor else textColor.copy(alpha = 0.4f)
         )
     }
@@ -399,15 +432,15 @@ fun OverlayDialog(
                 modifier = modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp),
-                shape = RoundedCornerShape(26.dp),
+                shape = RoundedCornerShape(28.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 ),
                 border = BorderStroke(
                     1.dp,
-                    if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else Color(0xFFD6DCE6)
+                    if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.6f) else Color(0xFFD2DBE8)
                 ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
             ) {
                 Column(
                     modifier = Modifier
@@ -416,7 +449,8 @@ fun OverlayDialog(
                 ) {
                     Text(
                         text = title,
-                        fontSize = 18.sp,
+                        fontFamily = SpaceGroteskFontFamily,
+                        fontSize = 19.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -425,6 +459,7 @@ fun OverlayDialog(
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = summary,
+                            fontFamily = PlusJakartaSansFontFamily,
                             fontSize = 13.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             lineHeight = 18.sp
@@ -456,7 +491,7 @@ fun OverlayBottomSheet(
         ModalBottomSheet(
             onDismissRequest = onDismissRequest,
             sheetState = sheetState,
-            shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
             containerColor = MaterialTheme.colorScheme.surface,
             dragHandle = {
                 Box(
@@ -476,6 +511,7 @@ fun OverlayBottomSheet(
             ) {
                 Text(
                     text = title,
+                    fontFamily = SpaceGroteskFontFamily,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -516,15 +552,17 @@ fun OverlayDropdownPreference(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = SpaceGroteskFontFamily,
+                    fontSize = 14.5.sp,
+                    fontWeight = FontWeight.Bold,
                     color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
                 )
                 if (!summary.isNullOrBlank()) {
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = summary,
-                        fontSize = 11.sp,
+                        fontFamily = PlusJakartaSansFontFamily,
+                        fontSize = 11.5.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -532,19 +570,30 @@ fun OverlayDropdownPreference(
 
             Box {
                 Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                        .border(
+                            1.dp,
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                            RoundedCornerShape(10.dp)
+                        )
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
                         text = items.getOrElse(selectedIndex) { "" },
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
+                        fontFamily = SpaceGroteskFontFamily,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
                     Icon(
                         imageVector = Icons.Default.ArrowDropDown,
                         contentDescription = "Expand dropdown",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
@@ -558,6 +607,7 @@ fun OverlayDropdownPreference(
                             text = {
                                 Text(
                                     text = item,
+                                    fontFamily = PlusJakartaSansFontFamily,
                                     fontWeight = if (index == selectedIndex) FontWeight.Bold else FontWeight.Normal,
                                     color = if (index == selectedIndex) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                 )
@@ -573,4 +623,3 @@ fun OverlayDropdownPreference(
         }
     }
 }
-

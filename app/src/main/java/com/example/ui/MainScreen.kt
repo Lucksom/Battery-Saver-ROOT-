@@ -43,6 +43,7 @@ import com.example.ui.components.HeaderBar
 import com.example.ui.components.TweakCategories
 import com.example.ui.components.VoltPowerBottomBar
 import com.example.ui.components.VoltPowerTab
+import com.example.ui.theme.JetBrainsMonoFontFamily
 
 @Composable
 fun MainScreen(
@@ -51,7 +52,6 @@ fun MainScreen(
 ) {
     val config by viewModel.configState.collectAsState()
     val telemetry by viewModel.telemetry.collectAsState()
-    val cpuFreqHistory by viewModel.cpuFreqHistory.collectAsState()
     val isBusy by viewModel.isBusy.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
     val installedApps by viewModel.installedApps.collectAsState()
@@ -84,6 +84,8 @@ fun MainScreen(
             HeaderBar(
                 isRootGranted = telemetry.isRootGranted,
                 themeMode = config.themeMode,
+                activeProfile = config.activeProfile,
+                isMasterApplied = config.isMasterApplied,
                 onCycleTheme = {
                     val next = when (config.themeMode) {
                         "SYSTEM" -> "DARK"
@@ -100,6 +102,7 @@ fun MainScreen(
         bottomBar = {
             VoltPowerBottomBar(
                 currentTab = currentTab,
+                activeProfile = config.activeProfile,
                 onTabSelected = { currentTab = it }
             )
         }
@@ -140,9 +143,11 @@ fun MainScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "VoltPower • 100% Volatile RAM Execution",
-                                    fontSize = 11.sp,
+                                    text = "VOLTPOWER • 100% VOLATILE RAM KERNEL EXECUTION",
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    fontSize = 10.sp,
                                     fontWeight = FontWeight.Medium,
+                                    letterSpacing = 0.6.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                                 )
                             }
@@ -186,6 +191,9 @@ fun MainScreen(
                                     },
                                     onSelectRefreshRate = { hz ->
                                         viewModel.onSelectRefreshRate(hz)
+                                    },
+                                    onSelectProfile = { profile ->
+                                        viewModel.onSelectProfile(profile)
                                     },
                                     installedApps = installedApps
                                 )

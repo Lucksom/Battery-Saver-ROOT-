@@ -76,6 +76,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -84,6 +85,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.apps.InstalledAppItem
 import com.example.data.db.TweakConfigEntity
+import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.MiuiAmber
 import com.example.ui.theme.MiuiBlue
 import com.example.ui.theme.MiuiCyan
@@ -92,6 +94,8 @@ import com.example.ui.theme.MiuiGreenDark
 import com.example.ui.theme.MiuiOrange
 import com.example.ui.theme.MiuiPurple
 import com.example.ui.theme.MiuiRed
+import com.example.ui.theme.PlusJakartaSansFontFamily
+import com.example.ui.theme.SpaceGroteskFontFamily
 import kotlin.math.roundToInt
 
 @Composable
@@ -104,6 +108,7 @@ fun TweakCategories(
     onToggleHyperOs: (Boolean) -> Unit = {},
     onSaveBackgroundAllowedApps: (Set<String>) -> Unit = {},
     onSelectRefreshRate: (Int) -> Unit = {},
+    onSelectProfile: (String) -> Unit = {},
     installedApps: List<InstalledAppItem> = emptyList(),
     modifier: Modifier = Modifier
 ) {
@@ -167,6 +172,12 @@ fun TweakCategories(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // Quick Profile Switcher Pill Bar for Tweaks Tab
+        TweaksProfileSwitcherCard(
+            activeProfile = config.activeProfile,
+            onSelectProfile = onSelectProfile
+        )
+
         when (config.activeProfile) {
             "BALANCE" -> {
                 BalanceTweakList(
@@ -210,6 +221,68 @@ fun TweakCategories(
     }
 }
 
+@Composable
+private fun TweaksProfileSwitcherCard(
+    activeProfile: String,
+    onSelectProfile: (String) -> Unit
+) {
+    val isDark = isAppDark()
+    val greenColor = if (isDark) MiuiGreen else MiuiGreenDark
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.55f) else Color(0xFFD2DBE8)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            listOf(
+                Triple("POWERSAVE", "Powersave", greenColor),
+                Triple("BALANCE", "Balance", MiuiBlue),
+                Triple("PERFORMANCE", "Performance", MiuiRed)
+            ).forEach { (key, label, accent) ->
+                val selected = activeProfile.equals(key, ignoreCase = true)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(
+                            if (selected) accent.copy(alpha = if (isDark) 0.22f else 0.14f)
+                            else Color.Transparent
+                        )
+                        .border(
+                            width = if (selected) 1.2.dp else 0.dp,
+                            color = if (selected) accent.copy(alpha = 0.65f) else Color.Transparent,
+                            shape = RoundedCornerShape(16.dp)
+                        )
+                        .clickable { onSelectProfile(key) }
+                        .padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label,
+                        fontFamily = SpaceGroteskFontFamily,
+                        fontSize = 12.5.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                        color = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
 /**
  * Top HyperOS / MIUI Mode Switcher Card
  */
@@ -223,10 +296,10 @@ fun HyperOsModeBanner(
 
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isEnabled) {
-                if (isDark) Color(0xFF261D18) else Color(0xFFFFF7F0)
+                if (isDark) Color(0xFF231A15) else Color(0xFFFFF8F2)
             } else {
                 MaterialTheme.colorScheme.surface
             }
@@ -234,9 +307,9 @@ fun HyperOsModeBanner(
         border = androidx.compose.foundation.BorderStroke(
             width = if (isEnabled) 1.5.dp else 1.dp,
             color = if (isEnabled) MiuiOrange
-            else if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else Color(0xFFD6DCE6)
+            else if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.55f) else Color(0xFFD2DBE8)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
     ) {
         Row(
             modifier = Modifier
@@ -252,10 +325,15 @@ fun HyperOsModeBanner(
                 Box(
                     modifier = Modifier
                         .size(44.dp)
-                        .clip(RoundedCornerShape(13.dp))
+                        .clip(RoundedCornerShape(14.dp))
                         .background(
-                            if (isEnabled) MiuiOrange.copy(alpha = 0.16f)
-                            else if (isDark) Color(0xFF222630) else Color(0xFFEFF2F7)
+                            if (isEnabled) MiuiOrange.copy(alpha = 0.2f)
+                            else if (isDark) Color(0xFF1B2132) else Color(0xFFEEF2F8)
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = if (isEnabled) MiuiOrange.copy(alpha = 0.5f) else Color.Transparent,
+                            shape = RoundedCornerShape(14.dp)
                         ),
                     contentAlignment = Alignment.Center
                 ) {
@@ -273,7 +351,8 @@ fun HyperOsModeBanner(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
-                            text = "MIUI / HyperOS Mode",
+                            text = "MIUI / HyperOS Suite",
+                            fontFamily = SpaceGroteskFontFamily,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
@@ -284,13 +363,14 @@ fun HyperOsModeBanner(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(
-                                    if (isEnabled) MiuiOrange.copy(alpha = 0.14f)
-                                    else if (isDark) Color(0xFF222630) else Color(0xFFEFF2F7)
+                                    if (isEnabled) MiuiOrange.copy(alpha = 0.16f)
+                                    else if (isDark) Color(0xFF1F2536) else Color(0xFFE7ECF6)
                                 )
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Text(
                                 text = if (isEnabled) "ACTIVE" else "OFF",
+                                fontFamily = JetBrainsMonoFontFamily,
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isEnabled) MiuiOrange else MaterialTheme.colorScheme.onSurfaceVariant
@@ -299,8 +379,9 @@ fun HyperOsModeBanner(
                     }
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "Only for Miui/HyperOS",
-                        fontSize = 12.sp,
+                        text = "Aurogon Freezer, SuperPowerClean & Xiaomi nodes",
+                        fontFamily = PlusJakartaSansFontFamily,
+                        fontSize = 11.5.sp,
                         fontWeight = FontWeight.Medium,
                         color = if (isEnabled) MiuiOrange else MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -313,8 +394,10 @@ fun HyperOsModeBanner(
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = Color.White,
                     checkedTrackColor = MiuiOrange,
-                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                    checkedBorderColor = Color.Transparent,
+                    uncheckedThumbColor = if (isDark) Color(0xFF8E99AB) else Color(0xFF727E91),
+                    uncheckedTrackColor = if (isDark) Color(0xFF1F2637) else Color(0xFFE2E8F2),
+                    uncheckedBorderColor = Color.Transparent
                 )
             )
         }
@@ -1556,34 +1639,49 @@ private fun TweakCategoryGroup(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else Color(0xFFD6DCE6)
+            if (expanded) iconColor.copy(alpha = if (isDark) 0.4f else 0.35f)
+            else if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.55f) else Color(0xFFD2DBE8)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.5.dp, pressedElevation = 4.dp)
     ) {
         Column {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .background(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(
+                                iconColor.copy(alpha = if (isDark) 0.09f else 0.05f),
+                                Color.Transparent
+                            )
+                        )
+                    )
                     .clickable { expanded = !expanded }
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                    .padding(horizontal = 16.dp, vertical = 15.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(iconColor.copy(alpha = 0.15f)),
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(iconColor.copy(alpha = if (isDark) 0.2f else 0.14f))
+                            .border(
+                                width = 1.dp,
+                                color = iconColor.copy(alpha = 0.4f),
+                                shape = RoundedCornerShape(12.dp)
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -1596,23 +1694,46 @@ private fun TweakCategoryGroup(
                     Column {
                         Text(
                             text = title,
+                            fontFamily = SpaceGroteskFontFamily,
                             fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
-                        Text(
-                            text = badgeText,
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(iconColor.copy(alpha = if (isDark) 0.14f else 0.1f))
+                                .padding(horizontal = 6.dp, vertical = 1.5.dp)
+                        ) {
+                            Text(
+                                text = badgeText.uppercase(),
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = iconColor
+                            )
+                        }
                     }
                 }
-                Icon(
-                    imageVector = Icons.Default.ExpandMore,
-                    contentDescription = if (expanded) "Collapse" else "Expand",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.rotate(arrowRotation)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(
+                            if (isDark) Color(0xFF1B2132) else Color(0xFFEEF2F8)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ExpandMore,
+                        contentDescription = if (expanded) "Collapse" else "Expand",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .size(18.dp)
+                            .rotate(arrowRotation)
+                    )
+                }
             }
 
             AnimatedVisibility(
@@ -1622,7 +1743,7 @@ private fun TweakCategoryGroup(
             ) {
                 Column {
                     HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f),
                         thickness = 0.8.dp
                     )
                     content()
@@ -1644,107 +1765,99 @@ fun RefreshRateCard(
 ) {
     val isDark = isAppDark()
 
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        border = androidx.compose.foundation.BorderStroke(
-            width = 1.dp,
-            color = if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f) else Color(0xFFD6DCE6)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 4.dp)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(13.dp))
+                    .background(MiuiAmber.copy(alpha = 0.16f))
+                    .border(1.dp, MiuiAmber.copy(alpha = 0.38f), RoundedCornerShape(13.dp)),
+                contentAlignment = Alignment.Center
             ) {
+                Icon(
+                    imageVector = Icons.Default.Speed,
+                    contentDescription = null,
+                    tint = MiuiAmber,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column {
+                Text(
+                    text = "Display Refresh Rate Lock",
+                    fontFamily = SpaceGroteskFontFamily,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Sets peak_refresh_rate & miui_refresh_rate via SurfaceFlinger",
+                    fontFamily = PlusJakartaSansFontFamily,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf(
+                60 to "60 Hz",
+                90 to "90 Hz",
+                120 to "120 Hz",
+                0 to "Auto"
+            ).forEach { (hz, label) ->
+                val isSelected = (currentHz == hz)
                 Box(
                     modifier = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MiuiAmber.copy(alpha = 0.15f)),
+                        .weight(1f)
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(
+                            if (isSelected) MiuiAmber.copy(alpha = if (isDark) 0.24f else 0.16f)
+                            else if (isDark) Color(0xFF181D2B)
+                            else Color(0xFFF3F6FC)
+                        )
+                        .border(
+                            width = if (isSelected) 1.5.dp else 1.dp,
+                            color = if (isSelected) MiuiAmber
+                            else if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.4f) else Color(0xFFDCE3EF),
+                            shape = RoundedCornerShape(13.dp)
+                        )
+                        .clickable { onSelectHz(hz) }
+                        .padding(vertical = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Speed,
-                        contentDescription = null,
-                        tint = MiuiAmber,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                    Text(
-                        text = "Display Refresh Rate",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "Sets peak_refresh_rate & miui_refresh_rate via SurfaceFlinger",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                listOf(
-                    60 to "60 Hz",
-                    90 to "90 Hz",
-                    120 to "120 Hz",
-                    0 to "Auto"
-                ).forEach { (hz, label) ->
-                    val isSelected = (currentHz == hz)
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(
-                                if (isSelected) MiuiAmber.copy(alpha = if (isDark) 0.22f else 0.16f)
-                                else if (isDark) Color(0xFF1E2330)
-                                else Color(0xFFF2F5FA)
-                            )
-                            .border(
-                                width = 1.dp,
-                                color = if (isSelected) MiuiAmber
-                                        else if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.35f) else Color(0xFFDFE4ED),
-                                shape = RoundedCornerShape(12.dp)
-                            )
-                            .clickable { onSelectHz(hz) }
-                            .padding(vertical = 10.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = label,
-                                fontSize = 12.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) MiuiAmber else MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = when (hz) {
-                                    60 -> "Battery"
-                                    90 -> "Balanced"
-                                    120 -> "Smooth"
-                                    else -> "Dynamic"
-                                },
-                                fontSize = 9.sp,
-                                color = if (isSelected) MiuiAmber else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = label,
+                            fontFamily = JetBrainsMonoFontFamily,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isSelected) MiuiAmber else MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = when (hz) {
+                                60 -> "Battery"
+                                90 -> "Balanced"
+                                120 -> "Smooth"
+                                else -> "Dynamic"
+                            },
+                            fontFamily = PlusJakartaSansFontFamily,
+                            fontSize = 9.sp,
+                            color = if (isSelected) MiuiAmber else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }

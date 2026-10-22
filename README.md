@@ -71,3 +71,10 @@
 VoltPower functions with root access:
 - Compatible with **Magisk**, **KernelSU**, and **APatch**.
 - Automatically detects root privileges with real-time status indicators and non-root monitoring fallback.
+
+---
+
+## 💖 Acknowledgements & Credits
+
+Special credit to the **[Miuix](https://github.com/compose-miuix-ui/miuix)** project (`compose-miuix-ui/miuix`) for providing the design principles and UI component styling concepts used throughout this application.
+
