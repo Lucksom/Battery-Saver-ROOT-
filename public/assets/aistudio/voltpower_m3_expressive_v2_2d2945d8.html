@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>VoltPower · Expressive Monet v2</title>
+<style>
+*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+html{font-family:"Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;text-wrap:pretty}
+body{background:#000}
+/* ===== MONET ENGINE: one hue -> full tonal palette ===== */
+.app{
+  --h:262; color-scheme:light dark;
+  --primary:light-dark(oklch(.5 .17 var(--h)),oklch(.82 .12 var(--h)));
+  --on-primary:light-dark(oklch(.99 .01 var(--h)),oklch(.29 .09 var(--h)));
+  --pc:light-dark(oklch(.9 .07 var(--h)),oklch(.38 .11 var(--h)));
+  --on-pc:light-dark(oklch(.26 .1 var(--h)),oklch(.92 .05 var(--h)));
+  --sec:light-dark(oklch(.5 .06 var(--h)),oklch(.8 .05 var(--h)));
+  --sc:light-dark(oklch(.91 .04 var(--h)),oklch(.36 .05 var(--h)));
+  --on-sc:light-dark(oklch(.27 .05 var(--h)),oklch(.91 .035 var(--h)));
+  --tert:light-dark(oklch(.52 .12 calc(var(--h) + 65)),oklch(.82 .1 calc(var(--h) + 65)));
+  --on-tert:light-dark(oklch(.99 .01 var(--h)),oklch(.29 .07 calc(var(--h) + 65)));
+  --tc:light-dark(oklch(.91 .06 calc(var(--h) + 65)),oklch(.38 .08 calc(var(--h) + 65)));
+  --on-tc:light-dark(oklch(.27 .08 calc(var(--h) + 65)),oklch(.92 .05 calc(var(--h) + 65)));
+  --bg:light-dark(oklch(.983 .009 var(--h)),oklch(.16 .013 var(--h)));
+  --s1:light-dark(oklch(.968 .013 var(--h)),oklch(.2 .015 var(--h)));
+  --s2:light-dark(oklch(.95 .016 var(--h)),oklch(.235 .017 var(--h)));
+  --s3:light-dark(oklch(.93 .019 var(--h)),oklch(.275 .019 var(--h)));
+  --s4:light-dark(oklch(.91 .022 var(--h)),oklch(.315 .021 var(--h)));
+  --on-s:light-dark(oklch(.21 .02 var(--h)),oklch(.93 .01 var(--h)));
+  --on-sv:light-dark(oklch(.45 .028 var(--h)),oklch(.79 .022 var(--h)));
+  --outline:light-dark(oklch(.6 .02 var(--h)),oklch(.6 .02 var(--h)));
+  --err:light-dark(oklch(.52 .19 27),oklch(.78 .13 25));
+  --ease:cubic-bezier(.2,0,0,1); --spring:cubic-bezier(.34,1.56,.64,1);
+  --disp:"Space Grotesk","Plus Jakarta Sans",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  background:var(--bg);color:var(--on-s);min-height:100dvh;padding-bottom:150px;position:relative;overflow-x:hidden;
+  transition:background .4s var(--ease);
+}
+.app:has(#s-wall:checked){--h:262}.app:has(#s-mint:checked){--h:158}.app:has(#s-iris:checked){--h:300}
+.app:has(#s-ocean:checked){--h:225}.app:has(#s-citrus:checked){--h:80}.app:has(#s-rose:checked){--h:8}
+.app:has(#th-light:checked){color-scheme:light}.app:has(#th-dark:checked){color-scheme:dark}
+.app>input{position:absolute;opacity:0;pointer-events:none}
+/* ambient mesh glow */
+.app::before{content:"";position:absolute;inset:0 0 auto 0;height:520px;pointer-events:none;
+  background:radial-gradient(60% 55% at 90% 0%,color-mix(in oklab,var(--primary) 30%,transparent),transparent 70%),
+             radial-gradient(55% 50% at 0% 12%,color-mix(in oklab,var(--tert) 22%,transparent),transparent 70%);}
+.wrap{position:relative;max-width:480px;margin:0 auto;padding:0 16px}
+svg.i{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+svg.i.f{fill:currentColor;stroke:none}
+.eyebrow{font:600 10.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--on-sv)}
+.h2{font:700 18px var(--disp);letter-spacing:-.02em}
+.row{display:flex;align-items:center;gap:12px}.sp{justify-content:space-between}
+
+/* ===== header ===== */
+header{padding:calc(env(safe-area-inset-top) + 16px) 0 4px}
+.bar{display:flex;align-items:center;gap:12px}
+.logo{width:48px;height:48px;color:var(--primary);flex:none;position:relative;display:grid;place-items:center}
+.logo svg.c{position:absolute;inset:0;width:100%;height:100%;fill:var(--primary);animation:spin 24s linear infinite}
+.logo .i{position:relative;color:var(--on-primary);width:22px;height:22px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.brand{font:700 26px/1 var(--disp);letter-spacing:-.045em}
+.sub{font:500 11.5px var(--mono);color:var(--on-sv);margin-top:5px;display:flex;align-items:center;gap:6px}
+.sub i{width:7px;height:7px;border-radius:50%;background:var(--primary);animation:pulse 2s infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 6px transparent;opacity:.5}0%{box-shadow:0 0 0 0 color-mix(in oklab,var(--primary) 50%,transparent)}}
+.grow{flex:1}
+.ib{width:46px;height:46px;border-radius:50%;background:color-mix(in oklab,var(--s3) 80%,transparent);backdrop-filter:blur(10px);display:grid;place-items:center;color:var(--on-sv);cursor:pointer;transition:.3s var(--spring)}
+.ib:active{transform:scale(.88)}
+.app:has(#pal:checked) label[for=pal]{background:var(--primary);color:var(--on-primary);border-radius:16px;transform:rotate(90deg)}
+.cyc label{display:none}
+.app:has(#th-sys:checked) .c1,.app:has(#th-light:checked) .c2,.app:has(#th-dark:checked) .c3{display:grid}
+
+/* palette sheet */
+.pal{display:none;margin-top:14px;padding:16px;border-radius:32px;background:color-mix(in oklab,var(--s2) 88%,transparent);backdrop-filter:blur(18px);box-shadow:0 18px 40px -18px #0006;animation:drop .45s var(--spring)}
+.app:has(#pal:checked) .pal{display:block}
+@keyframes drop{from{opacity:0;transform:translateY(-12px) scale(.96)}}
+.seeds{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:14px 0}
+.seed{aspect-ratio:1;border-radius:50%;cursor:pointer;display:grid;place-items:center;transition:.4s var(--spring);
+  background:conic-gradient(from 45deg,var(--a) 0 50%,var(--b) 0 75%,var(--c) 0)}
+.seed svg{width:20px;height:20px;stroke:#fff;stroke-width:3.2;opacity:0;transform:scale(0);transition:.3s var(--spring);filter:drop-shadow(0 1px 2px #0007)}
+.seed:active{transform:scale(.88)}
+.k1{--a:oklch(.7 .15 262);--b:oklch(.52 .06 262);--c:oklch(.84 .09 327)}
+.k2{--a:oklch(.76 .17 158);--b:oklch(.54 .06 158);--c:oklch(.84 .09 223)}
+.k3{--a:oklch(.66 .18 300);--b:oklch(.5 .06 300);--c:oklch(.84 .09 5)}
+.k4{--a:oklch(.7 .14 225);--b:oklch(.52 .05 225);--c:oklch(.84 .09 290)}
+.k5{--a:oklch(.82 .16 80);--b:oklch(.58 .06 80);--c:oklch(.84 .1 145)}
+.k6{--a:oklch(.72 .17 8);--b:oklch(.55 .06 8);--c:oklch(.85 .09 73)}
+.app:has(#s-wall:checked) .k1,.app:has(#s-mint:checked) .k2,.app:has(#s-iris:checked) .k3,.app:has(#s-ocean:checked) .k4,.app:has(#s-citrus:checked) .k5,.app:has(#s-rose:checked) .k6{border-radius:32%;transform:rotate(45deg)}
+.app:has(#s-wall:checked) .k1 svg,.app:has(#s-mint:checked) .k2 svg,.app:has(#s-iris:checked) .k3 svg,.app:has(#s-ocean:checked) .k4 svg,.app:has(#s-citrus:checked) .k5 svg,.app:has(#s-rose:checked) .k6 svg{opacity:1;transform:rotate(-45deg)}
+.tones{display:flex;border-radius:16px;overflow:hidden;height:30px}
+.tones i{flex:1}
+.modes{display:flex;gap:4px;margin-top:12px;background:var(--s4);padding:4px;border-radius:999px}
+.modes label{flex:1;text-align:center;padding:9px 0;border-radius:999px;font:700 12px var(--disp);color:var(--on-sv);cursor:pointer;transition:.3s var(--ease)}
+.app:has(#th-sys:checked) label[for=th-sys],.app:has(#th-light:checked) label[for=th-light],.app:has(#th-dark:checked) label[for=th-dark]{background:var(--primary);color:var(--on-primary)}
+
+/* ===== pages ===== */
+.page{display:none;padding-top:14px}
+.app:has(#t1:checked) #p1,.app:has(#t2:checked) #p2,.app:has(#t3:checked) #p3{display:grid;gap:12px;animation:rise .55s var(--ease)}
+@keyframes rise{from{opacity:0;transform:translateY(18px)}}
+.card{border-radius:34px;background:var(--s2);padding:20px}
+
+/* ===== HERO ===== */
+.hero{position:relative;border-radius:44px;padding:22px 22px 20px;background:var(--pc);color:var(--on-pc);overflow:hidden;isolation:isolate;transition:background .5s var(--ease),color .5s}
+.hero .bg1,.hero .bg2{position:absolute;z-index:-1;fill:var(--primary)}
+.hero .bg1{width:260px;right:-80px;top:-90px;opacity:.16;animation:spin 50s linear infinite}
+.hero .bg2{width:180px;left:-70px;bottom:-80px;opacity:.1;animation:spin 40s linear infinite reverse;fill:var(--tert)}
+.app:not(:has(#eng:checked)) .hero{background:var(--s3);color:var(--on-s)}
+.app:not(:has(#eng:checked)) .hero .bg1,.app:not(:has(#eng:checked)) .hero .bg2{animation-play-state:paused;opacity:.07}
+.hero-top{display:flex;justify-content:space-between;align-items:flex-start}
+.pill{padding:7px 12px;border-radius:999px;background:color-mix(in oklab,currentColor 12%,transparent);font:700 11px var(--mono);display:inline-flex;gap:6px;align-items:center}
+.orb{position:relative;width:196px;height:196px;margin:12px auto 6px;display:grid;place-items:center}
+.orb svg.c{position:absolute;inset:0;width:100%;height:100%;fill:var(--primary);animation:spin 36s linear infinite;filter:drop-shadow(0 14px 22px color-mix(in oklab,var(--primary) 38%,transparent));transition:fill .5s}
+.app:not(:has(#eng:checked)) .orb svg.c{fill:var(--s4);filter:none;animation-play-state:paused}
+.orb .t{position:relative;text-align:center;color:var(--on-primary)}
+.app:not(:has(#eng:checked)) .orb .t{color:var(--on-sv)}
+.orb b{font:700 64px/.9 var(--disp);letter-spacing:-.07em}
+.orb b sup{font-size:22px;letter-spacing:0;vertical-align:top;margin-left:2px;position:relative;top:6px}
+.orb small{display:block;font:600 11px var(--mono);margin-top:8px;letter-spacing:.04em;opacity:.85}
+.wave{height:14px;border-radius:7px;overflow:hidden;position:relative;margin:12px 4px 4px;background:linear-gradient(color-mix(in oklab,currentColor 18%,transparent),color-mix(in oklab,currentColor 18%,transparent)) center/100% 4px no-repeat}
+.wave div{width:var(--v);overflow:hidden;height:100%}
+.wave svg{width:760px;height:14px;fill:none;stroke:var(--primary);stroke-width:4.5;stroke-linecap:round;animation:slide 1.6s linear infinite}
+@keyframes slide{to{transform:translateX(-24px)}}
+.app:not(:has(#eng:checked)) .wave svg{animation-play-state:paused;stroke:var(--outline)}
+.mini{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px}
+.mini div{padding:11px 12px;border-radius:20px;background:color-mix(in oklab,currentColor 9%,transparent)}
+.mini small{display:block;font:600 9.5px var(--mono);letter-spacing:.08em;opacity:.7}
+.mini b{font:700 16px var(--disp);letter-spacing:-.02em}
+.engine{display:flex;align-items:center;justify-content:space-between;margin-top:16px;padding:8px 8px 8px 20px;border-radius:999px;background:var(--primary);color:var(--on-primary);cursor:pointer;transition:.4s var(--ease)}
+.app:not(:has(#eng:checked)) .engine{background:var(--s4);color:var(--on-s)}
+.engine b{font:700 15px var(--disp)}.engine small{display:block;font-size:11px;opacity:.8;font-weight:500}
+.engine .knob{width:52px;height:52px;border-radius:50%;background:var(--on-primary);color:var(--primary);display:grid;place-items:center;transition:.5s var(--spring)}
+.app:not(:has(#eng:checked)) .engine .knob{background:var(--s2);color:var(--on-sv);transform:rotate(180deg)}
+.t-on,.t-off{display:none}.app:has(#eng:checked) .t-on{display:block}.app:not(:has(#eng:checked)) .t-off{display:block}
+
+/* ===== profiles ===== */
+.profiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+.profiles label{display:grid;justify-items:center;gap:8px;padding:18px 6px 14px;background:var(--s1);border-radius:26px;cursor:pointer;transition:.45s var(--spring);color:var(--on-sv);text-align:center}
+.profiles .ic{width:54px;height:54px;display:grid;place-items:center;border-radius:50%;background:var(--s4);transition:.45s var(--spring)}
+.profiles b{font:700 12.5px var(--disp);color:var(--on-s)}.profiles small{font-size:10px;font-weight:500;margin-top:-5px}
+.profiles label:active{transform:scale(.94)}
+.app:has(#pf-save:checked) label[for=pf-save],.app:has(#pf-bal:checked) label[for=pf-bal],.app:has(#pf-perf:checked) label[for=pf-perf]{background:var(--sc);color:var(--on-sc);border-radius:38px 38px 26px 26px}
+.app:has(#pf-save:checked) label[for=pf-save] .ic,.app:has(#pf-bal:checked) label[for=pf-bal] .ic,.app:has(#pf-perf:checked) label[for=pf-perf] .ic{background:var(--primary);color:var(--on-primary);border-radius:34%;transform:rotate(-8deg) scale(1.08)}
+.tier{display:none;margin-top:14px}.app:has(#pf-perf:checked) .tier{display:block;animation:rise .4s var(--ease)}
+.seg{display:flex;gap:4px;margin-top:8px;padding:4px;background:var(--s4);border-radius:999px}
+.seg label{flex:1;text-align:center;padding:10px 2px;border-radius:999px;font:700 12px var(--disp);cursor:pointer;color:var(--on-sv);transition:.35s var(--spring)}
+.seg small{display:block;font:500 9.5px var(--mono);opacity:.7}
+.app:has(#tr-lite:checked) label[for=tr-lite],.app:has(#tr-heavy:checked) label[for=tr-heavy],.app:has(#tr-ultra:checked) label[for=tr-ultra],
+.app:has(#rr-0:checked) label[for=rr-0],.app:has(#rr-60:checked) label[for=rr-60],.app:has(#rr-90:checked) label[for=rr-90],.app:has(#rr-120:checked) label[for=rr-120]{background:var(--primary);color:var(--on-primary)}
+
+/* ===== bento ===== */
+.bento{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.b{border-radius:32px;padding:18px;background:var(--s2);position:relative;overflow:hidden}
+.b.w2{grid-column:span 2}.b.p{background:var(--pc);color:var(--on-pc)}.b.t{background:var(--tc);color:var(--on-tc)}.b.s{background:var(--sc);color:var(--on-sc)}
+.b .big{font:700 30px/1 var(--disp);letter-spacing:-.05em;margin-top:14px}
+.b .big small{font-size:13px;letter-spacing:0;opacity:.7;margin-left:3px}
+.b .cap{font-size:11.5px;margin-top:6px;opacity:.75;font-weight:500}
+.b .ico{position:absolute;right:14px;top:14px;opacity:.6}
+.eq{display:flex;align-items:flex-end;gap:6px;height:96px;margin-top:16px}
+.eq i{flex:1;border-radius:10px 10px 6px 6px;background:var(--primary);height:var(--a);animation:eq 2.6s ease-in-out infinite alternate;animation-delay:calc(var(--d)*-1s)}
+.eq i.bg{background:var(--tert)}
+@keyframes eq{to{height:var(--b)}}
+.eql{display:flex;gap:6px;margin-top:6px}.eql span{flex:1;text-align:center;font:600 9.5px var(--mono);color:var(--on-sv)}
+.gov{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
+.gov span{padding:6px 11px;border-radius:999px;font:700 11px var(--mono);background:var(--s4)}
+.gov span:first-child{background:var(--primary);color:var(--on-primary)}
+.rg{--v:52;width:64px;height:64px;border-radius:50%;background:conic-gradient(var(--tert) calc(var(--v)*1%),color-mix(in oklab,var(--on-tc) 14%,transparent) 0);
+  -webkit-mask:radial-gradient(farthest-side,#0000 calc(100% - 9px),#000 calc(100% - 8px));mask:radial-gradient(farthest-side,#0000 calc(100% - 9px),#000 calc(100% - 8px))}
+.thermo{height:10px;border-radius:5px;margin-top:16px;background:linear-gradient(90deg,var(--tert),var(--primary),var(--err));position:relative;opacity:.9}
+.thermo::after{content:"";position:absolute;left:34%;top:50%;width:18px;height:18px;border-radius:50%;background:var(--bg);border:4px solid var(--on-s);translate:-50% -50%}
+
+/* ===== timeline ===== */
+.tl{position:relative;margin-top:14px;padding-left:24px;display:grid;gap:12px}
+.tl::before{content:"";position:absolute;left:6px;top:6px;bottom:6px;width:2px;border-radius:1px;background:var(--s4)}
+.ev{position:relative}
+.ev::before{content:"";position:absolute;left:-23px;top:4px;width:12px;height:12px;border-radius:50%;background:var(--primary);box-shadow:0 0 0 4px var(--s2)}
+.ev.x::before{background:var(--err)}
+.ev b{font:700 14px var(--disp)}.ev time{float:right;font:500 10.5px var(--mono);color:var(--on-sv)}
+.ev code{display:block;margin-top:4px;font:500 11px var(--mono);color:var(--primary);word-break:break-all}
+
+/* ===== tweaks ===== */
+.search{display:flex;align-items:center;gap:12px;padding:0 18px;height:56px;border-radius:999px;background:var(--s3);color:var(--on-sv)}
+.search input{all:unset;flex:1;font:600 14px var(--disp);color:var(--on-s)}
+.search input::placeholder{color:var(--on-sv)}
+.banner{display:flex;align-items:center;gap:14px;padding:16px 18px;border-radius:30px;background:var(--tc);color:var(--on-tc)}
+.banner b{display:block;font:700 14px var(--disp)}.banner small{font-size:12px;opacity:.8}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tile{display:flex;align-items:center;gap:12px;padding:14px;border-radius:30px;background:var(--s3);cursor:pointer;transition:.5s var(--spring)}
+.tile input{display:none}
+.tile .ic{width:44px;height:44px;display:grid;place-items:center;border-radius:16px;background:var(--s4);transition:.5s var(--spring)}
+.tile b{display:block;font:700 13.5px var(--disp)}.tile small{font-size:11px;opacity:.7}
+.tile:has(input:checked){background:var(--primary);color:var(--on-primary);border-radius:40px 18px 40px 18px}
+.tile:has(input:checked) .ic{background:var(--on-primary);color:var(--primary);border-radius:50%}
+.chips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:2px 16px}
+.chips label{flex:none;padding:11px 18px;border-radius:999px;background:var(--s3);font:700 13px var(--disp);color:var(--on-sv);cursor:pointer;transition:.4s var(--spring)}
+.app:has(#c-all:checked) label[for=c-all],.app:has(#c-cpu:checked) label[for=c-cpu],.app:has(#c-bat:checked) label[for=c-bat],.app:has(#c-os:checked) label[for=c-os],.app:has(#c-io:checked) label[for=c-io]{background:var(--on-s);color:var(--bg);transform:scale(1.04)}
+.grp{display:none}.app:has(#c-all:checked) .grp,.app:has(#c-cpu:checked) .g-cpu,.app:has(#c-bat:checked) .g-bat,.app:has(#c-os:checked) .g-os,.app:has(#c-io:checked) .g-io{display:block}
+.gt{display:flex;justify-content:space-between;margin:10px 8px 8px}
+.list{display:grid;gap:3px}
+.item{display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--s2);border-radius:10px;cursor:pointer;transition:background .3s}
+.item:first-child{border-radius:30px 30px 10px 10px}.item:last-child{border-radius:10px 10px 30px 30px}.item:only-child{border-radius:30px}
+.item:active{background:var(--s3)}
+.av{width:46px;height:46px;flex:none;border-radius:16px;display:grid;place-items:center;background:var(--sc);color:var(--on-sc);transition:.5s var(--spring)}
+.item:has(input:checked) .av{background:var(--primary);color:var(--on-primary);border-radius:50%;transform:rotate(360deg)}
+.tx{flex:1;min-width:0}.tx b{display:block;font:700 14.5px var(--disp);letter-spacing:-.01em}.tx small{display:block;font-size:12px;color:var(--on-sv);margin-top:2px;line-height:1.35}
+.tx code{display:none;margin-top:6px;font:500 10.5px var(--mono);color:var(--primary);word-break:break-all}
+.item:has(input:checked) code{display:block}
+.sw{appearance:none;flex:none;width:52px;height:32px;border-radius:16px;position:relative;background:var(--s4);border:2px solid var(--outline);cursor:pointer;transition:.3s var(--ease)}
+.sw::after{content:"";position:absolute;top:50%;left:6px;width:16px;height:16px;border-radius:50%;background:var(--outline);translate:0 -50%;transition:all .35s var(--spring)}
+.sw:checked{background:var(--primary);border-color:var(--primary)}
+.sw:checked::after{left:22px;width:24px;height:24px;background:var(--on-primary)}
+.sw:active::after{width:30px}
+.slide{margin-top:3px;padding:18px;background:var(--s2);border-radius:30px}
+input[type=range]{width:100%;accent-color:var(--primary);height:34px;margin-top:6px}
+
+/* ===== console ===== */
+.term{border-radius:34px;background:var(--s1);padding:20px;box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--on-s) 7%,transparent)}
+.dots{display:flex;gap:6px;margin-bottom:12px}.dots i{width:10px;height:10px;border-radius:50%}
+.dots i:nth-child(1){background:var(--err)}.dots i:nth-child(2){background:var(--tert)}.dots i:nth-child(3){background:var(--primary)}
+.out{font:500 11.5px/1.7 var(--mono);color:var(--on-sv)}.out .ok{color:var(--primary)}.out .no{color:var(--err)}.out em{font-style:normal;color:var(--on-s)}
+.cur{display:inline-block;width:7px;height:13px;background:var(--primary);vertical-align:-2px;animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* ===== FAB + nav ===== */
+.fab{border:0;position:fixed;right:max(16px,calc(50% - 224px));bottom:calc(env(safe-area-inset-bottom) + 104px);display:none;align-items:center;gap:10px;height:58px;padding:0 22px 0 18px;border-radius:22px;background:var(--tc);color:var(--on-tc);font:700 14px var(--disp);box-shadow:0 12px 26px -10px #0007;cursor:pointer;z-index:8;transition:.3s var(--spring)}
+.fab:active{transform:scale(.92)}
+.app:has(#t2:checked) .fab{display:flex;animation:rise .5s var(--spring)}
+nav{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 12px);display:flex;justify-content:center;z-index:9;pointer-events:none}
+nav .in{pointer-events:auto;display:flex;width:min(456px,calc(100% - 24px));padding:10px 8px;border-radius:36px;background:color-mix(in oklab,var(--s3) 85%,transparent);backdrop-filter:blur(22px) saturate(1.5);-webkit-backdrop-filter:blur(22px) saturate(1.5);box-shadow:0 14px 34px -10px #0006,inset 0 0 0 1px color-mix(in oklab,var(--on-s) 8%,transparent)}
+nav label{flex:1;display:grid;justify-items:center;gap:4px;cursor:pointer;font:700 11.5px var(--disp);color:var(--on-sv);position:relative}
+nav label .pl{width:66px;height:34px;border-radius:17px;display:grid;place-items:center;transition:.5s var(--spring)}
+nav label:active .pl{transform:scale(.9)}
+nav em{position:absolute;right:calc(50% - 34px);top:-4px;font:700 9.5px var(--mono);font-style:normal;background:var(--err);color:#fff;border-radius:999px;padding:1px 5px}
+.app:has(#t1:checked) label[for=t1],.app:has(#t2:checked) label[for=t2],.app:has(#t3:checked) label[for=t3]{color:var(--on-s)}
+.app:has(#t1:checked) label[for=t1] .pl,.app:has(#t2:checked) label[for=t2] .pl,.app:has(#t3:checked) label[for=t3] .pl{background:var(--primary);color:var(--on-primary);width:78px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style></head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+ <symbol id="bolt" viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l4-8z" fill="currentColor" stroke="none"/></symbol>
+ <symbol id="leaf" viewBox="0 0 24 24"><path d="M5 19c0-9 5-14 15-14 0 10-5 15-14 15"/><path d="M5 19c3-5 6-8 10-10"/></symbol>
+ <symbol id="half" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></symbol>
+ <symbol id="rocket" viewBox="0 0 24 24"><path d="M12 2c4 2 6 6 5 11l-2 3H9l-2-3c-1-5 1-9 5-11z"/><circle cx="12" cy="9" r="1.6"/><path d="M9 16l-2 5 5-2M15 16l2 5-5-2"/></symbol>
+ <symbol id="palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.5 0 2-1 1.5-2s0-2.5 1.5-2.5H17a4 4 0 0 0 4-4C21 6.5 17 3 12 3z"/><circle cx="7.5" cy="11" r="1" fill="currentColor"/><circle cx="10" cy="7.5" r="1" fill="currentColor"/><circle cx="14.5" cy="7.5" r="1" fill="currentColor"/></symbol>
+ <symbol id="dash" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="10" rx="2.5"/><rect x="13" y="3" width="8" height="6" rx="2.5"/><rect x="3" y="15" width="8" height="6" rx="2.5"/><rect x="13" y="11" width="8" height="10" rx="2.5"/></symbol>
+ <symbol id="tune" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+ <symbol id="term" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 10l3 2-3 2M13 15h4"/></symbol>
+ <symbol id="shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M8.5 12l2.5 2.5L16 9.5"/></symbol>
+ <symbol id="speed" viewBox="0 0 24 24"><path d="M4 18a9 9 0 1 1 16 0"/><path d="M12 14l4-5"/></symbol>
+ <symbol id="chip" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
+ <symbol id="check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+ <symbol id="wave" viewBox="0 0 24 24"><path d="M3 12c2-6 4-6 6 0s4 6 6 0 4-6 6 0"/></symbol>
+ <symbol id="search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></symbol>
+ <symbol id="undo" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
+ <symbol id="temp" viewBox="0 0 24 24"><path d="M10 14V5a2 2 0 0 1 4 0v9a4 4 0 1 1-4 0z"/></symbol>
+ <symbol id="ram" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 11v2M11 11v2M15 11v2M7 17v3M12 17v3M17 17v3"/></symbol>
+ <symbol id="moon" viewBox="0 0 24 24"><path d="M20 14A8 8 0 0 1 10 4a8 8 0 1 0 10 10z"/></symbol>
+ <symbol id="net" viewBox="0 0 24 24"><path d="M2 9a15 15 0 0 1 20 0M5 13a10 10 0 0 1 14 0M8.5 16.5a5 5 0 0 1 7 0"/><circle cx="12" cy="20" r="1" fill="currentColor"/></symbol>
+ <symbol id="disk" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></symbol>
+ <symbol id="eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+ <symbol id="snow" viewBox="0 0 24 24"><path d="M12 2v20M4 7l16 10M20 7L4 17"/></symbol>
+</svg>
+
+<div class="app">
+ <input type="radio" name="tab" id="t1" checked><input type="radio" name="tab" id="t2"><input type="radio" name="tab" id="t3">
+ <input type="checkbox" id="pal"><input type="checkbox" id="eng" checked>
+ <input type="radio" name="seed" id="s-wall" checked><input type="radio" name="seed" id="s-mint"><input type="radio" name="seed" id="s-iris"><input type="radio" name="seed" id="s-ocean"><input type="radio" name="seed" id="s-citrus"><input type="radio" name="seed" id="s-rose">
+ <input type="radio" name="th" id="th-sys" checked><input type="radio" name="th" id="th-light"><input type="radio" name="th" id="th-dark">
+ <input type="radio" name="cat" id="c-all" checked><input type="radio" name="cat" id="c-cpu"><input type="radio" name="cat" id="c-bat"><input type="radio" name="cat" id="c-os"><input type="radio" name="cat" id="c-io">
+ <input type="radio" name="pf" id="pf-save"><input type="radio" name="pf" id="pf-bal" checked><input type="radio" name="pf" id="pf-perf">
+ <input type="radio" name="tr" id="tr-lite" checked><input type="radio" name="tr" id="tr-heavy"><input type="radio" name="tr" id="tr-ultra">
+ <input type="radio" name="rr" id="rr-0" checked><input type="radio" name="rr" id="rr-60"><input type="radio" name="rr" id="rr-90"><input type="radio" name="rr" id="rr-120">
+
+ <div class="wrap">
+ <header>
+  <div class="bar">
+   <div class="logo"><svg class="c" viewBox="0 0 200 200"><path d="M190.0 100.0 L189.8 102.4 L189.2 104.7 L188.4 107.0 L187.2 109.2 L185.8 111.3 L184.3 113.3 L182.7 115.3 L181.1 117.2 L179.7 119.1 L178.5 121.0 L177.4 122.9 L176.7 124.9 L176.1 127.0 L175.8 129.1 L175.7 131.4 L175.8 133.7 L175.9 136.2 L176.0 138.7 L176.0 141.3 L175.9 143.8 L175.6 146.3 L175.0 148.7 L174.0 150.9 L172.8 152.9 L171.3 154.7 L169.5 156.2 L167.4 157.6 L165.1 158.7 L162.8 159.6 L160.3 160.3 L157.9 161.0 L155.5 161.7 L153.2 162.3 L151.1 163.1 L149.2 164.1 L147.4 165.2 L145.8 166.6 L144.2 168.1 L142.8 169.9 L141.5 171.8 L140.1 173.9 L138.7 176.0 L137.2 178.1 L135.7 180.1 L133.9 181.9 L132.0 183.4 L130.0 184.7 L127.8 185.6 L125.5 186.1 L123.1 186.3 L120.7 186.2 L118.2 185.7 L115.8 185.1 L113.3 184.3 L111.0 183.4 L108.7 182.5 L106.4 181.7 L104.3 181.1 L102.1 180.7 L100.0 180.6 L97.9 180.7 L95.7 181.1 L93.6 181.7 L91.3 182.5 L89.0 183.4 L86.7 184.3 L84.2 185.1 L81.8 185.7 L79.3 186.2 L76.9 186.3 L74.5 186.1 L72.2 185.6 L70.0 184.7 L68.0 183.4 L66.1 181.9 L64.3 180.1 L62.8 178.1 L61.3 176.0 L59.9 173.9 L58.5 171.8 L57.2 169.9 L55.8 168.1 L54.2 166.6 L52.6 165.2 L50.8 164.1 L48.9 163.1 L46.8 162.3 L44.5 161.7 L42.1 161.0 L39.7 160.3 L37.2 159.6 L34.9 158.7 L32.6 157.6 L30.5 156.2 L28.7 154.7 L27.2 152.9 L26.0 150.9 L25.0 148.7 L24.4 146.3 L24.1 143.8 L24.0 141.3 L24.0 138.7 L24.1 136.2 L24.2 133.7 L24.3 131.4 L24.2 129.1 L23.9 127.0 L23.3 124.9 L22.6 122.9 L21.5 121.0 L20.3 119.1 L18.9 117.2 L17.3 115.3 L15.7 113.3 L14.2 111.3 L12.8 109.2 L11.6 107.0 L10.8 104.7 L10.2 102.4 L10.0 100.0 L10.2 97.6 L10.8 95.3 L11.6 93.0 L12.8 90.8 L14.2 88.7 L15.7 86.7 L17.3 84.7 L18.9 82.8 L20.3 80.9 L21.5 79.0 L22.6 77.1 L23.3 75.1 L23.9 73.0 L24.2 70.9 L24.3 68.6 L24.2 66.3 L24.1 63.8 L24.0 61.3 L24.0 58.7 L24.1 56.2 L24.4 53.7 L25.0 51.3 L26.0 49.1 L27.2 47.1 L28.7 45.3 L30.5 43.8 L32.6 42.4 L34.9 41.3 L37.2 40.4 L39.7 39.7 L42.1 39.0 L44.5 38.3 L46.8 37.7 L48.9 36.9 L50.8 35.9 L52.6 34.8 L54.2 33.4 L55.8 31.9 L57.2 30.1 L58.5 28.2 L59.9 26.1 L61.3 24.0 L62.8 21.9 L64.3 19.9 L66.1 18.1 L68.0 16.6 L70.0 15.3 L72.2 14.4 L74.5 13.9 L76.9 13.7 L79.3 13.8 L81.8 14.3 L84.2 14.9 L86.7 15.7 L89.0 16.6 L91.3 17.5 L93.6 18.3 L95.7 18.9 L97.9 19.3 L100.0 19.4 L102.1 19.3 L104.3 18.9 L106.4 18.3 L108.7 17.5 L111.0 16.6 L113.3 15.7 L115.8 14.9 L118.2 14.3 L120.7 13.8 L123.1 13.7 L125.5 13.9 L127.8 14.4 L130.0 15.3 L132.0 16.6 L133.9 18.1 L135.7 19.9 L137.2 21.9 L138.7 24.0 L140.1 26.1 L141.5 28.2 L142.8 30.1 L144.2 31.9 L145.8 33.4 L147.4 34.8 L149.2 35.9 L151.1 36.9 L153.2 37.7 L155.5 38.3 L157.9 39.0 L160.3 39.7 L162.8 40.4 L165.1 41.3 L167.4 42.4 L169.5 43.8 L171.3 45.3 L172.8 47.1 L174.0 49.1 L175.0 51.3 L175.6 53.7 L175.9 56.2 L176.0 58.7 L176.0 61.3 L175.9 63.8 L175.8 66.3 L175.7 68.6 L175.8 70.9 L176.1 73.0 L176.7 75.1 L177.4 77.1 L178.5 79.0 L179.7 80.9 L181.1 82.8 L182.7 84.7 L184.3 86.7 L185.8 88.7 L187.2 90.8 L188.4 93.0 L189.2 95.3 L189.8 97.6Z"/></svg><svg class="i f"><use href="#bolt"/></svg></div>
+   <div class="grow"><div class="brand">VoltPower</div><div class="sub"><i></i>root · volatile RAM</div></div>
+   <label class="ib" for="pal" aria-label="Monet palette"><svg class="i"><use href="#palette"/></svg></label>
+   <div class="cyc">
+    <label class="ib c1" for="th-light" aria-label="Theme system"><svg class="i"><use href="#half"/></svg></label>
+    <label class="ib c2" for="th-dark" aria-label="Theme light"><svg class="i" style="fill:currentColor"><use href="#half"/></svg></label>
+    <label class="ib c3" for="th-sys" aria-label="Theme dark"><svg class="i"><use href="#moon"/></svg></label>
+   </div>
+  </div>
+  <div class="pal">
+   <div class="row sp"><span class="h2">Monet engine</span><span class="eyebrow">oklch · 1 hue → 20 roles</span></div>
+   <div class="seeds">
+    <label class="seed k1" for="s-wall"><svg class="i"><use href="#check"/></svg></label>
+    <label class="seed k2" for="s-mint"><svg class="i"><use href="#check"/></svg></label>
+    <label class="seed k3" for="s-iris"><svg class="i"><use href="#check"/></svg></label>
+    <label class="seed k4" for="s-ocean"><svg class="i"><use href="#check"/></svg></label>
+    <label class="seed k5" for="s-citrus"><svg class="i"><use href="#check"/></svg></label>
+    <label class="seed k6" for="s-rose"><svg class="i"><use href="#check"/></svg></label>
+   </div>
+   <div class="tones"><i style="background:var(--primary)"></i><i style="background:var(--pc)"></i><i style="background:var(--sc)"></i><i style="background:var(--tert)"></i><i style="background:var(--tc)"></i><i style="background:var(--s4)"></i><i style="background:var(--s2)"></i></div>
+   <div class="modes"><label for="th-sys">System</label><label for="th-light">Light</label><label for="th-dark">Dark</label></div>
+  </div>
+ </header>
+
+ <!-- ============ OVERVIEW ============ -->
+ <main class="page" id="p1">
+  <section class="hero">
+   <svg class="bg1" viewBox="0 0 200 200"><path d="M190.0 100.0 L189.8 102.4 L189.4 104.7 L188.6 107.0 L187.6 109.2 L186.3 111.4 L184.9 113.4 L183.3 115.4 L181.7 117.4 L180.0 119.2 L178.4 121.0 L176.9 122.8 L175.5 124.5 L174.2 126.3 L173.1 128.1 L172.3 129.9 L171.6 131.9 L171.1 133.9 L170.7 136.0 L170.5 138.3 L170.3 140.6 L170.2 143.0 L170.0 145.5 L169.8 148.0 L169.5 150.5 L169.1 153.0 L168.4 155.4 L167.6 157.7 L166.5 159.9 L165.2 161.9 L163.6 163.6 L161.9 165.2 L159.9 166.5 L157.7 167.6 L155.4 168.4 L153.0 169.1 L150.5 169.5 L148.0 169.8 L145.5 170.0 L143.0 170.2 L140.6 170.3 L138.3 170.5 L136.0 170.7 L133.9 171.1 L131.9 171.6 L129.9 172.3 L128.1 173.1 L126.3 174.2 L124.5 175.5 L122.8 176.9 L121.0 178.4 L119.2 180.0 L117.4 181.7 L115.4 183.3 L113.4 184.9 L111.4 186.3 L109.2 187.6 L107.0 188.6 L104.7 189.4 L102.4 189.8 L100.0 190.0 L97.6 189.8 L95.3 189.4 L93.0 188.6 L90.8 187.6 L88.6 186.3 L86.6 184.9 L84.6 183.3 L82.6 181.7 L80.8 180.0 L79.0 178.4 L77.2 176.9 L75.5 175.5 L73.7 174.2 L71.9 173.1 L70.1 172.3 L68.1 171.6 L66.1 171.1 L64.0 170.7 L61.7 170.5 L59.4 170.3 L57.0 170.2 L54.5 170.0 L52.0 169.8 L49.5 169.5 L47.0 169.1 L44.6 168.4 L42.3 167.6 L40.1 166.5 L38.1 165.2 L36.4 163.6 L34.8 161.9 L33.5 159.9 L32.4 157.7 L31.6 155.4 L30.9 153.0 L30.5 150.5 L30.2 148.0 L30.0 145.5 L29.8 143.0 L29.7 140.6 L29.5 138.3 L29.3 136.0 L28.9 133.9 L28.4 131.9 L27.7 129.9 L26.9 128.1 L25.8 126.3 L24.5 124.5 L23.1 122.8 L21.6 121.0 L20.0 119.2 L18.3 117.4 L16.7 115.4 L15.1 113.4 L13.7 111.4 L12.4 109.2 L11.4 107.0 L10.6 104.7 L10.2 102.4 L10.0 100.0 L10.2 97.6 L10.6 95.3 L11.4 93.0 L12.4 90.8 L13.7 88.6 L15.1 86.6 L16.7 84.6 L18.3 82.6 L20.0 80.8 L21.6 79.0 L23.1 77.2 L24.5 75.5 L25.8 73.7 L26.9 71.9 L27.7 70.1 L28.4 68.1 L28.9 66.1 L29.3 64.0 L29.5 61.7 L29.7 59.4 L29.8 57.0 L30.0 54.5 L30.2 52.0 L30.5 49.5 L30.9 47.0 L31.6 44.6 L32.4 42.3 L33.5 40.1 L34.8 38.1 L36.4 36.4 L38.1 34.8 L40.1 33.5 L42.3 32.4 L44.6 31.6 L47.0 30.9 L49.5 30.5 L52.0 30.2 L54.5 30.0 L57.0 29.8 L59.4 29.7 L61.7 29.5 L64.0 29.3 L66.1 28.9 L68.1 28.4 L70.1 27.7 L71.9 26.9 L73.7 25.8 L75.5 24.5 L77.2 23.1 L79.0 21.6 L80.8 20.0 L82.6 18.3 L84.6 16.7 L86.6 15.1 L88.6 13.7 L90.8 12.4 L93.0 11.4 L95.3 10.6 L97.6 10.2 L100.0 10.0 L102.4 10.2 L104.7 10.6 L107.0 11.4 L109.2 12.4 L111.4 13.7 L113.4 15.1 L115.4 16.7 L117.4 18.3 L119.2 20.0 L121.0 21.6 L122.8 23.1 L124.5 24.5 L126.3 25.8 L128.1 26.9 L129.9 27.7 L131.9 28.4 L133.9 28.9 L136.0 29.3 L138.3 29.5 L140.6 29.7 L143.0 29.8 L145.5 30.0 L148.0 30.2 L150.5 30.5 L153.0 30.9 L155.4 31.6 L157.7 32.4 L159.9 33.5 L161.9 34.8 L163.6 36.4 L165.2 38.1 L166.5 40.1 L167.6 42.3 L168.4 44.6 L169.1 47.0 L169.5 49.5 L169.8 52.0 L170.0 54.5 L170.2 57.0 L170.3 59.4 L170.5 61.7 L170.7 64.0 L171.1 66.1 L171.6 68.1 L172.3 70.1 L173.1 71.9 L174.2 73.7 L175.5 75.5 L176.9 77.2 L178.4 79.0 L180.0 80.8 L181.7 82.6 L183.3 84.6 L184.9 86.6 L186.3 88.6 L187.6 90.8 L188.6 93.0 L189.4 95.3 L189.8 97.6Z"/></svg>
+   <svg class="bg2" viewBox="0 0 200 200"><path d="M190.0 100.0 L189.8 102.4 L189.2 104.7 L188.4 107.0 L187.2 109.2 L185.8 111.3 L184.3 113.3 L182.7 115.3 L181.1 117.2 L179.7 119.1 L178.5 121.0 L177.4 122.9 L176.7 124.9 L176.1 127.0 L175.8 129.1 L175.7 131.4 L175.8 133.7 L175.9 136.2 L176.0 138.7 L176.0 141.3 L175.9 143.8 L175.6 146.3 L175.0 148.7 L174.0 150.9 L172.8 152.9 L171.3 154.7 L169.5 156.2 L167.4 157.6 L165.1 158.7 L162.8 159.6 L160.3 160.3 L157.9 161.0 L155.5 161.7 L153.2 162.3 L151.1 163.1 L149.2 164.1 L147.4 165.2 L145.8 166.6 L144.2 168.1 L142.8 169.9 L141.5 171.8 L140.1 173.9 L138.7 176.0 L137.2 178.1 L135.7 180.1 L133.9 181.9 L132.0 183.4 L130.0 184.7 L127.8 185.6 L125.5 186.1 L123.1 186.3 L120.7 186.2 L118.2 185.7 L115.8 185.1 L113.3 184.3 L111.0 183.4 L108.7 182.5 L106.4 181.7 L104.3 181.1 L102.1 180.7 L100.0 180.6 L97.9 180.7 L95.7 181.1 L93.6 181.7 L91.3 182.5 L89.0 183.4 L86.7 184.3 L84.2 185.1 L81.8 185.7 L79.3 186.2 L76.9 186.3 L74.5 186.1 L72.2 185.6 L70.0 184.7 L68.0 183.4 L66.1 181.9 L64.3 180.1 L62.8 178.1 L61.3 176.0 L59.9 173.9 L58.5 171.8 L57.2 169.9 L55.8 168.1 L54.2 166.6 L52.6 165.2 L50.8 164.1 L48.9 163.1 L46.8 162.3 L44.5 161.7 L42.1 161.0 L39.7 160.3 L37.2 159.6 L34.9 158.7 L32.6 157.6 L30.5 156.2 L28.7 154.7 L27.2 152.9 L26.0 150.9 L25.0 148.7 L24.4 146.3 L24.1 143.8 L24.0 141.3 L24.0 138.7 L24.1 136.2 L24.2 133.7 L24.3 131.4 L24.2 129.1 L23.9 127.0 L23.3 124.9 L22.6 122.9 L21.5 121.0 L20.3 119.1 L18.9 117.2 L17.3 115.3 L15.7 113.3 L14.2 111.3 L12.8 109.2 L11.6 107.0 L10.8 104.7 L10.2 102.4 L10.0 100.0 L10.2 97.6 L10.8 95.3 L11.6 93.0 L12.8 90.8 L14.2 88.7 L15.7 86.7 L17.3 84.7 L18.9 82.8 L20.3 80.9 L21.5 79.0 L22.6 77.1 L23.3 75.1 L23.9 73.0 L24.2 70.9 L24.3 68.6 L24.2 66.3 L24.1 63.8 L24.0 61.3 L24.0 58.7 L24.1 56.2 L24.4 53.7 L25.0 51.3 L26.0 49.1 L27.2 47.1 L28.7 45.3 L30.5 43.8 L32.6 42.4 L34.9 41.3 L37.2 40.4 L39.7 39.7 L42.1 39.0 L44.5 38.3 L46.8 37.7 L48.9 36.9 L50.8 35.9 L52.6 34.8 L54.2 33.4 L55.8 31.9 L57.2 30.1 L58.5 28.2 L59.9 26.1 L61.3 24.0 L62.8 21.9 L64.3 19.9 L66.1 18.1 L68.0 16.6 L70.0 15.3 L72.2 14.4 L74.5 13.9 L76.9 13.7 L79.3 13.8 L81.8 14.3 L84.2 14.9 L86.7 15.7 L89.0 16.6 L91.3 17.5 L93.6 18.3 L95.7 18.9 L97.9 19.3 L100.0 19.4 L102.1 19.3 L104.3 18.9 L106.4 18.3 L108.7 17.5 L111.0 16.6 L113.3 15.7 L115.8 14.9 L118.2 14.3 L120.7 13.8 L123.1 13.7 L125.5 13.9 L127.8 14.4 L130.0 15.3 L132.0 16.6 L133.9 18.1 L135.7 19.9 L137.2 21.9 L138.7 24.0 L140.1 26.1 L141.5 28.2 L142.8 30.1 L144.2 31.9 L145.8 33.4 L147.4 34.8 L149.2 35.9 L151.1 36.9 L153.2 37.7 L155.5 38.3 L157.9 39.0 L160.3 39.7 L162.8 40.4 L165.1 41.3 L167.4 42.4 L169.5 43.8 L171.3 45.3 L172.8 47.1 L174.0 49.1 L175.0 51.3 L175.6 53.7 L175.9 56.2 L176.0 58.7 L176.0 61.3 L175.9 63.8 L175.8 66.3 L175.7 68.6 L175.8 70.9 L176.1 73.0 L176.7 75.1 L177.4 77.1 L178.5 79.0 L179.7 80.9 L181.1 82.8 L182.7 84.7 L184.3 86.7 L185.8 88.7 L187.2 90.8 L188.4 93.0 L189.2 95.3 L189.8 97.6Z"/></svg>
+   <div class="hero-top">
+    <div><div class="eyebrow" style="color:inherit;opacity:.7">Battery</div><div class="h2" style="margin-top:6px"><span class="t-on">Charging fast</span><span class="t-off">Engine paused</span></div></div>
+    <span class="pill"><svg class="i f" style="width:14px;height:14px"><use href="#bolt"/></svg>18.4 W</span>
+   </div>
+   <div class="orb">
+    <svg class="c" viewBox="0 0 200 200"><path d="M190.0 100.0 L189.8 102.4 L189.2 104.7 L188.4 107.0 L187.2 109.2 L185.8 111.3 L184.3 113.3 L182.7 115.3 L181.1 117.2 L179.7 119.1 L178.5 121.0 L177.4 122.9 L176.7 124.9 L176.1 127.0 L175.8 129.1 L175.7 131.4 L175.8 133.7 L175.9 136.2 L176.0 138.7 L176.0 141.3 L175.9 143.8 L175.6 146.3 L175.0 148.7 L174.0 150.9 L172.8 152.9 L171.3 154.7 L169.5 156.2 L167.4 157.6 L165.1 158.7 L162.8 159.6 L160.3 160.3 L157.9 161.0 L155.5 161.7 L153.2 162.3 L151.1 163.1 L149.2 164.1 L147.4 165.2 L145.8 166.6 L144.2 168.1 L142.8 169.9 L141.5 171.8 L140.1 173.9 L138.7 176.0 L137.2 178.1 L135.7 180.1 L133.9 181.9 L132.0 183.4 L130.0 184.7 L127.8 185.6 L125.5 186.1 L123.1 186.3 L120.7 186.2 L118.2 185.7 L115.8 185.1 L113.3 184.3 L111.0 183.4 L108.7 182.5 L106.4 181.7 L104.3 181.1 L102.1 180.7 L100.0 180.6 L97.9 180.7 L95.7 181.1 L93.6 181.7 L91.3 182.5 L89.0 183.4 L86.7 184.3 L84.2 185.1 L81.8 185.7 L79.3 186.2 L76.9 186.3 L74.5 186.1 L72.2 185.6 L70.0 184.7 L68.0 183.4 L66.1 181.9 L64.3 180.1 L62.8 178.1 L61.3 176.0 L59.9 173.9 L58.5 171.8 L57.2 169.9 L55.8 168.1 L54.2 166.6 L52.6 165.2 L50.8 164.1 L48.9 163.1 L46.8 162.3 L44.5 161.7 L42.1 161.0 L39.7 160.3 L37.2 159.6 L34.9 158.7 L32.6 157.6 L30.5 156.2 L28.7 154.7 L27.2 152.9 L26.0 150.9 L25.0 148.7 L24.4 146.3 L24.1 143.8 L24.0 141.3 L24.0 138.7 L24.1 136.2 L24.2 133.7 L24.3 131.4 L24.2 129.1 L23.9 127.0 L23.3 124.9 L22.6 122.9 L21.5 121.0 L20.3 119.1 L18.9 117.2 L17.3 115.3 L15.7 113.3 L14.2 111.3 L12.8 109.2 L11.6 107.0 L10.8 104.7 L10.2 102.4 L10.0 100.0 L10.2 97.6 L10.8 95.3 L11.6 93.0 L12.8 90.8 L14.2 88.7 L15.7 86.7 L17.3 84.7 L18.9 82.8 L20.3 80.9 L21.5 79.0 L22.6 77.1 L23.3 75.1 L23.9 73.0 L24.2 70.9 L24.3 68.6 L24.2 66.3 L24.1 63.8 L24.0 61.3 L24.0 58.7 L24.1 56.2 L24.4 53.7 L25.0 51.3 L26.0 49.1 L27.2 47.1 L28.7 45.3 L30.5 43.8 L32.6 42.4 L34.9 41.3 L37.2 40.4 L39.7 39.7 L42.1 39.0 L44.5 38.3 L46.8 37.7 L48.9 36.9 L50.8 35.9 L52.6 34.8 L54.2 33.4 L55.8 31.9 L57.2 30.1 L58.5 28.2 L59.9 26.1 L61.3 24.0 L62.8 21.9 L64.3 19.9 L66.1 18.1 L68.0 16.6 L70.0 15.3 L72.2 14.4 L74.5 13.9 L76.9 13.7 L79.3 13.8 L81.8 14.3 L84.2 14.9 L86.7 15.7 L89.0 16.6 L91.3 17.5 L93.6 18.3 L95.7 18.9 L97.9 19.3 L100.0 19.4 L102.1 19.3 L104.3 18.9 L106.4 18.3 L108.7 17.5 L111.0 16.6 L113.3 15.7 L115.8 14.9 L118.2 14.3 L120.7 13.8 L123.1 13.7 L125.5 13.9 L127.8 14.4 L130.0 15.3 L132.0 16.6 L133.9 18.1 L135.7 19.9 L137.2 21.9 L138.7 24.0 L140.1 26.1 L141.5 28.2 L142.8 30.1 L144.2 31.9 L145.8 33.4 L147.4 34.8 L149.2 35.9 L151.1 36.9 L153.2 37.7 L155.5 38.3 L157.9 39.0 L160.3 39.7 L162.8 40.4 L165.1 41.3 L167.4 42.4 L169.5 43.8 L171.3 45.3 L172.8 47.1 L174.0 49.1 L175.0 51.3 L175.6 53.7 L175.9 56.2 L176.0 58.7 L176.0 61.3 L175.9 63.8 L175.8 66.3 L175.7 68.6 L175.8 70.9 L176.1 73.0 L176.7 75.1 L177.4 77.1 L178.5 79.0 L179.7 80.9 L181.1 82.8 L182.7 84.7 L184.3 86.7 L185.8 88.7 L187.2 90.8 L188.4 93.0 L189.2 95.3 L189.8 97.6Z"/></svg>
+    <div class="t"><b>78<sup>%</sup></b><small>≈ 42 min to full</small></div>
+   </div>
+   <div class="wave"><div style="--v:78%"><svg viewBox="0 0 760 14"><path d="M0 7 Q6 0 12 7 T24 7 T36 7 T48 7 T60 7 T72 7 T84 7 T96 7 T108 7 T120 7 T132 7 T144 7 T156 7 T168 7 T180 7 T192 7 T204 7 T216 7 T228 7 T240 7 T252 7 T264 7 T276 7 T288 7 T300 7 T312 7 T324 7 T336 7 T348 7 T360 7 T372 7 T384 7 T396 7 T408 7 T420 7 T432 7 T444 7 T456 7 T468 7 T480 7 T492 7 T504 7 T516 7 T528 7 T540 7 T552 7 T564 7 T576 7 T588 7 T600 7 T612 7 T624 7 T636 7 T648 7 T660 7 T672 7 T684 7 T696 7 T708 7" transform="translate(0 0)"/></svg></div></div>
+   <div class="mini">
+    <div><small>VOLT</small><b>4.12 V</b></div><div><small>AMPS</small><b>2.9 A</b></div><div><small>TEMP</small><b>34.2°</b></div>
+   </div>
+   <label class="engine" for="eng">
+    <div><b><span class="t-on">RAM engine active</span><span class="t-off">RAM engine standby</span></b><small><span class="t-on">Balanced mounted · resets on reboot</span><span class="t-off">Tap to apply volatile tweaks</span></small></div>
+    <div class="knob"><svg class="i f" style="width:26px;height:26px"><use href="#bolt"/></svg></div>
+   </label>
+  </section>
+
+  <section class="card">
+   <div class="row sp"><span class="h2">Power profile</span><span class="eyebrow">tap to switch</span></div>
+   <div class="profiles">
+    <label for="pf-save"><span class="ic"><svg class="i"><use href="#leaf"/></svg></span><b>Powersave</b><small>Max efficiency</small></label>
+    <label for="pf-bal"><span class="ic"><svg class="i"><use href="#half"/></svg></span><b>Balanced</b><small>Daily adaptive</small></label>
+    <label for="pf-perf"><span class="ic"><svg class="i"><use href="#rocket"/></svg></span><b>Performance</b><small>Peak boost</small></label>
+   </div>
+   <div class="tier"><span class="eyebrow">Governor tier</span>
+    <div class="seg"><label for="tr-lite">Lite<small>smooth</small></label><label for="tr-heavy">Heavy<small>gaming</small></label><label for="tr-ultra">Ultra<small>max lock</small></label></div>
+   </div>
+  </section>
+
+  <section class="bento">
+   <div class="b w2">
+    <svg class="i ico"><use href="#chip"/></svg>
+    <div class="eyebrow">Octa-core · live</div>
+    <div class="eq">
+     <i style="--a:34%;--b:62%;--d:.2"></i><i style="--a:28%;--b:46%;--d:1.1"></i><i style="--a:52%;--b:30%;--d:.6"></i><i style="--a:24%;--b:40%;--d:1.8"></i>
+     <i class="bg" style="--a:70%;--b:92%;--d:.9"></i><i class="bg" style="--a:60%;--b:80%;--d:.3"></i><i class="bg" style="--a:86%;--b:58%;--d:1.4"></i><i class="bg" style="--a:12%;--b:12%;--d:0"></i>
+    </div>
+    <div class="eql"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span></div>
+    <div class="gov"><span>schedutil</span><span>EAS</span><span>LITTLE 1.1G</span><span>PRIME 2.7G</span></div>
+   </div>
+   <div class="b p"><svg class="i ico"><use href="#speed"/></svg><div class="eyebrow" style="color:inherit;opacity:.7">GPU</div><div class="big">315<small>MHz</small></div><div class="cap">Adreno · pwrlevel 6</div></div>
+   <div class="b t"><svg class="i ico"><use href="#ram"/></svg><div class="eyebrow" style="color:inherit;opacity:.7">ZRAM</div>
+    <div class="row sp" style="margin-top:10px"><div><div class="big" style="margin-top:0">2.1<small>/4 GB</small></div><div class="cap">52% used</div></div></div></div>
+   <div class="b s"><svg class="i ico"><use href="#temp"/></svg><div class="eyebrow" style="color:inherit;opacity:.7">Thermal</div><div class="big">34.2<small>°C</small></div><div class="thermo"></div></div>
+   <div class="b"><svg class="i ico"><use href="#bolt"/></svg><div class="eyebrow">Capacity</div><div class="big">5000<small>mAh</small></div><div class="cap">Design capacity</div></div>
+  </section>
+
+  <section class="card">
+   <div class="row sp"><span class="h2">Recent activity</span><span class="pill" style="background:var(--pc);color:var(--on-pc)">live</span></div>
+   <div class="tl">
+    <div class="ev"><time>12:04</time><b>TCP BBR</b><code>tcp_congestion_control=bbr</code></div>
+    <div class="ev"><time>12:03</time><b>GMS doze</b><code>WAKE_LOCK ignore</code></div>
+    <div class="ev x"><time>12:03</time><b>Adreno idler</b><code>node missing · skipped</code></div>
+   </div>
+  </section>
+ </main>
+
+ <!-- ============ TWEAKS ============ -->
+ <main class="page" id="p2">
+  <div class="search"><svg class="i"><use href="#search"/></svg><input type="search" placeholder="Search 16 kernel tweaks"></div>
+  <div class="banner"><svg class="i"><use href="#shield"/></svg><div><b>100% volatile</b><small>Every write resets on reboot</small></div></div>
+  <div class="tiles">
+   <label class="tile"><input type="checkbox" checked><span class="ic"><svg class="i"><use href="#speed"/></svg></span><div><b>CPU cap</b><small>Active</small></div></label>
+   <label class="tile"><input type="checkbox"><span class="ic"><svg class="i f"><use href="#bolt"/></svg></span><div><b>HyperOS saver</b><small>Off</small></div></label>
+   <label class="tile"><input type="checkbox" checked><span class="ic"><svg class="i"><use href="#moon"/></svg></span><div><b>GMS doze</b><small>Restricted</small></div></label>
+   <label class="tile"><input type="checkbox"><span class="ic"><svg class="i"><use href="#net"/></svg></span><div><b>TCP BBR</b><small>Cubic</small></div></label>
+  </div>
+  <div class="chips"><label for="c-all">All</label><label for="c-cpu">CPU &amp; GPU</label><label for="c-bat">Battery</label><label for="c-os">HyperOS</label><label for="c-io">Display &amp; I/O</label></div>
+
+  <section class="grp g-cpu">
+   <div class="gt"><span class="h2" style="color:var(--primary)">CPU &amp; Adreno</span><span class="eyebrow">5 tweaks</span></div>
+   <div class="list">
+    <label class="item"><span class="av"><svg class="i"><use href="#speed"/></svg></span><div class="tx"><b>Limit peak frequencies</b><small>Cap big &amp; prime clusters vs thermal spikes</small><code>cpu*/cpufreq/scaling_max_freq</code></div><input class="sw" type="checkbox" checked></label>
+    <label class="item"><span class="av"><svg class="i"><use href="#wave"/></svg></span><div class="tx"><b>Schedutil energy governor</b><small>Smoother frequency ramps</small><code>schedutil/up_rate_limit_us=4000</code></div><input class="sw" type="checkbox" checked></label>
+    <label class="item"><span class="av"><svg class="i"><use href="#eye"/></svg></span><div class="tx"><b>Disable touch boost</b><small>No max-clock spike on every swipe</small><code>msm_performance/touchboost=0</code></div><input class="sw" type="checkbox"></label>
+    <label class="item"><span class="av"><svg class="i"><use href="#chip"/></svg></span><div class="tx"><b>GPU power limiter</b><small>Throttle pwrlevel outside gaming</small><code>kgsl-3d0/default_pwrlevel=6</code></div><input class="sw" type="checkbox" checked></label>
+    <label class="item"><span class="av"><svg class="i"><use href="#snow"/></svg></span><div class="tx"><b>Adreno idler</b><small>Lowest clock when frame queue idles</small><code>adreno_idler_active=Y</code></div><input class="sw" type="checkbox"></label>
+   </div>
+   <div class="slide"><div class="row sp"><div class="tx"><b>Park big cores on low battery</b><small>Park 2 cores below 20%</small></div><input class="sw" type="checkbox" checked></div><input type="range" min="5" max="60" step="5" value="20"></div>
+  </section>
+
+  <section class="grp g-bat">
+   <div class="gt"><span class="h2" style="color:var(--primary)">Doze &amp; power saving</span><span class="eyebrow">4 tweaks</span></div>
+   <div class="list">
+    <label class="item"><span class="av"><svg class="i"><use href="#moon"/></svg></span><div class="tx"><b>Aggressive GMS doze</b><small>Restrict Play Services wake locks</small><code>appops set …gms WAKE_LOCK ignore</code></div><input class="sw" type="checkbox" checked></label>
+    <label class="item"><span class="av"><svg class="i"><use href="#leaf"/></svg></span><div class="tx"><b>Kernel LPM deep sleep</b><small>Low-power cluster sleep, screen off</small><code>lpm_levels/sleep_disabled=0</code></div><input class="sw" type="checkbox" checked></label>
+    <label class="item"><span class="av"><svg class="i"><use href="#chip"/></svg></span><div class="tx"><b>Power-efficient workqueues</b><small>Background jobs to LITTLE cluster</small><code>workqueue/power_efficient=Y</code></div><input class="sw" type="checkbox"></label>
+    <label class="item"><span class="av"><svg class="i"><use href="#net"/></svg></span><div class="tx"><b>No Wi-Fi/BLE background scan</b><small>Stop hidden beacon scans when idle</small><code>wifi_scan_always_enabled 0</code></div><input class="sw" type="checkbox"></label>
+   </div>
+  </section>
+
+  <section class="grp g-os">
+   <div class="gt"><span class="h2" style="color:var(--primary)">HyperOS engine</span><span class="eyebrow">4 tweaks</span></div>
+   <div class="list">
+    <label class="item"><span class="av"><svg class="i f"><use href="#bolt"/></svg></span><div class="tx"><b>Extreme standby engine</b><small>Joyose &amp; PowerKeeper hibernation</small><code>power_supersave_mode_open 1</code></div><input class="sw" type="checkbox"></label>
+    <label class="item"><span class="av"><svg class="i"><use href="#snow"/></svg></span><div class="tx"><b>Aurogon freezer</b><small>Freeze cached apps on lock</small><code>persist.sys.miui.freezer=true</code></div><input class="sw" type="checkbox" checked></label>
+    <label class="item"><span class="av"><svg class="i"><use href="#net"/></svg></span><div class="tx"><b>5G smart power opt</b><small>Fall back to LTE at low demand</small><code>fiveg_power_saving_enable 1</code></div><input class="sw" type="checkbox"></label>
+    <label class="item"><span class="av"><svg class="i"><use href="#eye"/></svg></span><div class="tx"><b>Remove control-center blur</b><small>Cut real-time blur shader load</small><code>disable_window_blurs 1</code></div><input class="sw" type="checkbox" checked></label>
+   </div>
+  </section>
+
+  <section class="grp g-io">
+   <div class="gt"><span class="h2" style="color:var(--primary)">Display &amp; I/O</span><span class="eyebrow">4 tweaks</span></div>
+   <div class="slide" style="margin:0 0 3px;border-radius:30px 30px 10px 10px"><b class="h2" style="font-size:15px">Peak refresh rate</b>
+    <div class="seg"><label for="rr-0">Auto</label><label for="rr-60">60</label><label for="rr-90">90</label><label for="rr-120">120</label></div></div>
+   <div class="list">
+    <label class="item" style="border-radius:10px"><span class="av"><svg class="i"><use href="#disk"/></svg></span><div class="tx"><b>Optimise UFS I/O queue</b><small>Lower iostats, read_ahead 128 KB</small><code>queue/iostats=0</code></div><input class="sw" type="checkbox" checked></label>
+    <label class="item" style="border-radius:10px"><span class="av"><svg class="i"><use href="#disk"/></svg></span><div class="tx"><b>Defer VM dirty writeback</b><small>Batch flushes, fewer flash wakeups</small><code>vm.dirty_writeback_centisecs=3000</code></div><input class="sw" type="checkbox"></label>
+    <label class="item" style="border-radius:10px 10px 30px 30px"><span class="av"><svg class="i"><use href="#net"/></svg></span><div class="tx"><b>TCP BBR</b><small>Lower socket latency</small><code>net.ipv4.tcp_congestion_control=bbr</code></div><input class="sw" type="checkbox"></label>
+   </div>
+  </section>
+ </main>
+
+ <!-- ============ CONSOLE ============ -->
+ <main class="page" id="p3">
+  <div class="card" style="background:var(--pc);color:var(--on-pc)">
+   <div class="h2" style="font-size:20px">Sysfs stream</div>
+   <div class="eyebrow" style="margin-top:8px;color:inherit;opacity:.7;text-transform:none;letter-spacing:0">snapshot · /data/local/tmp/stock.bak</div>
+  </div>
+  <div class="term">
+   <div class="dots"><i></i><i></i><i></i></div>
+   <div class="out">
+    <div><span class="ok">✓ APPLIED</span> <em>12:04:11</em> tcp_congestion_control</div><div>&nbsp;&nbsp;$ sysctl -w net.ipv4.tcp_congestion_control=bbr</div>
+    <div><span class="ok">✓ APPLIED</span> <em>12:03:52</em> gms wake_lock</div><div>&nbsp;&nbsp;$ cmd appops set com.google.android.gms WAKE_LOCK ignore</div>
+    <div><span class="no">✗ SKIPPED</span> <em>12:03:40</em> adreno_idler</div><div>&nbsp;&nbsp;$ echo Y &gt; /sys/module/adreno_idler/parameters/…</div>
+    <div><span class="ok">✓ APPLIED</span> <em>12:03:12</em> touchboost</div><div>&nbsp;&nbsp;$ echo 0 &gt; /sys/module/msm_performance/…/touchboost</div>
+    <div style="margin-top:8px"><span class="ok">❯</span> <span class="cur"></span></div>
+   </div>
+  </div>
+ </main>
+ </div>
+
+ <button class="fab" type="button"><svg class="i"><use href="#undo"/></svg>Revert stock</button>
+ <nav><div class="in">
+  <label for="t1"><span class="pl"><svg class="i"><use href="#dash"/></svg></span>Overview</label>
+  <label for="t2"><span class="pl"><svg class="i"><use href="#tune"/></svg></span>Tweaks</label>
+  <label for="t3"><span class="pl"><svg class="i"><use href="#term"/></svg></span>Console<em>4</em></label>
+ </div></nav>
+</div>
+</body></html>
