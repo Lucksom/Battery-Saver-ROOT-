@@ -1,26 +1,26 @@
 # VoltPower ⚡
 
-> **Comprehensive Android Optimizer & Hardware Performance Manager**  
-> Engineered with MIUIX design principles, root-level performance controls, and intelligent system resource optimization.
+> **Material 3 Expressive Root Battery Saver & Kernel Performance Manager**  
+> Built with Jetpack Compose, dynamic OKLCH Monet color palettes, expressive SVG geometry, and safe volatile RAM kernel optimization.
 
 ---
 
-## 📱 Interface Preview
+## 📱 Material 3 Expressive Interface Preview
 
 <div align="center">
   <table>
     <tr>
       <td align="center" width="33%">
-        <b>Dashboard &amp; Telemetry</b><br/>
-        <img src="docs/screenshot_dashboard.svg" width="180" alt="VoltPower Dashboard" />
+        <b>Home &amp; Expressive Hero</b><br/>
+        <img src="docs/screenshot_dashboard.svg" width="230" alt="VoltPower Expressive Dashboard" />
       </td>
       <td align="center" width="33%">
-        <b>System &amp; Display Tweaks</b><br/>
-        <img src="docs/screenshot_powersave.svg" width="180" alt="System Tweaks" />
+        <b>CPU Clusters &amp; Thermal</b><br/>
+        <img src="docs/screenshot_powersave.svg" width="230" alt="CPU Clusters and Thermal Engine" />
       </td>
       <td align="center" width="33%">
-        <b>Kernel &amp; Whitelist</b><br/>
-        <img src="docs/screenshot_advanced.svg" width="180" alt="Kernel &amp; Whitelist" />
+        <b>System Tweaks &amp; Root Console</b><br/>
+        <img src="docs/screenshot_advanced.svg" width="230" alt="System Tweaks and Root Console" />
       </td>
     </tr>
   </table>
@@ -28,53 +28,69 @@
 
 ---
 
-## 🚀 Features Overview
+## ✨ Material 3 Expressive Design System
 
-### 📊 Real-Time Hardware Telemetry & Diagnostics
-- **Dynamic Battery Arc**: Live percentage indicator with real-time gradient gauge.
-- **Charging & Discharging Speed**: Instantaneous power telemetry in mA and Watts with speed rating badges.
-- **Bus Voltage & Voltage Metering**: Total millivolt bus voltage monitoring.
-- **Thermal Monitor**: Real-time battery and hardware thermal monitoring with safety zone indicators.
-- **Octa-Core CPU Telemetry**: Live frequencies and utilization meters across Little, Mid, and Prime cores.
-- **GPU & Memory Status**: Real-time Adreno GPU frequency states and active ZRAM compression status.
-
-### ⚡ System & Display Optimization
-- **Universal Refresh Rate Lock**: Force and lock display refresh rates at 60Hz, 90Hz, 120Hz, or Dynamic mode without OS overrides.
-- **Remove Control Center Blur**: Remove real-time background Gaussian blur on HyperOS / MIUI Control Center to eliminate GPU overhead and save battery (`disable_window_blurs 1`).
-- **Theme Preservation & Monet**: Retain preferred light or dark themes and Monet wallpaper palette integration with Material 3.0.
-- **Sensor & Radio Power Management**: Throttle unnecessary background Bluetooth and Wi-Fi scanning during standby.
-- **Modern Radio Optimization**: Intelligent 5G SA and NSA modem sleep when high data bandwidth is not needed.
-
-### ⚙️ Kernel, CPU & Memory Tuning
-- **CPU Governor Rate Limiting**: Stabilize governor frequency ramp-ups to prevent micro-stutters and unnecessary power spikes.
-- **Touch Boost Clamping**: Prevent excessive multi-core CPU clock bursts on minor touch gestures for cooler operation.
-- **Dynamic Storage FSync**: In-memory write buffer acceleration during active screen usage with automated safe disk flushing on screen-off.
-- **Storage I/O Scheduler**: Optimized queue depths and scheduler policies for ultra-fast application launching.
-- **ZRAM & Memory Management**: Enhanced swap compression algorithms and memory watermarks to keep background apps responsive.
-
-### 🛡️ Background Management & App Whitelist
-- **Background Task Suspension**: Deep application freezing that eliminates rogue background CPU drain while preserving system responsiveness.
-- **Automated Deep Sleep**: Triggers instant power-saving sleep states the moment the display turns off.
-- **Touch Digitizer Idle Sleep**: Engages hardware touch controller low-power sleep while the screen is inactive.
-- **App Exemption Whitelist**: Ensure critical messaging, alarms, and navigation apps remain active with prioritized pinned selection.
-
-### 🎯 Profiles & Live Execution Logs
-- **Instant Profile Switcher**: One-tap switching between **Powersave**, **Balanced**, **Performance**, and **Custom** presets.
-- **Master Optimization Switch**: Instantly toggle all optimization engines in memory without altering baseline configurations.
-- **Live Execution Inspector**: Real-time unified live tweak execution card on Dashboard with exact tweak names, applied values, execution status, and timestamps.
-- **Stock Settings Restore**: Safe one-tap revert to original system defaults at any time.
+- **Rotating Scalloped Cookie Orb & Logo**: Custom 200×200 SVG scalloped cookie polygons (`COOKIE_SVG_PATH_DATA` & `HERO_BG1_SVG_PATH_DATA`) with continuous smooth rotation and tap-to-pause physics.
+- **Quadratic Bezier Wave Progress Bar**: Animated sinusoidal wave battery indicator (`M 0 16 Q ... T ...`) with phase shifting and dynamic thumb tracking.
+- **OKLCH Dynamic Monet Engine**: Real-time perceptual OKLCH palette generator supporting 6 expressive seed accents (Emerald, Ocean, Violet, Amber, Rose, Cyan), System Android 12+ dynamic wallpaper colors, Dark/Light mode, and High-Contrast mode.
+- **5-Tab Floating Pill Navigation Bar**: Elevated capsule navigation bar with spring-animated indicator pills across **Home**, **CPU**, **Apps**, **System**, and **Logs**.
 
 ---
 
-## 🛠️ Root Requirements
+## 🚀 Core Features
 
-VoltPower functions with root access:
-- Compatible with **Magisk**, **KernelSU**, and **APatch**.
-- Automatically detects root privileges with real-time status indicators and non-root monitoring fallback.
+### 📊 Live Hardware Telemetry & Hero Card
+- **Expressive Battery Hero Card**: Displays live current flow in `mA`, charging/discharging state, estimated runtime, voltage, battery health percentage, and cycle count inside an animated Material 3 Expressive container.
+- **Quick Profiles (2×2 Grid)**: One-tap morphing profile cards for **Eco** (`Powersave`), **Balanced** (`Daily driver`), **Performance** (`Fast UI`), and **Gaming** (`Max clocks`).
+- **Live Telemetry (2×2 Grid)**: Instantaneous **Temperature**, **CPU Frequency**, **RAM & ZRAM**, and **Active Governor / Deep Sleep** metrics.
+
+### ⚙️ CPU Clusters, Governor & Thermal Tuning (`CPU` Tab)
+- **Interactive Governor Selector**: Switch live between `schedutil`, `powersave`, `performance`, and `walt` governors.
+- **Per-Cluster Frequency Sliders**: Independent frequency ceiling controls for Little Cluster (Cores 0–3) and Big/Prime Cluster (Cores 4–7).
+- **Dynamic Core Topology**: Interactive core online/offline toggles (`C0`–`C7`) and automatic low-battery core parking.
+- **Thermal & Boost Controls**: Toggle Input Touch Boost suppression, Adreno GPU power throttling & Idler, Schedutil rate limiting, and Power-Efficient Workqueues.
+
+### ❄️ App Freezer & Whitelist (`Apps` Tab)
+- **Searchable Package Manager**: Filter installed user and system packages with real-time search.
+- **Background App Suspension**: Freeze background-draining apps or exempt critical messaging and navigation apps from Doze and HyperOS cleaner sweeps.
+
+### 🛠️ System, Display & I/O Tweaks (`System` Tab)
+- **Universal Display Refresh Rate Lock**: Force `60 Hz`, `90 Hz`, `120 Hz`, or `Dynamic` refresh rate across AOSP, MIUI, and HyperOS.
+- **HyperOS / MIUI Super Power Engine**: Toggle Control Center Gaussian blur removal (`disable_window_blurs 1`), AOD suppression, 5G SA/NSA modem power saving, and Aurogon freezer integration.
+- **Storage, VM & Network Tuning**: Configure I/O scheduler read-ahead queues, Dynamic Fsync, VM dirty writeback intervals, TCP BBR congestion control, and GMS Doze enforcement.
+
+### 💻 Real-Time Root Console (`Logs` Tab)
+- **Live Execution Stream**: Inspect every `su` command, sysfs write, applied parameter value, and timestamp in real time.
+- **Immutable Stock Backup & Safe Revert**: Automatically snapshots stock kernel nodes to `/sdcard/Download/Stock_Kernel_Backup.sh` before applying volatile RAM tweaks, allowing one-tap restoration at any time.
+
+---
+
+## 📂 Project Architecture (`com.voltpower`)
+
+```text
+app/src/main/java/com/voltpower/
+├── MainActivity.kt                  # Edge-to-edge Compose host activity
+├── data/
+│   ├── apps/AppInfoRepository.kt    # Installed package & whitelist discovery
+│   ├── db/                          # Room persistence (AppDatabase, DAO, TweakConfigEntity)
+│   ├── log/LogRepository.kt         # Real-time root command & tweak execution log stream
+│   ├── root/RootBridge.kt           # Root shell engine, sysfs reader & stock backup manager
+│   └── telemetry/TelemetryRepository.kt # BatteryManager, CPU core & thermal sysfs polling
+└── ui/
+    ├── MainScreen.kt                # Material 3 Expressive UI, OKLCH Monet engine & animations
+    ├── MainViewModel.kt             # Reactive state management & profile orchestration
+    └── theme/                       # Typography (Space Grotesk, Plus Jakarta Sans, JetBrains Mono) & M3 Theme
+```
+
+---
+
+## 🛠️ Root Requirements & Automated Releases
+
+- Compatible with **Magisk**, **KernelSU**, and **APatch** (`uid=0` root shell), with graceful non-root telemetry fallback.
+- GitHub Actions workflow (`.github/workflows/build-apk.yml`) automatically builds signed Debug and Release APKs and publishes a new incremented release tag (`v1.0.x`) on every push to `main` or `master`.
 
 ---
 
 ## 💖 Acknowledgements & Credits
 
-Special credit to the **[Miuix](https://github.com/compose-miuix-ui/miuix)** project (`compose-miuix-ui/miuix`) for providing the design principles and UI component styling concepts used throughout this application.
-
+Special credit to **[Miuix](https://github.com/compose-miuix-ui/miuix)** (`compose-miuix-ui/miuix`) and **Material 3 Expressive** design principles for inspiring the component styling and expressive motion architecture used in this project.

@@ -1,217 +1,209 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 840" width="360" height="840">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 840" width="380" height="840">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#0C0E12" />
-      <stop offset="100%" stop-color="#141822" />
-    </linearGradient>
-    <linearGradient id="cardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#171A24" />
-      <stop offset="100%" stop-color="#13161F" />
-    </linearGradient>
+    <filter id="orbGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#A2D6B8" flood-opacity="0.28"/>
+    </filter>
+    <filter id="navShadow" x="-15%" y="-20%" width="130%" height="150%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+    <path id="cookiePath" d="M190.0 100.0 L189.8 102.4 L189.2 104.7 L188.4 107.0 L187.2 109.2 L185.8 111.3 L184.3 113.3 L182.7 115.3 L181.1 117.2 L179.7 119.1 L178.5 121.0 L177.4 122.9 L176.7 124.9 L176.1 127.0 L175.8 129.1 L175.7 131.4 L175.8 133.7 L175.9 136.2 L176.0 138.7 L176.0 141.3 L175.9 143.8 L175.6 146.3 L175.0 148.7 L174.0 150.9 L172.8 152.9 L171.3 154.7 L169.5 156.2 L167.4 157.6 L165.1 158.7 L162.8 159.6 L160.3 160.3 L157.9 161.0 L155.5 161.7 L153.2 162.3 L151.1 163.1 L149.2 164.1 L147.4 165.2 L145.8 166.6 L144.2 168.1 L142.8 169.9 L141.5 171.8 L140.1 173.9 L138.7 176.0 L137.2 178.1 L135.7 180.1 L133.9 181.9 L132.0 183.4 L130.0 184.7 L127.8 185.6 L125.5 186.1 L123.1 186.3 L120.7 186.2 L118.2 185.7 L115.8 185.1 L113.3 184.3 L111.0 183.4 L108.7 182.5 L106.4 181.7 L104.3 181.1 L102.1 180.7 L100.0 180.6 L97.9 180.7 L95.7 181.1 L93.6 181.7 L91.3 182.5 L89.0 183.4 L86.7 184.3 L84.2 185.1 L81.8 185.7 L79.3 186.2 L76.9 186.3 L74.5 186.1 L72.2 185.6 L70.0 184.7 L68.0 183.4 L66.1 181.9 L64.3 180.1 L62.8 178.1 L61.3 176.0 L59.9 173.9 L58.5 171.8 L57.2 169.9 L55.8 168.1 L54.2 166.6 L52.6 165.2 L50.8 164.1 L48.9 163.1 L46.8 162.3 L44.5 161.7 L42.1 161.0 L39.7 160.3 L37.2 159.6 L34.9 158.7 L32.6 157.6 L30.5 156.2 L28.7 154.7 L27.2 152.9 L26.0 150.9 L25.0 148.7 L24.4 146.3 L24.1 143.8 L24.0 141.3 L24.0 138.7 L24.1 136.2 L24.2 133.7 L24.3 131.4 L24.2 129.1 L23.9 127.0 L23.3 124.9 L22.6 122.9 L21.5 121.0 L20.3 119.1 L18.9 117.2 L17.3 115.3 L15.7 113.3 L14.2 111.3 L12.8 109.2 L11.6 107.0 L10.8 104.7 L10.2 102.4 L10.0 100.0 L10.2 97.6 L10.8 95.3 L11.6 93.0 L12.8 90.8 L14.2 88.7 L15.7 86.7 L17.3 84.7 L18.9 82.8 L20.3 80.9 L21.5 79.0 L22.6 77.1 L23.3 75.1 L23.9 73.0 L24.2 70.9 L24.3 68.6 L24.2 66.3 L24.1 63.8 L24.0 61.3 L24.0 58.7 L24.1 56.2 L24.4 53.7 L25.0 51.3 L26.0 49.1 L27.2 47.1 L28.7 45.3 L30.5 43.8 L32.6 42.4 L34.9 41.3 L37.2 40.4 L39.7 39.7 L42.1 39.0 L44.5 38.3 L46.8 37.7 L48.9 36.9 L50.8 35.9 L52.6 34.8 L54.2 33.4 L55.8 31.9 L57.2 30.1 L58.5 28.2 L59.9 26.1 L61.3 24.0 L62.8 21.9 L64.3 19.9 L66.1 18.1 L68.0 16.6 L70.0 15.3 L72.2 14.4 L74.5 13.9 L76.9 13.7 L79.3 13.8 L81.8 14.3 L84.2 14.9 L86.7 15.7 L89.0 16.6 L91.3 17.5 L93.6 18.3 L95.7 18.9 L97.9 19.3 L100.0 19.4 L102.1 19.3 L104.3 18.9 L106.4 18.3 L108.7 17.5 L111.0 16.6 L113.3 15.7 L115.8 14.9 L118.2 14.3 L120.7 13.8 L123.1 13.7 L125.5 13.9 L127.8 14.4 L130.0 15.3 L132.0 16.6 L133.9 18.1 L135.7 19.9 L137.2 21.9 L138.7 24.0 L140.1 26.1 L141.5 28.2 L142.8 30.1 L144.2 31.9 L145.8 33.4 L147.4 34.8 L149.2 35.9 L151.1 36.9 L153.2 37.7 L155.5 38.3 L157.9 39.0 L160.3 39.7 L162.8 40.4 L165.1 41.3 L167.4 42.4 L169.5 43.8 L171.3 45.3 L172.8 47.1 L174.0 49.1 L175.0 51.3 L175.6 53.7 L175.9 56.2 L176.0 58.7 L176.0 61.3 L175.9 63.8 L175.8 66.3 L175.7 68.6 L175.8 70.9 L176.1 73.0 L176.7 75.1 L177.4 77.1 L178.5 79.0 L179.7 80.9 L181.1 82.8 L182.7 84.7 L184.3 86.7 L185.8 88.7 L187.2 90.8 L188.4 93.0 L189.2 95.3 L189.8 97.6Z"/>
+    <path id="bg1Path" d="M190.0 100.0 L189.6 102.7 L188.4 105.2 L186.5 107.6 L184.1 109.7 L181.4 111.7 L178.7 113.6 L176.1 115.6 L173.9 117.7 L172.1 120.0 L170.9 122.6 L170.2 125.4 L170.1 128.4 L170.3 131.6 L170.8 134.9 L171.3 138.3 L171.5 141.7 L171.3 145.1 L170.5 148.2 L169.1 151.1 L167.0 153.5 L164.3 155.5 L161.2 157.0 L157.8 158.1 L154.3 159.1 L150.8 159.9 L147.6 160.9 L144.6 162.1 L142.0 163.6 L139.8 165.6 L137.9 167.9 L136.3 170.5 L134.8 173.4 L133.2 176.5 L131.5 179.4 L129.5 182.2 L127.1 184.5 L124.3 186.4 L121.2 187.6 L117.8 188.1 L114.3 188.0 L110.7 187.5 L107.1 186.7 L103.5 185.7 L100.0 184.9 L96.5 184.2 L93.1 183.9 L89.9 184.0 L86.8 184.5 L83.7 185.4 L80.6 186.6 L77.4 188.0 L74.0 189.2 L70.5 190.1 L67.0 190.4 L63.5 190.0 L60.1 188.9 L57.0 187.1 L54.2 184.6 L51.9 181.6 L49.9 178.4 L48.2 175.0 L46.6 171.8 L44.9 168.7 L43.1 166.0 L41.0 163.7 L38.6 161.6 L35.8 159.9 L32.7 158.3 L29.4 156.7 L26.0 155.0 L22.7 153.0 L19.7 150.7 L17.1 147.8 L15.2 144.6 L14.0 141.0 L13.6 137.2 L13.8 133.2 L14.5 129.3 L15.4 125.5 L16.2 121.8 L16.9 118.4 L17.2 115.2 L17.0 112.1 L16.3 109.1 L15.2 106.2 L13.6 103.1 L11.8 100.0 L10.1 96.7 L8.6 93.3 L7.6 89.8 L7.2 86.2 L7.6 82.6 L8.8 79.1 L10.8 76.0 L13.4 73.2 L16.5 70.9 L19.8 68.9 L23.0 67.1 L26.1 65.4 L28.8 63.7 L31.0 61.9 L32.8 59.8 L34.2 57.5 L35.2 54.9 L36.0 51.9 L36.7 48.7 L37.5 45.4 L38.5 42.1 L40.0 38.9 L42.0 36.1 L44.6 33.7 L47.7 32.0 L51.3 30.8 L55.0 30.4 L59.0 30.4 L62.9 30.9 L66.8 31.6 L70.4 32.2 L73.9 32.7 L77.0 32.9 L79.9 32.6 L82.8 31.9 L85.5 30.7 L88.3 29.0 L91.1 27.1 L94.2 25.0 L97.5 23.1 L100.9 21.5 L104.5 20.5 L108.3 20.1 L112.0 20.5 L115.5 21.6 L118.9 23.3 L122.0 25.6 L124.8 28.2 L127.3 31.0 L129.6 33.7 L131.8 36.2 L133.9 38.4 L136.1 40.2 L138.6 41.6 L141.3 42.7 L144.3 43.6 L147.6 44.3 L151.1 45.1 L154.6 46.1 L158.1 47.5 L161.2 49.3 L163.9 51.7 L166.0 54.6 L167.4 58.0 L168.1 61.7 L168.1 65.6 L167.7 69.7 L167.0 73.7 L166.3 77.6 L165.8 81.2 L165.7 84.5 L166.1 87.5 L167.2 90.3 L168.8 92.8 L171.0 95.2 L173.6 97.6Z"/>
+    <clipPath id="heroClip">
+      <rect x="16" y="138" width="348" height="226" rx="34"/>
+    </clipPath>
+    <clipPath id="waveClip">
+      <rect x="0" y="0" width="201" height="32"/>
+    </clipPath>
   </defs>
 
-  <!-- Background -->
-  <rect width="360" height="840" rx="36" fill="url(#bg)" stroke="#262D3D" stroke-width="2"/>
+  <!-- Device Frame Background (Material 3 Expressive Dark Surface #101511) -->
+  <rect width="380" height="840" rx="38" fill="#101511" stroke="#3D4A42" stroke-width="2"/>
 
   <!-- Status Bar -->
-  <text x="24" y="30" fill="#F0F3F8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600">09:41</text>
-  <circle cx="310" cy="26" r="3" fill="#00E676"/>
-  <rect x="320" y="21" width="18" height="10" rx="2" fill="none" stroke="#F0F3F8" stroke-width="1.2"/>
-  <rect x="322" y="23" width="13" height="6" rx="1" fill="#00E676"/>
+  <text x="26" y="30" fill="#DEE5DE" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="700">9:41</text>
+  <rect x="330" y="20" width="22" height="11" rx="3" fill="none" stroke="#DEE5DE" stroke-width="1.4"/>
+  <rect x="332" y="22" width="15" height="7" rx="1.5" fill="#A2D6B8"/>
 
-  <!-- App Header -->
-  <text x="20" y="64" fill="#F0F3F8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="22" font-weight="700">VoltPower</text>
-  <text x="20" y="78" fill="#9DA4B0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11">Xiaomi HyperOS Kernel Engine</text>
-  <rect x="238" y="50" width="102" height="24" rx="12" fill="#00E676" fill-opacity="0.15" stroke="#00E676" stroke-width="1"/>
-  <circle cx="250" cy="62" r="3.5" fill="#00E676"/>
-  <text x="259" y="66" fill="#00E676" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="700">ROOT ACTIVE</text>
+  <!-- Top Bar: Rotating Scalloped Cookie Logo + VoltPower Title + Theme & Accent Controls -->
+  <g transform="translate(16, 46)">
+    <!-- Scalloped Cookie Logo -->
+    <g transform="translate(0, 2) scale(0.22)">
+      <use href="#cookiePath" fill="#1F513B"/>
+    </g>
+    <path d="M23 14 L17 25 L22 25 L21 33 L27 22 L22 22 Z" fill="#BDEBC8"/>
 
-  <!-- 1. Stock Factory Snapshot Banner -->
-  <g transform="translate(16, 92)">
-    <rect x="0" y="0" width="328" height="52" rx="16" fill="url(#cardGrad)" stroke="#222838" stroke-width="1"/>
-    <rect x="12" y="10" width="32" height="32" rx="10" fill="#00E676" fill-opacity="0.15"/>
-    <text x="28" y="30" fill="#00E676" text-anchor="middle" font-size="14">🛡</text>
-    <text x="52" y="24" fill="#F0F3F8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="700">Stock Factory Snapshot</text>
-    <text x="52" y="38" fill="#9DA4B0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10">Safe Revert Available</text>
-    <rect x="236" y="14" width="80" height="24" rx="12" fill="#222838" stroke="#374151" stroke-width="1"/>
-    <text x="276" y="30" fill="#00E5FF" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="600">Revert Stock</text>
+    <!-- Title & Subtitle -->
+    <text x="54" y="22" fill="#DEE5DE" font-family="system-ui, -apple-system, sans-serif" font-size="20" font-weight="800" letter-spacing="-0.5">VoltPower</text>
+    <text x="54" y="38" fill="#A2D6B8" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="700">● Root Engine Active</text>
+
+    <!-- Action Icon Buttons (Revert, Theme, Contrast) -->
+    <rect x="226" y="4" width="36" height="36" rx="18" fill="#252D28"/>
+    <text x="244" y="27" fill="#BEC9C0" text-anchor="middle" font-size="15">↺</text>
+
+    <rect x="268" y="4" width="36" height="36" rx="18" fill="#252D28"/>
+    <text x="286" y="27" fill="#BEC9C0" text-anchor="middle" font-size="14">☾</text>
+
+    <rect x="310" y="4" width="36" height="36" rx="18" fill="#252D28"/>
+    <text x="328" y="27" fill="#BEC9C0" text-anchor="middle" font-size="14">◐</text>
   </g>
 
-  <!-- 2. Live Battery & Thermal Overview Card (NO Health, NO Cycles) -->
-  <g transform="translate(16, 154)">
-    <rect x="0" y="0" width="328" height="114" rx="20" fill="url(#cardGrad)" stroke="#222838" stroke-width="1"/>
-    <rect x="14" y="12" width="36" height="36" rx="10" fill="#00E676" fill-opacity="0.15"/>
-    <text x="32" y="34" fill="#00E676" text-anchor="middle" font-size="16">🔋</text>
-    <text x="58" y="24" fill="#9DA4B0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="600">Battery Status</text>
-    <text x="58" y="40" fill="#F0F3F8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="700">Discharging (Battery Mode)</text>
-    <text x="276" y="38" fill="#F0F3F8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="28" font-weight="800">85%</text>
+  <!-- Monet Color Picker Row -->
+  <g transform="translate(16, 100)">
+    <text x="2" y="18" fill="#BEC9C0" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="700">✦ Accent</text>
+    <circle cx="72" cy="14" r="11" fill="#3B9E66" stroke="#DEE5DE" stroke-width="2.5"/>
+    <circle cx="102" cy="14" r="10" fill="#4A7FD4"/>
+    <circle cx="130" cy="14" r="10" fill="#8A64D6"/>
+    <circle cx="158" cy="14" r="10" fill="#C97A3E"/>
+    <circle cx="186" cy="14" r="10" fill="#D15468"/>
+    <circle cx="214" cy="14" r="10" fill="#2E9CA6"/>
+  </g>
 
-    <!-- Progress bar -->
-    <rect x="14" y="56" width="300" height="6" rx="3" fill="#1F2433"/>
-    <rect x="14" y="56" width="255" height="6" rx="3" fill="#00E676"/>
-
-    <!-- Metrics: Voltage, Thermal, Governor -->
-    <g transform="translate(14, 74)">
-      <text x="0" y="14" fill="#9DA4B0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="9" font-weight="700">VOLTAGE</text>
-      <text x="0" y="28" fill="#F0F3F8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600">4,312 mV</text>
-
-      <text x="110" y="14" fill="#9DA4B0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="9" font-weight="700">THERMAL</text>
-      <text x="110" y="28" fill="#00E676" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600">31.4°C</text>
-
-      <text x="220" y="14" fill="#9DA4B0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="9" font-weight="700">GOVERNOR</text>
-      <text x="220" y="28" fill="#00E5FF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600">schedutil</text>
+  <!-- HERO CARD (Material 3 Expressive with decorative cookie shapes, rotating cookie orb, and wave progress bar) -->
+  <g clip-path="url(#heroClip)">
+    <rect x="16" y="138" width="348" height="226" rx="34" fill="#1F513B"/>
+    <!-- Decorative Rotating Cookie Background 1 (.bg1) -->
+    <g transform="translate(215, 75) rotate(24 100 100) scale(1.1)">
+      <use href="#bg1Path" fill="#BDEBC8" fill-opacity="0.08"/>
+    </g>
+    <!-- Decorative Rotating Cookie Background 2 (.bg2) -->
+    <g transform="translate(135, 225) rotate(-18 100 100) scale(0.8)">
+      <use href="#cookiePath" fill="#BDEBC8" fill-opacity="0.08"/>
     </g>
   </g>
 
-  <!-- 3. Master Engine Switch & Profile Selector Card (Merged from Profile tab) -->
-  <g transform="translate(16, 278)">
-    <rect x="0" y="0" width="328" height="136" rx="20" fill="url(#cardGrad)" stroke="#00E676" stroke-width="1.2"/>
-    
-    <!-- Master switch row -->
-    <rect x="14" y="12" width="36" height="36" rx="10" fill="#00E676" fill-opacity="0.18"/>
-    <text x="32" y="34" fill="#00E676" text-anchor="middle" font-size="16">⚡</text>
-    <text x="58" y="26" fill="#F0F3F8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" font-weight="700">RAM Tweaks Active</text>
-    <text x="58" y="40" fill="#00E676" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10">100% Volatile RAM Execution</text>
-    <rect x="272" y="18" width="42" height="24" rx="12" fill="#00E676"/>
-    <circle cx="302" cy="30" r="9" fill="#FFFFFF"/>
+  <!-- Hero Content -->
+  <g transform="translate(38, 160)">
+    <!-- Left Metric Info -->
+    <rect x="0" y="0" width="96" height="24" rx="12" fill="#000000" fill-opacity="0.22"/>
+    <text x="48" y="16" fill="#BDEBC8" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="700">⚡ Discharging</text>
 
-    <!-- Divider -->
-    <line x1="14" y1="58" x2="314" y2="58" stroke="#252C3D" stroke-width="0.8"/>
+    <text x="0" y="64" fill="#BDEBC8" font-family="system-ui, -apple-system, sans-serif" font-size="40" font-weight="800" letter-spacing="-1.5">-180<tspan font-size="17" font-weight="600" fill-opacity="0.75"> mA</tspan></text>
+    <text x="0" y="86" fill="#BDEBC8" fill-opacity="0.82" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="500">Est. 9h 40m left • 4.1V</text>
 
-    <!-- Profile Mode Chips -->
-    <text x="14" y="74" fill="#9DA4B0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="700">ACTIVE POWER PROFILE</text>
-    <g transform="translate(14, 84)">
-      <!-- Powersave Selected -->
-      <rect x="0" y="0" width="94" height="42" rx="12" fill="#00E676" fill-opacity="0.15" stroke="#00E676" stroke-width="1.2"/>
-      <text x="47" y="18" fill="#00E676" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="700">⚡ Powersave</text>
-      <text x="47" y="32" fill="#9DA4B0" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="8">HyperOS Suite</text>
+    <!-- Right Scalloped Rotating Cookie Orb (.orb) -->
+    <g transform="translate(194, -4)" filter="url(#orbGlow)">
+      <g transform="scale(0.55)">
+        <use href="#cookiePath" fill="#A2D6B8"/>
+      </g>
+      <text x="55" y="57" fill="#003824" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="24" font-weight="800">65%</text>
+      <text x="55" y="72" fill="#003824" fill-opacity="0.75" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="9" font-weight="800" letter-spacing="0.6">LEVEL</text>
+    </g>
 
-      <!-- Balanced -->
-      <rect x="103" y="0" width="94" height="42" rx="12" fill="#1A1E29" stroke="#252C3D" stroke-width="1"/>
-      <text x="150" y="18" fill="#F0F3F8" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="600">⚖ Balanced</text>
-      <text x="150" y="32" fill="#6B7280" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="8">Auto Governed</text>
+    <!-- Quadratic Bezier Wave Progress Bar (.wave-wrap) -->
+    <g transform="translate(0, 114)">
+      <!-- Background Straight Track -->
+      <line x1="201" y1="16" x2="304" y2="16" stroke="#BDEBC8" stroke-opacity="0.25" stroke-width="4" stroke-linecap="round"/>
+      <!-- Animated Sine/Bezier Wave Active Track -->
+      <g clip-path="url(#waveClip)">
+        <path d="M 0 16 Q 7 9, 14 16 T 28 16 T 42 16 T 56 16 T 70 16 T 84 16 T 98 16 T 112 16 T 126 16 T 140 16 T 154 16 T 168 16 T 182 16 T 196 16 T 210 16" fill="none" stroke="#A2D6B8" stroke-width="4.5" stroke-linecap="round"/>
+      </g>
+      <!-- Thumb Indicator -->
+      <circle cx="201" cy="16" r="7" fill="#BDEBC8"/>
+    </g>
 
-      <!-- Performance -->
-      <rect x="206" y="0" width="94" height="42" rx="12" fill="#1A1E29" stroke="#252C3D" stroke-width="1"/>
-      <text x="253" y="18" fill="#FF6D00" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="600">🔥 Performance</text>
-      <text x="253" y="32" fill="#6B7280" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="8">Uncapped</text>
+    <!-- Hero Footer Row -->
+    <g transform="translate(0, 162)">
+      <text x="0" y="14" fill="#BDEBC8" fill-opacity="0.85" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600">Health: Good (96%)</text>
+      <rect x="218" y="-2" width="86" height="24" rx="8" fill="#000000" fill-opacity="0.22"/>
+      <text x="261" y="14" fill="#BDEBC8" text-anchor="middle" font-family="monospace" font-size="11" font-weight="700">Cycles: 142</text>
     </g>
   </g>
 
-  <!-- 4. Octa-Core CPU Telemetry (NO Average Frequency Graph) -->
-  <g transform="translate(16, 424)">
-    <rect x="0" y="0" width="328" height="110" rx="20" fill="url(#cardGrad)" stroke="#222838" stroke-width="1"/>
-    <text x="14" y="24" fill="#F0F3F8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="700">Octa-Core CPU Frequency</text>
-    <rect x="246" y="12" width="68" height="18" rx="8" fill="#0084FF" fill-opacity="0.15"/>
-    <text x="280" y="24" fill="#0084FF" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="9" font-weight="700">8/8 ONLINE</text>
+  <!-- QUICK PROFILES (2x2 Grid) -->
+  <text x="20" y="392" fill="#A2D6B8" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="800" letter-spacing="0.8">QUICK PROFILES</text>
 
-    <!-- Cores Tiles (Row 1) -->
-    <g transform="translate(14, 38)">
-      <rect x="0" y="0" width="70" height="30" rx="8" fill="#1B1E28" stroke="#252C3D" stroke-width="0.8"/>
-      <text x="35" y="12" fill="#9DA4B0" text-anchor="middle" font-size="8">Core 0</text>
-      <text x="35" y="24" fill="#F0F3F8" text-anchor="middle" font-size="10" font-weight="700">1,200 MHz</text>
+  <g transform="translate(16, 404)">
+    <!-- Profile 1: Eco -->
+    <rect x="0" y="0" width="168" height="62" rx="22" fill="#1B231E"/>
+    <rect x="12" y="11" width="40" height="40" rx="14" fill="#2F3B33"/>
+    <text x="32" y="36" fill="#BEC9C0" text-anchor="middle" font-size="16">🌿</text>
+    <text x="62" y="28" fill="#DEE5DE" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="700">Eco</text>
+    <text x="62" y="44" fill="#BEC9C0" font-family="system-ui, -apple-system, sans-serif" font-size="11">Max battery</text>
 
-      <rect x="76" y="0" width="70" height="30" rx="8" fill="#1B1E28" stroke="#252C3D" stroke-width="0.8"/>
-      <text x="111" y="12" fill="#9DA4B0" text-anchor="middle" font-size="8">Core 1</text>
-      <text x="111" y="24" fill="#F0F3F8" text-anchor="middle" font-size="10" font-weight="700">1,200 MHz</text>
+    <!-- Profile 2: Balanced (Active Pill Shape) -->
+    <rect x="180" y="0" width="168" height="62" rx="31" fill="#A2D6B8"/>
+    <rect x="192" y="11" width="40" height="40" rx="20" fill="#003824"/>
+    <text x="212" y="36" fill="#A2D6B8" text-anchor="middle" font-size="16">⚡</text>
+    <text x="242" y="28" fill="#003824" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="800">Balanced</text>
+    <text x="242" y="44" fill="#003824" fill-opacity="0.8" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="600">Daily driver</text>
 
-      <rect x="152" y="0" width="70" height="30" rx="8" fill="#1B1E28" stroke="#252C3D" stroke-width="0.8"/>
-      <text x="187" y="12" fill="#9DA4B0" text-anchor="middle" font-size="8">Core 2</text>
-      <text x="187" y="24" fill="#F0F3F8" text-anchor="middle" font-size="10" font-weight="700">1,200 MHz</text>
+    <!-- Profile 3: Performance -->
+    <rect x="0" y="72" width="168" height="62" rx="22" fill="#1B231E"/>
+    <rect x="12" y="83" width="40" height="40" rx="14" fill="#2F3B33"/>
+    <text x="32" y="108" fill="#BEC9C0" text-anchor="middle" font-size="16">🚀</text>
+    <text x="62" y="100" fill="#DEE5DE" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="700">Performance</text>
+    <text x="62" y="116" fill="#BEC9C0" font-family="system-ui, -apple-system, sans-serif" font-size="11">Fast UI</text>
 
-      <rect x="228" y="0" width="70" height="30" rx="8" fill="#1B1E28" stroke="#252C3D" stroke-width="0.8"/>
-      <text x="263" y="12" fill="#9DA4B0" text-anchor="middle" font-size="8">Core 3</text>
-      <text x="263" y="24" fill="#F0F3F8" text-anchor="middle" font-size="10" font-weight="700">1,200 MHz</text>
-    </g>
-
-    <!-- Cores Tiles (Row 2) -->
-    <g transform="translate(14, 72)">
-      <rect x="0" y="0" width="70" height="30" rx="8" fill="#1B1E28" stroke="#252C3D" stroke-width="0.8"/>
-      <text x="35" y="12" fill="#9DA4B0" text-anchor="middle" font-size="8">Core 4</text>
-      <text x="35" y="24" fill="#00E5FF" text-anchor="middle" font-size="10" font-weight="700">1,650 MHz</text>
-
-      <rect x="76" y="0" width="70" height="30" rx="8" fill="#1B1E28" stroke="#252C3D" stroke-width="0.8"/>
-      <text x="111" y="12" fill="#9DA4B0" text-anchor="middle" font-size="8">Core 5</text>
-      <text x="111" y="24" fill="#00E5FF" text-anchor="middle" font-size="10" font-weight="700">1,650 MHz</text>
-
-      <rect x="152" y="0" width="70" height="30" rx="8" fill="#1B1E28" stroke="#252C3D" stroke-width="0.8"/>
-      <text x="187" y="12" fill="#9DA4B0" text-anchor="middle" font-size="8">Core 6</text>
-      <text x="187" y="24" fill="#00E5FF" text-anchor="middle" font-size="10" font-weight="700">1,650 MHz</text>
-
-      <rect x="228" y="0" width="70" height="30" rx="8" fill="#1B1E28" stroke="#252C3D" stroke-width="0.8"/>
-      <text x="263" y="12" fill="#9DA4B0" text-anchor="middle" font-size="8">Core 7</text>
-      <text x="263" y="24" fill="#FFAB00" text-anchor="middle" font-size="10" font-weight="700">Parked</text>
-    </g>
+    <!-- Profile 4: Gaming -->
+    <rect x="180" y="72" width="168" height="62" rx="22" fill="#1B231E"/>
+    <rect x="192" y="83" width="40" height="40" rx="14" fill="#2F3B33"/>
+    <text x="212" y="108" fill="#BEC9C0" text-anchor="middle" font-size="16">🔥</text>
+    <text x="242" y="100" fill="#DEE5DE" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="700">Gaming</text>
+    <text x="242" y="116" fill="#BEC9C0" font-family="system-ui, -apple-system, sans-serif" font-size="11">Max clocks</text>
   </g>
 
-  <!-- 5. Real-Time Execution Logs Card (Single Unified Card with Names and Values) -->
-  <g transform="translate(16, 544)">
-    <rect x="0" y="0" width="328" height="194" rx="20" fill="url(#cardGrad)" stroke="#222838" stroke-width="1"/>
-    
-    <!-- Header -->
-    <circle cx="20" cy="22" r="4" fill="#00E676"/>
-    <text x="32" y="26" fill="#F0F3F8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="700">Real-Time Execution Logs</text>
-    <rect x="254" y="14" width="56" height="18" rx="8" fill="#00E676" fill-opacity="0.15"/>
-    <text x="282" y="26" fill="#00E676" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="9" font-weight="700">LIVE</text>
+  <!-- LIVE TELEMETRY (2x2 Grid) -->
+  <text x="20" y="566" fill="#A2D6B8" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="800" letter-spacing="0.8">LIVE TELEMETRY</text>
 
-    <!-- Table Header Row -->
-    <rect x="12" y="38" width="304" height="20" rx="6" fill="#141822"/>
-    <text x="20" y="52" fill="#9DA4B0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="8" font-weight="700">TIME</text>
-    <text x="76" y="52" fill="#9DA4B0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="8" font-weight="700">TWEAK / SETTING</text>
-    <text x="186" y="52" fill="#9DA4B0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="8" font-weight="700">APPLIED VALUE</text>
-    <text x="278" y="52" fill="#9DA4B0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="8" font-weight="700">STATUS</text>
+  <g transform="translate(16, 578)">
+    <!-- Tile 1: Temp -->
+    <rect x="0" y="0" width="168" height="82" rx="24" fill="#1B231E"/>
+    <text x="16" y="24" fill="#BEC9C0" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600">🌡 Temp</text>
+    <text x="16" y="52" fill="#DEE5DE" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="800">34.5°C</text>
+    <text x="16" y="68" fill="#A2D6B8" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="600">Cool • Safe</text>
 
-    <!-- Log Row 1 -->
-    <text x="20" y="76" fill="#6B7280" font-family="monospace" font-size="8">09:41:02</text>
-    <text x="76" y="76" fill="#F0F3F8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="9" font-weight="600">disable_window_blurs</text>
-    <text x="186" y="76" fill="#00E676" font-family="monospace" font-size="8">1 (Removed Blur)</text>
-    <rect x="274" y="66" width="34" height="14" rx="4" fill="#00E676" fill-opacity="0.15"/>
-    <text x="291" y="76" fill="#00E676" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="7" font-weight="700">OK</text>
+    <!-- Tile 2: CPU Freq -->
+    <rect x="180" y="0" width="168" height="82" rx="24" fill="#1B231E"/>
+    <text x="196" y="24" fill="#BEC9C0" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600">⚙ CPU Freq</text>
+    <text x="196" y="52" fill="#DEE5DE" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="800">1.48 GHz</text>
+    <text x="196" y="68" fill="#A2D6B8" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="600">6/8 cores online</text>
 
-    <!-- Log Row 2 -->
-    <text x="20" y="100" fill="#6B7280" font-family="monospace" font-size="8">09:41:00</text>
-    <text x="76" y="100" fill="#F0F3F8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="9" font-weight="600">user_refresh_rate</text>
-    <text x="186" y="100" fill="#00E5FF" font-family="monospace" font-size="8">60 Hz Dynamic</text>
-    <rect x="274" y="90" width="34" height="14" rx="4" fill="#00E676" fill-opacity="0.15"/>
-    <text x="291" y="100" fill="#00E676" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="7" font-weight="700">OK</text>
+    <!-- Tile 3: RAM -->
+    <rect x="0" y="92" width="168" height="82" rx="24" fill="#1B231E"/>
+    <text x="16" y="116" fill="#BEC9C0" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600">▦ RAM</text>
+    <text x="16" y="144" fill="#DEE5DE" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="800">6.1 / 12G</text>
+    <text x="16" y="160" fill="#A2D6B8" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="600">ZRAM 4GB active</text>
 
-    <!-- Log Row 3 -->
-    <text x="20" y="124" fill="#6B7280" font-family="monospace" font-size="8">09:40:58</text>
-    <text x="76" y="124" fill="#F0F3F8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="9" font-weight="600">scaling_governor</text>
-    <text x="186" y="124" fill="#00E676" font-family="monospace" font-size="8">schedutil</text>
-    <rect x="274" y="114" width="34" height="14" rx="4" fill="#00E676" fill-opacity="0.15"/>
-    <text x="291" y="124" fill="#00E676" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="7" font-weight="700">OK</text>
-
-    <!-- Log Row 4 -->
-    <text x="20" y="148" fill="#6B7280" font-family="monospace" font-size="8">09:40:54</text>
-    <text x="76" y="148" fill="#F0F3F8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="9" font-weight="600">Dynamic Core Parking</text>
-    <text x="186" y="148" fill="#FFAB00" font-family="monospace" font-size="8">2 Cores Offline</text>
-    <rect x="274" y="138" width="34" height="14" rx="4" fill="#00E676" fill-opacity="0.15"/>
-    <text x="291" y="148" fill="#00E676" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="7" font-weight="700">OK</text>
-
-    <!-- Log Row 5 -->
-    <text x="20" y="172" fill="#6B7280" font-family="monospace" font-size="8">09:40:50</text>
-    <text x="76" y="172" fill="#F0F3F8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="9" font-weight="600">Touch Host Processing</text>
-    <text x="186" y="172" fill="#00E5FF" font-family="monospace" font-size="8">Doze Mode Active</text>
-    <rect x="274" y="162" width="34" height="14" rx="4" fill="#00E676" fill-opacity="0.15"/>
-    <text x="291" y="172" fill="#00E676" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="7" font-weight="700">OK</text>
+    <!-- Tile 4: Governor -->
+    <rect x="180" y="92" width="168" height="82" rx="24" fill="#1B231E"/>
+    <text x="196" y="116" fill="#BEC9C0" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600">〽 Governor</text>
+    <text x="196" y="144" fill="#DEE5DE" font-family="system-ui, -apple-system, sans-serif" font-size="21" font-weight="800">schedutil</text>
+    <text x="196" y="160" fill="#A2D6B8" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="600">Deep sleep: 84%</text>
   </g>
 
-  <!-- Bottom Navigation Bar (Strictly 2 Tabs: Dashboard and Tweaks) -->
-  <g transform="translate(0, 756)">
-    <rect width="360" height="84" fill="#11141C" stroke="#1F2433" stroke-width="1"/>
-    
-    <!-- Tab 1: Dashboard Active -->
-    <g transform="translate(90, 16)">
-      <rect x="-60" y="0" width="120" height="36" rx="18" fill="#0084FF" fill-opacity="0.18"/>
-      <text x="-12" y="22" fill="#0084FF" text-anchor="middle" font-size="14">⚡</text>
-      <text x="14" y="23" fill="#0084FF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="700">Dashboard</text>
+  <!-- 5-TAB FLOATING PILL BOTTOM NAVIGATION BAR -->
+  <g transform="translate(22, 756)" filter="url(#navShadow)">
+    <rect x="0" y="0" width="336" height="66" rx="33" fill="#252D28" stroke="#88938B" stroke-opacity="0.2" stroke-width="1"/>
+
+    <!-- Tab 1: Home (Active) -->
+    <g transform="translate(8, 7)">
+      <rect x="0" y="0" width="64" height="32" rx="16" fill="#324D3E"/>
+      <text x="32" y="21" fill="#CEE9D8" text-anchor="middle" font-size="14">⌂</text>
+      <text x="32" y="47" fill="#DEE5DE" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="700">Home</text>
     </g>
 
-    <!-- Tab 2: Tweaks -->
-    <g transform="translate(270, 16)">
-      <text x="-8" y="22" fill="#9DA4B0" text-anchor="middle" font-size="14">⚙</text>
-      <text x="14" y="23" fill="#9DA4B0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="600">Tweaks</text>
+    <!-- Tab 2: CPU -->
+    <g transform="translate(74, 7)">
+      <text x="32" y="21" fill="#BEC9C0" text-anchor="middle" font-size="14">⚙</text>
+      <text x="32" y="47" fill="#BEC9C0" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600">CPU</text>
+    </g>
+
+    <!-- Tab 3: Apps -->
+    <g transform="translate(140, 7)">
+      <text x="32" y="21" fill="#BEC9C0" text-anchor="middle" font-size="14">❄</text>
+      <text x="32" y="47" fill="#BEC9C0" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600">Apps</text>
+    </g>
+
+    <!-- Tab 4: System -->
+    <g transform="translate(206, 7)">
+      <text x="32" y="21" fill="#BEC9C0" text-anchor="middle" font-size="14">☰</text>
+      <text x="32" y="47" fill="#BEC9C0" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600">System</text>
+    </g>
+
+    <!-- Tab 5: Logs -->
+    <g transform="translate(264, 7)">
+      <text x="32" y="21" fill="#BEC9C0" text-anchor="middle" font-size="14">❯_</text>
+      <text x="32" y="47" fill="#BEC9C0" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600">Logs</text>
     </g>
   </g>
 </svg>
