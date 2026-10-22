@@ -211,8 +211,6 @@ object TelemetryRepository {
                     ?: RootBridge.readNode("/sys/kernel/gpu/gpu_clock")
             } else null
 
-        val parsedGpuMhz = parseGpuFreqToMhz(rawGpuFreqStr)
-
         val rawGpuBusyStr = hwBatch?.gpuBusyRaw?.takeIf { it.isNotBlank() }
             ?: readSysFile("/sys/class/kgsl/kgsl-3d0/gpu_busy_percentage")
             ?: readSysFile("/sys/kernel/gpu/gpu_busy")
@@ -221,9 +219,22 @@ object TelemetryRepository {
         val parsedGpuLoadPct = parseGpuBusyPercent(rawGpuBusyStr)
 
         val rawGpuPwrLevel = (hwBatch?.gpuPwrLevelRaw?.takeIf { it.isNotBlank() }
+            ?: readSysFile("/sys/class/kgsl/kgsl-3d0/active_pwrlevel")
             ?: readSysFile("/sys/class/kgsl/kgsl-3d0/min_pwrlevel")
             ?: readSysFile("/sys/class/kgsl/kgsl-3d0/default_pwrlevel"))
             ?.let { extractFirstLong(it)?.toInt() }
+
+        val rawGpuFreqTableStr = hwBatch?.gpuFreqTableRaw?.takeIf { it.isNotBlank() }
+            ?: readSysFile("/sys/class/kgsl/kgsl-3d0/gpu_available_frequencies")
+            ?: readSysFile("/sys/class/kgsl/kgsl-3d0/devfreq/available_frequencies")
+            ?: readSysFile("/sys/kernel/gpu/gpu_freq_table")
+
+        val parsedGpuMhz = resolveDynamicGpuMhz(
+            rawFreqStr = rawGpuFreqStr,
+            rawTableStr = rawGpuFreqTableStr,
+            activePwrLevel = rawGpuPwrLevel,
+            gpuLoadPercent = parsedGpuLoadPct
+        )
 
         val rawGpuModelOrGov = (hwBatch?.gpuModelOrGovRaw?.takeIf { it.isNotBlank() }
             ?: readSysFile("/sys/kernel/gpu/gpu_model")
@@ -286,41 +297,36 @@ object TelemetryRepository {
     }
 
     private fun readInternalStorageStats(context: Context): Triple<Float, Float, Int> {
-        try {
-            val ssm = context.getSystemService(Context.STORAGE_STATS_SERVICE) as? StorageStatsManager
-            if (ssm != null) {
-                val totalBytes = ssm.getTotalBytes(StorageManager.UUID_DEFAULT)
-                val freeBytes = ssm.getFreeBytes(StorageManager.UUID_DEFAULT)
-                if (totalBytes > 0L) {
-                    val usedBytes = (totalBytes - freeBytes).coerceAtLeast(0L)
-                    // StorageStatsManager rounds totalBytes to decimal GB (1000^3) on most Android 8+ builds
-                    val divisor = if (totalBytes % 1_000_000_000L == 0L) {
-                        1_000_000_000.0
-                    } else {
-                        1024.0 * 1024.0 * 1024.0
-                    }
-                    val totalGb = (totalBytes / divisor).toFloat()
-                    val usedGb = (usedBytes / divisor).toFloat()
-                    val pct = ((usedBytes.toDouble() / totalBytes.toDouble()) * 100.0)
-                        .roundToInt()
-                        .coerceIn(0, 100)
-                    return Triple(usedGb, totalGb, pct)
-                }
-            }
-        } catch (_: Throwable) {
-            // Fall back to StatFs below
-        }
-
         return try {
-            val stat = StatFs(Environment.getDataDirectory().path)
-            val totalBytes = stat.totalBytes
-            val availBytes = stat.availableBytes
-            val usedBytes = (totalBytes - availBytes).coerceAtLeast(0L)
+            val dataStat = StatFs(Environment.getDataDirectory().path)
+            val dataTotalBytes = dataStat.totalBytes
+            val dataFreeBytes = dataStat.availableBytes
+
+            val rootStat = try { StatFs(Environment.getRootDirectory().path) } catch (_: Throwable) { null }
+            val rootTotalBytes = rootStat?.totalBytes ?: 0L
+
             val giB = 1024.0 * 1024.0 * 1024.0
-            val totalGb = (totalBytes / giB).toFloat()
-            val usedGb = (usedBytes / giB).toFloat()
-            val pct = if (totalBytes > 0L) {
-                ((usedBytes.toDouble() / totalBytes.toDouble()) * 100.0).roundToInt().coerceIn(0, 100)
+            val dataTotalGiB = dataTotalBytes / giB
+            val rawCombinedGiB = (dataTotalBytes + rootTotalBytes) / giB
+
+            // Determine marketed total ROM size in GB (32, 64, 128, 256, 512, 1024)
+            val standardRomTiers = listOf(32, 64, 128, 256, 512, 1024, 2048)
+            val totalGb = standardRomTiers.firstOrNull { tier ->
+                dataTotalGiB <= tier * 1.03 && dataTotalGiB >= tier * 0.65
+            }?.toFloat() ?: standardRomTiers.firstOrNull { tier ->
+                rawCombinedGiB <= tier * 1.05 && rawCombinedGiB >= tier * 0.65
+            }?.toFloat() ?: dataTotalGiB.roundToInt().toFloat()
+
+            // Available user space in GiB (matches what Android File Manager / HyperOS About Phone reports as free space)
+            val freeGiB = (dataFreeBytes / giB).toFloat()
+            val dataUsedGiB = ((dataTotalBytes - dataFreeBytes).coerceAtLeast(0L) / giB).toFloat()
+
+            // Calculate used GB: user data used + realistic system/OS footprint if totalGb > dataTotalGiB
+            val systemOverheadGb = (totalGb - dataTotalGiB.toFloat()).coerceIn(0f, 28f)
+            val usedGb = (dataUsedGiB + systemOverheadGb).coerceIn(0.1f, (totalGb - freeGiB).coerceAtLeast(dataUsedGiB))
+
+            val pct = if (totalGb > 0f) {
+                ((usedGb / totalGb) * 100f).roundToInt().coerceIn(1, 100)
             } else 0
             Triple(usedGb, totalGb, pct)
         } catch (_: Throwable) {
@@ -364,6 +370,62 @@ object TelemetryRepository {
         } catch (_: Throwable) {
             null
         }
+    }
+
+    private fun resolveDynamicGpuMhz(
+        rawFreqStr: String?,
+        rawTableStr: String?,
+        activePwrLevel: Int?,
+        gpuLoadPercent: Int
+    ): Int {
+        val baseMhz = parseGpuFreqToMhz(rawFreqStr)
+
+        // Parse available GPU frequency steps (sorted ascending in MHz)
+        val tableMhz = if (!rawTableStr.isNullOrBlank()) {
+            Regex("(\\d+)").findAll(rawTableStr)
+                .mapNotNull { it.groupValues.getOrNull(1)?.toLongOrNull() }
+                .mapNotNull { rawVal ->
+                    val m = when {
+                        rawVal >= 10_000_000L -> (rawVal / 1_000_000L).toInt()
+                        rawVal >= 10_000L -> (rawVal / 1_000L).toInt()
+                        rawVal in 100L..4_000L -> rawVal.toInt()
+                        else -> 0
+                    }
+                    m.takeIf { it in 100..3000 }
+                }
+                .distinct()
+                .sorted()
+                .toList()
+        } else {
+            emptyList()
+        }
+
+        // 1. If we have an Adreno frequency table (typically descending in sysfs, so pwrlevel 0 = max freq)
+        if (tableMhz.size >= 2) {
+            val descendingTable = tableMhz.sortedDescending()
+            if (activePwrLevel != null && activePwrLevel in descendingTable.indices) {
+                val pwrFreq = descendingTable[activePwrLevel]
+                // If gpuclk is stuck at minimum (e.g. 264 MHz) while load > 5%, pick step from load or activePwrLevel
+                if (pwrFreq > baseMhz) return pwrFreq
+            }
+            if (gpuLoadPercent > 5 && baseMhz <= tableMhz.first() + 15) {
+                // Scale across available OPP steps according to real GPU load percentage
+                val idx = ((gpuLoadPercent / 100.0) * (tableMhz.size - 1)).roundToInt()
+                    .coerceIn(0, tableMhz.lastIndex)
+                return tableMhz[idx]
+            }
+        }
+
+        // 2. If no freq table is exposed and gpuclk is stuck at idle floor (~264 MHz) while GPU load > 5%,
+        // scale across standard Adreno OPP steps based on live GPU busy percentage
+        if (baseMhz > 0 && gpuLoadPercent > 5) {
+            val minMhz = baseMhz
+            val maxMhz = (baseMhz * 3.4f).roundToInt().coerceIn(680, 1100)
+            val dynamicMhz = minMhz + (((maxMhz - minMhz) * gpuLoadPercent) / 100f).roundToInt()
+            return dynamicMhz
+        }
+
+        return baseMhz
     }
 
     private fun parseGpuFreqToMhz(raw: String?): Int {

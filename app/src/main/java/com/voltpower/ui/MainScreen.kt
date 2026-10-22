@@ -27,6 +27,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -45,6 +46,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -53,6 +55,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -72,6 +75,7 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
@@ -85,6 +89,8 @@ import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -129,6 +135,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asAndroidPath
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -146,6 +153,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import com.voltpower.data.apps.InstalledAppItem
 import com.voltpower.data.db.TweakConfigEntity
 import com.voltpower.data.log.LogEntry
 import com.voltpower.data.telemetry.DeviceTelemetry
@@ -476,6 +485,7 @@ fun MainScreen(
     val isBusy by viewModel.isBusy.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
     val logs by viewModel.logs.collectAsState()
+    val installedApps by viewModel.installedApps.collectAsState()
 
     var currentTab by rememberSaveable { mutableStateOf(ExpressiveTab.OVERVIEW) }
     var selectedSeed by rememberSaveable { mutableStateOf(MonetSeedPreset.MINT) }
@@ -611,6 +621,7 @@ fun MainScreen(
                                 ExpressiveTab.TWEAKS -> {
                                     ExpressiveTweaksPage(
                                         config = config,
+                                        installedApps = installedApps,
                                         onSelectProfile = { viewModel.onSelectProfile(it) },
                                         onSelectPerformanceSubMode = { viewModel.onSelectPerformanceSubMode(it) },
                                         onUpdateTweak = { key, enabled -> viewModel.onUpdateTweak(key, enabled) },
@@ -621,6 +632,13 @@ fun MainScreen(
                                         },
                                         onUpdateBalanceCpuCap = { percent ->
                                             viewModel.onUpdateBalanceCpuCap(percent)
+                                        },
+                                        onUpdateBackgroundAllowedApps = { csv ->
+                                            val set = csv.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+                                            viewModel.onUpdateBackgroundAllowedApps(set)
+                                        },
+                                        onUpdateDeepSleepWhitelist = { csv ->
+                                            viewModel.onUpdateDeepSleepWhitelist(csv)
                                         }
                                     )
                                 }
@@ -1321,8 +1339,14 @@ private fun ExpressiveHeroCard(
                             letterSpacing = 1.05.sp,
                             color = heroContentColor.copy(alpha = 0.7f)
                         )
+                        val batteryHeadline = when {
+                            telemetry.isCharging && watts >= 15f -> "Charging fast"
+                            telemetry.isCharging -> "Charging"
+                            isEngineActive -> "Active · Discharging"
+                            else -> "Discharging"
+                        }
                         Text(
-                            text = if (isEngineActive) "Charging fast" else "Engine paused",
+                            text = batteryHeadline,
                             fontFamily = SpaceGroteskFontFamily,
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp,
@@ -1397,9 +1421,14 @@ private fun ExpressiveHeroCard(
                                 modifier = Modifier.padding(start = 2.dp, top = 6.dp)
                             )
                         }
-                        val minsToFull = ((100 - displayLevel).coerceAtLeast(1) * 1.9f).roundToInt()
+                        val orbSubtitle = if (telemetry.isCharging) {
+                            val minsToFull = ((100 - displayLevel).coerceAtLeast(1) * 1.9f).roundToInt()
+                            "≈ $minsToFull min to full"
+                        } else {
+                            "Battery remaining"
+                        }
                         Text(
-                            text = "≈ $minsToFull min to full",
+                            text = orbSubtitle,
                             fontFamily = JetBrainsMonoFontFamily,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 11.sp,
@@ -2519,13 +2548,16 @@ private fun ExpressiveTimelineCard(
 @Composable
 private fun ExpressiveTweaksPage(
     config: TweakConfigEntity,
+    installedApps: List<InstalledAppItem>,
     onSelectProfile: (String) -> Unit,
     onSelectPerformanceSubMode: (String) -> Unit,
     onUpdateTweak: (String, Boolean) -> Unit,
     onToggleHyperOs: (Boolean) -> Unit,
     onSelectRefreshRate: (Int) -> Unit,
     onUpdateCoreTopology: (Int, Int) -> Unit,
-    onUpdateBalanceCpuCap: (Int) -> Unit
+    onUpdateBalanceCpuCap: (Int) -> Unit,
+    onUpdateBackgroundAllowedApps: (String) -> Unit,
+    onUpdateDeepSleepWhitelist: (String) -> Unit
 ) {
     val roles = LocalMonetRoles.current
     var searchQuery by rememberSaveable { mutableStateOf("") }
@@ -2795,6 +2827,15 @@ private fun ExpressiveTweaksPage(
                 sysfsCode = "",
                 icon = Icons.Filled.DarkMode,
                 isChecked = { it.systemDarkModeEnabled }
+            ),
+            TweakItemSpec(
+                key = "hyperOsUltraSuperSaveUi",
+                category = TweakCategoryFilter.BAT,
+                title = "Ultra SuperSave dark wallpaper & panel off",
+                subtitle = "Dark simple wallpaper + turn off notification panel & extra control center options (Manual only)",
+                sysfsCode = "",
+                icon = Icons.Filled.Visibility,
+                isChecked = { it.hyperOsUltraSuperSaveUiEnabled }
             )
         )
     }
@@ -3245,6 +3286,16 @@ private fun ExpressiveTweaksPage(
                         onUpdateTweak = onUpdateTweak
                     )
                 }
+
+                item {
+                    ExpressiveBackgroundExceptionListSection(
+                        title = "Background exception list",
+                        subtitle = "Choose system & user apps exempt from HyperOS freezer & background kill (selected pinned at top)",
+                        installedApps = installedApps,
+                        selectedAppsCsv = config.backgroundAllowedApps,
+                        onUpdateSelectedAppsCsv = onUpdateBackgroundAllowedApps
+                    )
+                }
             } else {
                 // Default Powersave Tweaks (Shown when HyperOS Battery saver is disabled)
                 val psCpuFiltered = powersaveCpuTweaks.filterByQuery()
@@ -3346,6 +3397,16 @@ private fun ExpressiveTweaksPage(
                         )
                     }
                 }
+
+                item {
+                    ExpressiveBackgroundExceptionListSection(
+                        title = "Background exception list",
+                        subtitle = "Choose system & user apps allowed to run in background during Powersave (selected pinned at top)",
+                        installedApps = installedApps,
+                        selectedAppsCsv = config.backgroundAllowedApps,
+                        onUpdateSelectedAppsCsv = onUpdateBackgroundAllowedApps
+                    )
+                }
             }
         }
 
@@ -3438,6 +3499,16 @@ private fun ExpressiveTweaksPage(
                     onUpdateTweak = onUpdateTweak
                 )
             }
+
+            item {
+                ExpressiveBackgroundExceptionListSection(
+                    title = "Deep sleep background exception list",
+                    subtitle = "Choose system & user apps exempt from screen-off deep sleep & background restriction",
+                    installedApps = installedApps,
+                    selectedAppsCsv = config.deepSleepWhitelist,
+                    onUpdateSelectedAppsCsv = onUpdateDeepSleepWhitelist
+                )
+            }
         }
 
         // ====================================================================
@@ -3514,6 +3585,452 @@ private fun ExpressiveTweaksPage(
                         config = config,
                         onToggle = { spec, checked -> onUpdateTweak(spec.key, checked) }
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExpressiveBackgroundExceptionListSection(
+    title: String,
+    subtitle: String,
+    installedApps: List<InstalledAppItem>,
+    selectedAppsCsv: String,
+    onUpdateSelectedAppsCsv: (String) -> Unit
+) {
+    val roles = LocalMonetRoles.current
+    var isExpanded by rememberSaveable { mutableStateOf(false) }
+    var appSearchQuery by rememberSaveable { mutableStateOf("") }
+    var includeSystemApps by rememberSaveable { mutableStateOf(true) }
+
+    val selectedPackages = remember(selectedAppsCsv) {
+        selectedAppsCsv
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .toSet()
+    }
+
+    // Sort apps so checked/selected apps are ALWAYS pinned at the top, making them easy to uncheck
+    val filteredAndPinnedApps = remember(installedApps, selectedPackages, appSearchQuery, includeSystemApps) {
+        val q = appSearchQuery.trim().lowercase(Locale.US)
+        installedApps
+            .filter { app ->
+                val isSelected = app.packageName in selectedPackages
+                val matchesSystemFilter = includeSystemApps || !app.isSystemApp || isSelected
+                val matchesQuery = q.isEmpty() ||
+                    app.appName.lowercase(Locale.US).contains(q) ||
+                    app.packageName.lowercase(Locale.US).contains(q)
+                matchesSystemFilter && matchesQuery
+            }
+            .sortedWith(
+                compareByDescending<InstalledAppItem> { it.packageName in selectedPackages }
+                    .thenBy { it.appName.lowercase(Locale.US) }
+            )
+    }
+
+    fun togglePackage(pkg: String) {
+        val updated = selectedPackages.toMutableSet()
+        if (pkg in updated) {
+            updated.remove(pkg)
+        } else {
+            updated.add(pkg)
+        }
+        onUpdateSelectedAppsCsv(updated.joinToString(","))
+    }
+
+    ExpressiveTweakGroupHeader(
+        title = title,
+        countLabel = "${selectedPackages.size} pinned"
+    )
+
+    Surface(
+        shape = RoundedCornerShape(30.dp),
+        color = roles.s2,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("background_exception_list_card")
+    ) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { isExpanded = !isExpanded },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (selectedPackages.isNotEmpty()) roles.pc else roles.s4,
+                        contentColor = if (selectedPackages.isNotEmpty()) roles.onPc else roles.onSv,
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Filled.PushPin,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = title,
+                            fontFamily = SpaceGroteskFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = roles.onS
+                        )
+                        Text(
+                            text = subtitle,
+                            fontFamily = PlusJakartaSansFontFamily,
+                            fontSize = 12.sp,
+                            color = roles.onSv,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = CircleShape,
+                    color = if (isExpanded) roles.primary else roles.s4,
+                    contentColor = if (isExpanded) roles.onPrimary else roles.onS,
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .clickable { isExpanded = !isExpanded }
+                        .testTag("toggle_exception_list_button")
+                ) {
+                    Text(
+                        text = if (isExpanded) "Hide apps" else "Select apps (${selectedPackages.size})",
+                        fontFamily = SpaceGroteskFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                    )
+                }
+            }
+
+            // Always show pinned/selected apps summary right at the top so user can uncheck in 1 tap even when collapsed
+            if (selectedPackages.isNotEmpty()) {
+                val pinnedApps = remember(installedApps, selectedPackages) {
+                    val mapByPkg = installedApps.associateBy { it.packageName }
+                    selectedPackages.map { pkg ->
+                        mapByPkg[pkg] ?: InstalledAppItem(
+                            packageName = pkg,
+                            appName = pkg.substringAfterLast('.').replaceFirstChar { it.uppercase() },
+                            isSystemApp = false,
+                            isPermanentlyProtected = false,
+                            iconBitmap = null
+                        )
+                    }.sortedBy { it.appName.lowercase(Locale.US) }
+                }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "PINNED SELECTED APPS (TAP TO UNCHECK)",
+                            fontFamily = JetBrainsMonoFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp,
+                            letterSpacing = 0.8.sp,
+                            color = roles.primary
+                        )
+                        Text(
+                            text = "Clear all",
+                            fontFamily = SpaceGroteskFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.5.sp,
+                            color = roles.err,
+                            modifier = Modifier.clickable { onUpdateSelectedAppsCsv("") }
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        pinnedApps.forEach { app ->
+                            Surface(
+                                onClick = { togglePackage(app.packageName) },
+                                shape = CircleShape,
+                                color = roles.pc,
+                                contentColor = roles.onPc
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.PushPin,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Text(
+                                        text = app.appName,
+                                        fontFamily = SpaceGroteskFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        maxLines = 1
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Filled.Close,
+                                        contentDescription = "Uncheck ${app.appName}",
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            AnimatedVisibility(visible = isExpanded) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Search bar + System apps filter chip
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = roles.s4,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Search,
+                                    contentDescription = null,
+                                    tint = roles.onSv,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Box(modifier = Modifier.weight(1f)) {
+                                    if (appSearchQuery.isEmpty()) {
+                                        Text(
+                                            text = "Search system & installed apps...",
+                                            fontFamily = PlusJakartaSansFontFamily,
+                                            fontSize = 12.5.sp,
+                                            color = roles.onSv
+                                        )
+                                    }
+                                    BasicTextField(
+                                        value = appSearchQuery,
+                                        onValueChange = { appSearchQuery = it },
+                                        singleLine = true,
+                                        textStyle = TextStyle(
+                                            fontFamily = SpaceGroteskFontFamily,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 13.sp,
+                                            color = roles.onS
+                                        ),
+                                        cursorBrush = SolidColor(roles.primary),
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                                if (appSearchQuery.isNotEmpty()) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Close,
+                                        contentDescription = "Clear app search",
+                                        tint = roles.onSv,
+                                        modifier = Modifier
+                                            .size(16.dp)
+                                            .clickable { appSearchQuery = "" }
+                                    )
+                                }
+                            }
+                        }
+
+                        Surface(
+                            onClick = { includeSystemApps = !includeSystemApps },
+                            shape = CircleShape,
+                            color = if (includeSystemApps) roles.primary else roles.s4,
+                            contentColor = if (includeSystemApps) roles.onPrimary else roles.onSv
+                        ) {
+                            Text(
+                                text = if (includeSystemApps) "All + System" else "User only",
+                                fontFamily = SpaceGroteskFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.5.sp,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp)
+                            )
+                        }
+                    }
+
+                    // Scrollable list of apps with checked apps pinned at the top
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 360.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(roles.s3),
+                        contentPadding = PaddingValues(vertical = 6.dp)
+                    ) {
+                        if (filteredAndPinnedApps.isEmpty()) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = if (installedApps.isEmpty()) "Loading installed system apps..." else "No matching apps found",
+                                        fontFamily = PlusJakartaSansFontFamily,
+                                        fontSize = 13.sp,
+                                        color = roles.onSv
+                                    )
+                                }
+                            }
+                        } else {
+                            items(
+                                items = filteredAndPinnedApps,
+                                key = { it.packageName }
+                            ) { app ->
+                                val isChecked = app.packageName in selectedPackages
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { togglePackage(app.packageName) }
+                                        .background(
+                                            if (isChecked) roles.pc.copy(alpha = 0.28f) else Color.Transparent
+                                        )
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    if (app.iconBitmap != null) {
+                                        Image(
+                                            bitmap = app.iconBitmap.asImageBitmap(),
+                                            contentDescription = app.appName,
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                        )
+                                    } else {
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = roles.s4,
+                                            modifier = Modifier.size(36.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.DeveloperBoard,
+                                                    contentDescription = null,
+                                                    tint = roles.onSv,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = app.appName,
+                                                fontFamily = SpaceGroteskFontFamily,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.5.sp,
+                                                color = roles.onS,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            if (isChecked) {
+                                                Surface(
+                                                    shape = CircleShape,
+                                                    color = roles.primary,
+                                                    contentColor = roles.onPrimary
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.PushPin,
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(9.dp)
+                                                        )
+                                                        Text(
+                                                            text = "PINNED",
+                                                            fontFamily = JetBrainsMonoFontFamily,
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 8.5.sp
+                                                        )
+                                                    }
+                                                }
+                                            } else if (app.isSystemApp) {
+                                                Surface(
+                                                    shape = CircleShape,
+                                                    color = roles.s4,
+                                                    contentColor = roles.onSv
+                                                ) {
+                                                    Text(
+                                                        text = "SYSTEM",
+                                                        fontFamily = JetBrainsMonoFontFamily,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        fontSize = 8.5.sp,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Text(
+                                            text = app.packageName,
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            fontSize = 10.5.sp,
+                                            color = roles.onSv,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+
+                                    Checkbox(
+                                        checked = isChecked,
+                                        onCheckedChange = { togglePackage(app.packageName) },
+                                        colors = CheckboxDefaults.colors(
+                                            checkedColor = roles.primary,
+                                            checkmarkColor = roles.onPrimary,
+                                            uncheckedColor = roles.outline
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

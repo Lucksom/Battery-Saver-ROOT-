@@ -24,6 +24,10 @@ import kotlinx.coroutines.launch
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val dao = AppDatabase.getDatabase(application).tweakConfigDao()
+    private val appInfoRepository = com.voltpower.data.apps.AppInfoRepository(application)
+
+    private val _installedApps = MutableStateFlow<List<com.voltpower.data.apps.InstalledAppItem>>(emptyList())
+    val installedApps: StateFlow<List<com.voltpower.data.apps.InstalledAppItem>> = _installedApps.asStateFlow()
 
     val configState: StateFlow<TweakConfigEntity> = dao.getConfig()
         .map { it ?: TweakConfigEntity() }
@@ -61,6 +65,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             if (dao.getConfigDirect() == null) {
                 dao.insertOrUpdate(TweakConfigEntity())
+            }
+            launch {
+                _installedApps.value = appInfoRepository.getInstalledApps()
             }
             refreshTelemetry()
             while (true) {
@@ -126,7 +133,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             hyperOsSuperPowerCleanEnabled = false,
             hyperOsFiveGPowerOptEnabled = false,
             hyperOsTouchBoostDisabled = false,
-            hyperOsLock60HzEnabled = false
+            hyperOsLock60HzEnabled = false,
+            hyperOsUltraSuperSaveUiEnabled = false
         )
     }
 
@@ -465,6 +473,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             "hyperOsTouchBoostDisabled" -> if (enabled) "Clamp Xiaomi pnpmgr & touch boost" else "Xiaomi pnpmgr & touch boost restored"
             "hyperOsFiveGPowerOpt" -> if (enabled) "5G smart modem power saving enabled" else "5G smart modem power saving disabled"
             "hyperOsLock60Hz" -> if (enabled) "HyperOS 60Hz refresh rate lock enabled" else "HyperOS 60Hz refresh rate lock disabled"
+            "hyperOsUltraSuperSaveUi" -> if (enabled) "Ultra SuperSave UI (Black wallpaper & Notification Panel off) enabled" else "Ultra SuperSave UI disabled (Wallpaper & Notification Panel restored)"
             "deepSleepScreenOff" -> if (enabled) "Screen-off deep sleep daemon enabled" else "Screen-off deep sleep daemon disabled"
             "developerProcessLimit" -> if (enabled) "Cached background process limit enabled" else "Cached process limit restored"
             "balanceCpuTweaks" -> if (enabled) "Balanced CPU & schedutil tuning enabled" else "Balanced CPU tuning disabled"
@@ -528,6 +537,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 "hyperOsSuperPowerClean" -> current.copy(hyperOsSuperPowerCleanEnabled = enabled)
                 "hyperOsTouchBoostDisabled" -> current.copy(hyperOsTouchBoostDisabled = enabled)
                 "hyperOsFiveGPowerOpt" -> current.copy(hyperOsFiveGPowerOptEnabled = enabled)
+                "hyperOsUltraSuperSaveUi" -> {
+                    if (hasRoot) {
+                        RootBridge.setHyperOsUltraSuperSaveUi(enabled)
+                    }
+                    current.copy(hyperOsUltraSuperSaveUiEnabled = enabled)
+                }
                 "hyperOsLock60Hz" -> {
                     val targetHz = if (enabled) 60 else 0
                     if (hasRoot) {
@@ -627,6 +642,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val hasRoot = _telemetry.value.isRootGranted || RootBridge.isRootAvailable()
             val updated = if (enabled) {
                 // First clear conflicting Balance/Performance toggles, then activate Powersave + HyperOS Battery Saver
+                // NOTE: hyperOsUltraSuperSaveUiEnabled MUST remain OFF (false) by default unless manually enabled by the user!
                 val basePowersave = if (current.activeProfile != "POWERSAVE") {
                     applyPowersavePreset(current)
                 } else {
@@ -649,7 +665,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     refreshRateHz = 60,
                     controlCenterBlurEnabled = true,
                     systemBatterySaverEnabled = true,
-                    systemBatterySaverWithoutDarkEnabled = true
+                    systemBatterySaverWithoutDarkEnabled = true,
+                    hyperOsUltraSuperSaveUiEnabled = false
                 )
             } else {
                 current.copy(
@@ -666,12 +683,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     refreshRateHz = 0,
                     controlCenterBlurEnabled = false,
                     systemBatterySaverEnabled = false,
-                    systemBatterySaverWithoutDarkEnabled = false
+                    systemBatterySaverWithoutDarkEnabled = false,
+                    hyperOsUltraSuperSaveUiEnabled = false
                 )
             }
             dao.update(updated)
             val logMsg = if (enabled) {
-                "HyperOS Power Saver all tweaks enabled"
+                "HyperOS Power Saver enabled (Ultra SuperSave UI kept off for manual control)"
             } else {
                 "HyperOS Power Saver disabled"
             }
@@ -685,6 +703,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (enabled && current.activeProfile != "POWERSAVE") {
                     RootBridge.revertAllTweaks(getApplication())
                 } else if (!enabled) {
+                    RootBridge.setHyperOsUltraSuperSaveUi(false)
                     RootBridge.setSystemBatterySaver(false)
                     RootBridge.setDisplayRefreshRate(0)
                     RootBridge.setControlCenterBlur(false)
@@ -730,7 +749,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val updated = current.copy(backgroundAllowedApps = pkgString)
             dao.update(updated)
             _statusMessage.value = "Background app whitelist updated (${apps.size} apps allowed)"
-            if (current.isMasterApplied && _telemetry.value.isRootGranted && current.hyperOsPowerSaverEnabled) {
+            if (current.isMasterApplied && _telemetry.value.isRootGranted) {
                 RootBridge.applyPowersaveTweaks(getApplication(), updated)
             }
         }

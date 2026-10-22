@@ -76,5 +76,6 @@ data class TweakConfigEntity(
     val hyperOsFiveGPowerOptEnabled: Boolean = false,
     val hyperOsTouchBoostDisabled: Boolean = false,
     val hyperOsLock60HzEnabled: Boolean = false,
+    val hyperOsUltraSuperSaveUiEnabled: Boolean = false, // Manual-only: Ultra SuperSave UI (black wallpaper + notification panel off)
     val backgroundAllowedApps: String = "org.barebrowser,com.f0x1d.logfox,com.whatsapp"
 )
