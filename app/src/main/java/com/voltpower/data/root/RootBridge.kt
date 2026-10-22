@@ -3,8 +3,6 @@ package com.voltpower.data.root
 import android.content.Context
 import android.os.BatteryManager
 import com.voltpower.data.db.TweakConfigEntity
-import com.voltpower.data.log.LogCategory
-import com.voltpower.data.log.LogRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
@@ -27,8 +25,16 @@ object RootBridge {
     val PERMANENT_SYSTEM_EXCEPTIONS = setOf(
         "com.mi.android.globallauncher",
         "com.miui.home",
+        "com.miui.miwallpaper",
+        "com.miui.securityadd",
         "com.android.systemui",
         "miui.systemui.plugin",
+        "com.miui.systemui.carriers.overlay",
+        "com.miui.notification",
+        "com.miui.securitycenter",
+        "com.miui.powerkeeper",
+        "com.android.incallui",
+        "com.android.server.telecom",
         "com.google.android.gms",
         "com.android.phone",
         "android"
@@ -408,6 +414,7 @@ object RootBridge {
         targetPath
     }
 
+
     /**
      * Restores all stock parameters from the backup script, or sets factory defaults.
      */
@@ -423,20 +430,149 @@ object RootBridge {
             }
         }
 
-        val result = execute(backupCmd)
-        execute("dumpsys deviceidle whitelist +com.google.android.gms 2>/dev/null")
-        execute("for i in /sys/devices/system/cpu/cpu*/online; do echo 1 > \"\$i\" 2>/dev/null; done")
-        execute("cmd power set-mode 0 2>/dev/null || settings put global low_power 0 2>/dev/null")
-        execute("settings delete system min_refresh_rate 2>/dev/null; settings delete system peak_refresh_rate 2>/dev/null; settings delete system user_refresh_rate 2>/dev/null; settings delete secure miui_refresh_rate 2>/dev/null")
-        execute("for d in /sys/class/devfreq/*; do [ -f \"\$d/available_governors\" ] && { gov=\$(cat \"\$d/available_governors\" | awk '{print \$1}'); [ -n \"\$gov\" ] && echo \"\$gov\" > \"\$d/governor\" 2>/dev/null; }; done")
-        execute("[ -d /dev/stune/top-app ] && echo 0 > /dev/stune/top-app/schedtune.boost 2>/dev/null; [ -d /dev/stune/top-app ] && echo 0 > /dev/stune/top-app/schedtune.sched_boost 2>/dev/null")
-        execute("pkill -f \"voltpower_doze_daemon\" >/dev/null 2>&1")
-        execute("settings put secure aod_mode 1 2>/dev/null; settings put system aod_mode 1 2>/dev/null; settings put secure doze_always_on 1 2>/dev/null; setprop debug.miui.aod_enable 1 2>/dev/null; am broadcast -a miui.intent.action.AOD_STATE_CHANGED --ez enabled true 2>/dev/null")
-        execute("setprop persist.vendor.radio.5g_power_save 0 2>/dev/null; setprop persist.radio.power_saving 0 2>/dev/null")
-        execute("echo 1 > /sys/module/msm_performance/parameters/touchboost 2>/dev/null; settings delete secure touch_boost 2>/dev/null; settings delete system touch_boost 2>/dev/null")
-        execute("settings put global ble_scan_always_enabled 1 2>/dev/null; settings put global wifi_scan_always_enabled 1 2>/dev/null; settings put global bluetooth_scan_always_available 1 2>/dev/null")
-        execute("for thp in /sys/class/touch/touch_dev/thp_doze_mode /sys/class/touch/touch_dev/doze_mode /proc/touchpanel/doze_mode /sys/touchpanel/doze_mode /sys/devices/virtual/touch/touch_dev/touch_doze; do [ -e \"\$thp\" ] && echo 0 > \"\$thp\" 2>/dev/null; done")
-        execute("settings delete secure dark_mode_enable 2>/dev/null; settings delete system dark_mode_enable 2>/dev/null; settings delete secure POWER_SAVE_MODE_OPEN 2>/dev/null; settings delete system POWER_SAVE_MODE_OPEN 2>/dev/null")
+        val fullRevertScript = """
+            $backupCmd
+            # Ensure Notification Panel (left swipe) and Control Center (miui.systemui.plugin) are never restricted by SuperSave
+            settings put system power_supersave_mode_open 0 2>/dev/null
+            settings put secure power_supersave_mode_open 0 2>/dev/null
+            settings put global power_supersave_mode_open 0 2>/dev/null
+
+            # Bring all CPU cores online and restore core_ctl
+            for i in /sys/devices/system/cpu/cpu*/online; do echo 1 > "${'$'}i" 2>/dev/null; done
+            for ctl in /sys/devices/system/cpu/cpu*/core_ctl; do
+                [ -e "${'$'}ctl/enable" ] && echo 1 > "${'$'}ctl/enable" 2>/dev/null
+                [ -e "${'$'}ctl/disable" ] && echo 0 > "${'$'}ctl/disable" 2>/dev/null
+            done
+            for cpu in /sys/devices/system/cpu/cpu*/cpufreq; do
+                max=`cat ${'$'}cpu/cpuinfo_max_freq 2>/dev/null`
+                min=`cat ${'$'}cpu/cpuinfo_min_freq 2>/dev/null`
+                [ -n "${'$'}max" ] && echo "${'$'}max" > "${'$'}cpu/scaling_max_freq" 2>/dev/null
+                [ -n "${'$'}min" ] && echo "${'$'}min" > "${'$'}cpu/scaling_min_freq" 2>/dev/null
+                echo "schedutil" > "${'$'}cpu/scaling_governor" 2>/dev/null
+            done
+
+            # Restore GMS Doze & unforce idle
+            dumpsys deviceidle whitelist +com.google.android.gms 2>/dev/null
+            pkill -f "voltpower_doze_daemon" >/dev/null 2>&1
+            dumpsys deviceidle unforce >/dev/null 2>&1
+
+            # Disable Android & HyperOS System Battery Saver & restore SuperPowerSaveManager wallpaper policy
+            settings put system hide_mode enhance 2>/dev/null
+            settings put secure hide_mode enhance 2>/dev/null
+            cmd power set-mode 0 2>/dev/null || settings put global low_power 0 2>/dev/null
+            settings put global low_power 0 2>/dev/null
+            settings put secure low_power 0 2>/dev/null
+            settings put system low_power 0 2>/dev/null
+            settings put secure POWER_SAVE_MODE_OPEN 0 2>/dev/null
+            settings put system POWER_SAVE_MODE_OPEN 0 2>/dev/null
+            settings put global POWER_SAVE_MODE_OPEN 0 2>/dev/null
+            content call --uri content://com.miui.powercenter.powersaver --method changeSuperPowerMode --extra power_supersave_mode_open:b:false --extra is_super_power:b:false --extra enable:b:false --extra from_user:b:true --extra mode:i:0 2>/dev/null
+            content call --uri content://com.miui.powercenter.powersaver --method change_super_power_mode --extra power_supersave_mode_open:b:false --extra is_super_power:b:false --extra enable:b:false --extra from_user:b:true --extra mode:i:0 2>/dev/null
+            content call --uri content://com.miui.powercenter.powersaver --method changePowerMode --extra mode:i:0 2>/dev/null
+            content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:0 2>/dev/null
+            content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:0 2>/dev/null
+            content insert --uri content://com.miui.powercenter.powersaver/status --bind status:i:0 2>/dev/null
+            am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state false 2>/dev/null
+            am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
+
+            # Restore Light Mode when Dark Mode tweak is off
+            settings put system dark_mode_enable_by_power_save 0 2>/dev/null
+            settings put secure dark_mode_enable_by_power_save 0 2>/dev/null
+            settings put secure ui_night_mode 1 2>/dev/null
+            settings put system ui_night_mode 1 2>/dev/null
+            settings put global ui_night_mode 1 2>/dev/null
+            settings put secure dark_mode_enable 0 2>/dev/null
+            settings put system dark_mode_enable 0 2>/dev/null
+            settings put global dark_mode_enable 0 2>/dev/null
+            cmd uimode night no 2>/dev/null
+            am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled false 2>/dev/null
+
+            # Restore Display Refresh Rate to Dynamic/Auto
+            settings delete system min_refresh_rate 2>/dev/null
+            settings delete system peak_refresh_rate 2>/dev/null
+            settings delete system user_refresh_rate 2>/dev/null
+            settings delete system miui_refresh_rate 2>/dev/null
+            settings delete system speed_mode 2>/dev/null
+            settings delete secure min_refresh_rate 2>/dev/null
+            settings delete secure peak_refresh_rate 2>/dev/null
+            settings delete secure user_refresh_rate 2>/dev/null
+            settings delete secure miui_refresh_rate 2>/dev/null
+            settings delete secure speed_mode 2>/dev/null
+            settings delete global min_refresh_rate 2>/dev/null
+            settings delete global peak_refresh_rate 2>/dev/null
+            settings delete global user_refresh_rate 2>/dev/null
+            service call SurfaceFlinger 1035 i32 -1 2>/dev/null
+
+            # Restore Control Center Blur
+            settings put global disable_window_blurs 0 2>/dev/null
+            settings put system disable_window_blurs 0 2>/dev/null
+            settings put secure disable_window_blurs 0 2>/dev/null
+
+            # Restore GPU, DDR devfreq, SchedTune, cpuset & uclamp
+            for g in /sys/class/kgsl/kgsl-3d0 /sys/devices/platform/*.gpu /sys/devices/*.mali; do
+                [ -d "${'$'}g" ] || continue
+                [ -e "${'$'}g/throttling" ] && echo 0 > "${'$'}g/throttling" 2>/dev/null
+                [ -e "${'$'}g/devfreq/adrenoboost" ] && echo 0 > "${'$'}g/devfreq/adrenoboost" 2>/dev/null
+                [ -e "${'$'}g/force_no_nap" ] && echo 0 > "${'$'}g/force_no_nap" 2>/dev/null
+                [ -e "${'$'}g/force_clk_on" ] && echo 0 > "${'$'}g/force_clk_on" 2>/dev/null
+                [ -e "${'$'}g/force_bus_on" ] && echo 0 > "${'$'}g/force_bus_on" 2>/dev/null
+                [ -e "${'$'}g/force_rail_on" ] && echo 0 > "${'$'}g/force_rail_on" 2>/dev/null
+                [ -e "${'$'}g/idle_timer" ] && echo 80 > "${'$'}g/idle_timer" 2>/dev/null
+            done
+            [ -d /sys/module/adreno_idler/parameters ] && echo "N" > /sys/module/adreno_idler/parameters/adreno_idler_active 2>/dev/null
+            for d in /sys/class/devfreq/*; do
+                [ -f "${'$'}d/available_governors" ] && {
+                    gov=${'$'}(cat "${'$'}d/available_governors" | awk '{print ${'$'}1}')
+                    [ -n "${'$'}gov" ] && echo "${'$'}gov" > "${'$'}d/governor" 2>/dev/null
+                }
+            done
+            [ -d /dev/stune/top-app ] && echo 0 > /dev/stune/top-app/schedtune.boost 2>/dev/null
+            [ -d /dev/stune/top-app ] && echo 0 > /dev/stune/top-app/schedtune.sched_boost 2>/dev/null
+            [ -d /dev/stune/top-app ] && echo 0 > /dev/stune/top-app/schedtune.prefer_idle 2>/dev/null
+            [ -d /dev/stune/foreground ] && echo 0 > /dev/stune/foreground/schedtune.boost 2>/dev/null
+            [ -d /dev/cpuset/background ] && echo "0-7" > /dev/cpuset/background/cpus 2>/dev/null
+            [ -d /dev/cpuset/system-background ] && echo "0-7" > /dev/cpuset/system-background/cpus 2>/dev/null
+            [ -d /dev/cpuset/top-app ] && echo "0-7" > /dev/cpuset/top-app/cpus 2>/dev/null
+            [ -e /dev/cpuctl/background/cpu.shares ] && echo 1024 > /dev/cpuctl/background/cpu.shares 2>/dev/null
+            [ -e /dev/cpuctl/top-app/cpu.uclamp.min ] && echo 0 > /dev/cpuctl/top-app/cpu.uclamp.min 2>/dev/null
+            echo 0 > /proc/sys/kernel/sched_boost 2>/dev/null
+            service call activity 51 i32 -1 >/dev/null 2>&1
+
+            # Restore HyperOS AOD, Freezer, 5G, Audio HAL, Wi-Fi SISO, Master Sync & Touch
+            settings put secure aod_mode 1 2>/dev/null
+            settings put system aod_mode 1 2>/dev/null
+            settings put secure doze_always_on 1 2>/dev/null
+            setprop debug.miui.aod_enable 1 2>/dev/null
+            am broadcast -a miui.intent.action.AOD_STATE_CHANGED --ez enabled true 2>/dev/null
+            setprop persist.sys.miui.freezer false 2>/dev/null
+            setprop persist.sys.aurogon.enabled 0 2>/dev/null
+            setprop persist.sys.spc.enabled 0 2>/dev/null
+            setprop persist.vendor.power.freezer 0 2>/dev/null
+            settings put global fiveg_power_saving_enable 0 2>/dev/null
+            settings put system fiveg_power_saving_enable 0 2>/dev/null
+            setprop persist.vendor.radio.5g_power_save 0 2>/dev/null
+            setprop persist.radio.power_saving 0 2>/dev/null
+            settings put global master_sync_automatically 1 2>/dev/null
+            settings put secure master_sync_automatically 1 2>/dev/null
+            service call audio 100 s16 "Audio_Power_Save_Mode=0;Audio_Power_Save_Level=0" 2>/dev/null
+            setprop vendor.audio.power_save 0 2>/dev/null
+            setprop persist.vendor.audio.power_save 0 2>/dev/null
+            setprop persist.vendor.wifi.powersave 0 2>/dev/null
+            setprop persist.sys.wifi_half_ant 0 2>/dev/null
+            settings put global wifi_power_save 0 2>/dev/null
+            echo 1 > /sys/module/msm_performance/parameters/touchboost 2>/dev/null
+            settings put secure touch_boost 1 2>/dev/null
+            settings put system touch_boost 1 2>/dev/null
+            setprop persist.sys.refresh_rate_touch_boost 1 2>/dev/null
+            settings put global ble_scan_always_enabled 1 2>/dev/null
+            settings put global wifi_scan_always_enabled 1 2>/dev/null
+            settings put global bluetooth_scan_always_available 1 2>/dev/null
+            for thp in /sys/class/touch/touch_dev/thp_doze_mode /sys/class/touch/touch_dev/doze_mode /proc/touchpanel/doze_mode /sys/touchpanel/doze_mode /sys/devices/virtual/touch/touch_dev/touch_doze; do
+                [ -e "${'$'}thp" ] && echo 0 > "${'$'}thp" 2>/dev/null
+            done
+        """.trimIndent()
+
+        val result = execute(fullRevertScript)
         result.success
     }
 
@@ -496,21 +632,63 @@ object RootBridge {
                     eval "${'$'}_fb"
                 fi
             }
+
+            # Always ensure SuperSave mode is OFF so Notification Panel (left swipe) and Control Center (miui.systemui.plugin) remain 100% functional
+            settings put system power_supersave_mode_open 0 2>/dev/null
+            settings put secure power_supersave_mode_open 0 2>/dev/null
+            settings put global power_supersave_mode_open 0 2>/dev/null
         """.trimIndent()).append("\n\n")
 
         val isBalance = config.activeProfile == "BALANCE"
+        val isHyperOsPowersave = config.activeProfile == "POWERSAVE" && config.hyperOsPowerSaverEnabled
+
+        // If HyperOS Battery Saver is NOT active, reset HyperOS-exclusive flags
+        if (!isHyperOsPowersave) {
+            commands.append("""
+                settings put secure aod_mode 1 2>/dev/null
+                settings put system aod_mode 1 2>/dev/null
+                settings put secure doze_always_on 1 2>/dev/null
+                setprop debug.miui.aod_enable 1 2>/dev/null
+                setprop persist.sys.miui.freezer false 2>/dev/null
+                setprop persist.sys.aurogon.enabled 0 2>/dev/null
+                setprop persist.sys.spc.enabled 0 2>/dev/null
+                setprop persist.vendor.power.freezer 0 2>/dev/null
+                settings put global master_sync_automatically 1 2>/dev/null
+                settings put secure master_sync_automatically 1 2>/dev/null
+                service call audio 100 s16 "Audio_Power_Save_Mode=0;Audio_Power_Save_Level=0" 2>/dev/null
+                setprop vendor.audio.power_save 0 2>/dev/null
+                setprop persist.vendor.audio.power_save 0 2>/dev/null
+                setprop persist.vendor.wifi.powersave 0 2>/dev/null
+                setprop persist.sys.wifi_half_ant 0 2>/dev/null
+                settings put global wifi_power_save 0 2>/dev/null
+            """.trimIndent()).append("\n")
+        }
+
+        // If Performance profile is NOT active, ensure performance-exclusive locks are released
+        if (config.activeProfile != "PERFORMANCE") {
+            commands.append("""
+                for ctl in /sys/devices/system/cpu/cpu*/core_ctl; do
+                    [ -e "${'$'}ctl/enable" ] && echo 1 > "${'$'}ctl/enable" 2>/dev/null
+                    [ -e "${'$'}ctl/disable" ] && echo 0 > "${'$'}ctl/disable" 2>/dev/null
+                done
+                for g in /sys/class/kgsl/kgsl-3d0; do
+                    [ -d "${'$'}g" ] || continue
+                    [ -e "${'$'}g/force_clk_on" ] && echo 0 > "${'$'}g/force_clk_on" 2>/dev/null
+                    [ -e "${'$'}g/force_bus_on" ] && echo 0 > "${'$'}g/force_bus_on" 2>/dev/null
+                    [ -e "${'$'}g/force_rail_on" ] && echo 0 > "${'$'}g/force_rail_on" 2>/dev/null
+                    [ -e "${'$'}g/force_no_nap" ] && echo 0 > "${'$'}g/force_no_nap" 2>/dev/null
+                done
+                echo 0 > /proc/sys/kernel/sched_boost 2>/dev/null
+            """.trimIndent()).append("\n")
+        }
 
         if (config.activeProfile == "PERFORMANCE") {
             return@withContext applyPerformanceTweaksInternal(context, config, logs, commands, backupPath)
         }
 
-        if (config.activeProfile == "POWERSAVE" && config.hyperOsPowerSaverEnabled) {
-            return@withContext applyHyperOsPowersaveTweaksInternal(context, config, logs, commands, backupPath)
-        }
-
         // 1. CPU Max Frequency Cap (70% in Balance Mode, 50% in Powersave Mode)
         val isCpuCapActive = if (isBalance) {
-            config.balanceCpuTweaksEnabled || config.cpuFreqCapEnabled
+            config.balanceCpuTweaksEnabled
         } else {
             config.cpuFreqCapEnabled
         }
@@ -529,14 +707,14 @@ object RootBridge {
             logs.add("CPU Max Frequency capped to $capPercent% (Profile: ${config.activeProfile})")
         } else {
             commands.append("""
-                restore_from_backup "scaling_max_freq" "for cpu in /sys/devices/system/cpu/cpu*/cpufreq; do max=\`cat ${'$'}cpu/cpuinfo_max_freq 2>/dev/null\`; [ -n \"${'$'}max\" ] && echo \"${'$'}max\" > \"${'$'}cpu/scaling_max_freq\" 2>/dev/null; done"
+                restore_from_backup "scaling_max_freq|scaling_min_freq" "for cpu in /sys/devices/system/cpu/cpu*/cpufreq; do max=\`cat ${'$'}cpu/cpuinfo_max_freq 2>/dev/null\`; min=\`cat ${'$'}cpu/cpuinfo_min_freq 2>/dev/null\`; [ -n \"${'$'}max\" ] && echo \"${'$'}max\" > \"${'$'}cpu/scaling_max_freq\" 2>/dev/null; [ -n \"${'$'}min\" ] && echo \"${'$'}min\" > \"${'$'}cpu/scaling_min_freq\" 2>/dev/null; done"
             """.trimIndent()).append("\n")
             logs.add("CPU Max Frequency restored from stock backup snapshot")
         }
 
         // 2. CPU Scaling Governor (powersave for POWERSAVE mode, performance for PERFORMANCE, schedutil for BALANCE)
         val isGovernorActive = if (isBalance) {
-            config.balanceCpuTweaksEnabled || config.schedutilGovernorEnabled
+            config.balanceCpuTweaksEnabled
         } else {
             config.schedutilGovernorEnabled
         }
@@ -963,6 +1141,11 @@ object RootBridge {
                 fi
             """.trimIndent()).append("\n")
             logs.add("Qualcomm LPM sleep enabled")
+        } else {
+            commands.append("""
+                restore_from_backup "lpm_levels" "[ -d /sys/module/lpm_levels ] && echo \"Y\" > /sys/module/lpm_levels/parameters/sleep_disabled 2>/dev/null"
+            """.trimIndent()).append("\n")
+            logs.add("Qualcomm LPM sleep restored to default")
         }
 
         // 12. Background App Power Restriction & Active App Prioritization
@@ -1011,57 +1194,83 @@ object RootBridge {
             logs.add("Double-tap wake gesture preserved")
         }
 
+        if (isHyperOsPowersave) {
+            return@withContext applyHyperOsPowersaveTweaksInternal(context, config, logs, commands, backupPath)
+        }
+
         // 14. System Battery Saver (MIUI PowerSaverProvider + Android Core)
         if (config.systemBatterySaverEnabled || config.systemBatterySaverWithoutDarkEnabled) {
             commands.append("""
+                settings put system power_supersave_mode_open 0 2>/dev/null
+                settings put secure power_supersave_mode_open 0 2>/dev/null
+                settings put global power_supersave_mode_open 0 2>/dev/null
                 cmd power set-mode 1 2>/dev/null || settings put global low_power 1 2>/dev/null
+                settings put global low_power 1 2>/dev/null
+                settings put secure low_power 1 2>/dev/null
+                settings put system low_power 1 2>/dev/null
                 settings put secure POWER_SAVE_MODE_OPEN 1 2>/dev/null
                 settings put system POWER_SAVE_MODE_OPEN 1 2>/dev/null
+                settings put global POWER_SAVE_MODE_OPEN 1 2>/dev/null
                 content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:1 2>/dev/null
                 content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:1 2>/dev/null
+                content insert --uri content://com.miui.powercenter.powersaver/status --bind status:i:1 2>/dev/null
                 am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state true 2>/dev/null
                 am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
                 setprop persist.vendor.radio.5g_power_save 1 2>/dev/null
                 setprop persist.radio.power_saving 1 2>/dev/null
             """.trimIndent()).append("\n")
-
-            if (config.systemDarkModeEnabled) {
-                commands.append("""
-                    cmd uimode night yes 2>/dev/null
-                    settings put secure ui_night_mode 2 2>/dev/null
-                    settings put system ui_night_mode 2 2>/dev/null
-                    settings put secure dark_mode_enable 1 2>/dev/null
-                    settings put system dark_mode_enable 1 2>/dev/null
-                    am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled true 2>/dev/null
-                """.trimIndent()).append("\n")
-                logs.add("System battery saver active with Dark Mode enabled (UiModeManager night mode 2)")
-            } else {
-                logs.add("System battery saver enabled (PowerSaverProvider active)")
-            }
+            logs.add("System battery saver enabled (PowerSaverProvider active)")
         } else {
             commands.append("""
+                settings put system power_supersave_mode_open 0 2>/dev/null
+                settings put secure power_supersave_mode_open 0 2>/dev/null
+                settings put global power_supersave_mode_open 0 2>/dev/null
                 cmd power set-mode 0 2>/dev/null || settings put global low_power 0 2>/dev/null
+                settings put global low_power 0 2>/dev/null
+                settings put secure low_power 0 2>/dev/null
+                settings put system low_power 0 2>/dev/null
                 settings put secure POWER_SAVE_MODE_OPEN 0 2>/dev/null
                 settings put system POWER_SAVE_MODE_OPEN 0 2>/dev/null
+                settings put global POWER_SAVE_MODE_OPEN 0 2>/dev/null
                 content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:0 2>/dev/null
                 content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:0 2>/dev/null
+                content insert --uri content://com.miui.powercenter.powersaver/status --bind status:i:0 2>/dev/null
                 am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state false 2>/dev/null
                 am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
                 setprop persist.vendor.radio.5g_power_save 0 2>/dev/null
                 setprop persist.radio.power_saving 0 2>/dev/null
             """.trimIndent()).append("\n")
-            if (config.systemDarkModeEnabled) {
-                commands.append("""
-                    cmd uimode night yes 2>/dev/null
-                    settings put secure ui_night_mode 2 2>/dev/null
-                    settings put system ui_night_mode 2 2>/dev/null
-                    settings put secure dark_mode_enable 1 2>/dev/null
-                    settings put system dark_mode_enable 1 2>/dev/null
-                    am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled true 2>/dev/null
-                """.trimIndent()).append("\n")
-                logs.add("System-wide Dark Mode active (UiModeManager night mode 2, dark_mode_enable 1)")
-            }
             logs.add("System battery saver restored to normal")
+        }
+
+        // 14b. System-wide Dark Mode / Light Mode Restoration
+        if (config.systemDarkModeEnabled) {
+            commands.append("""
+                cmd uimode night yes 2>/dev/null
+                settings put secure ui_night_mode 2 2>/dev/null
+                settings put system ui_night_mode 2 2>/dev/null
+                settings put global ui_night_mode 2 2>/dev/null
+                settings put secure dark_mode_enable 1 2>/dev/null
+                settings put system dark_mode_enable 1 2>/dev/null
+                settings put global dark_mode_enable 1 2>/dev/null
+                am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled true 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("System-wide Dark Mode active (UiModeManager night mode 2, dark_mode_enable 1)")
+        } else {
+            commands.append("""
+                settings put system dark_mode_enable_by_power_save 0 2>/dev/null
+                settings put secure dark_mode_enable_by_power_save 0 2>/dev/null
+                settings put global dark_mode_enable_by_power_save 0 2>/dev/null
+                settings put secure ui_night_mode 1 2>/dev/null
+                settings put system ui_night_mode 1 2>/dev/null
+                settings put global ui_night_mode 1 2>/dev/null
+                settings put secure dark_mode_enable 0 2>/dev/null
+                settings put system dark_mode_enable 0 2>/dev/null
+                settings put global dark_mode_enable 0 2>/dev/null
+                cmd uimode night no 2>/dev/null
+                am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled false 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("System Light Mode restored (UiModeManager night mode 1, dark_mode_enable 0)")
         }
 
         // 15. Display Refresh Rate (60 / 90 / 120 / Dynamic)
@@ -1450,6 +1659,13 @@ object RootBridge {
                 done
             """.trimIndent()).append("\n")
             logs.add("GPU No-Nap: ${if (napVal == "1") "Active (Prevents GPU micro-sleep between frame draws)" else "Normal"}")
+        } else {
+            commands.append("""
+                for g in /sys/class/kgsl/kgsl-3d0 /sys/devices/platform/*.gpu /sys/devices/*.mali; do
+                    [ -e "${'$'}g/force_no_nap" ] && echo 0 > "${'$'}g/force_no_nap" 2>/dev/null
+                done
+            """.trimIndent()).append("\n")
+            logs.add("GPU No-Nap restored to normal")
         }
 
         // 6. DDR Memory Bus Bandwidth (Qualcomm & Universal)
@@ -1528,6 +1744,11 @@ object RootBridge {
                 resetprop ro.sys.fw.bg_apps_limit 34 2>/dev/null || setprop ro.sys.fw.bg_apps_limit 34 2>/dev/null
             """.trimIndent()).append("\n")
             logs.add("Memory & LMK: Gaming free-pool headroom tuned (extra_free_kbytes 21542, swappiness 75)")
+        } else {
+            commands.append("""
+                restore_from_backup "/proc/sys/vm/" "echo 60 > /proc/sys/vm/swappiness 2>/dev/null; echo 100 > /proc/sys/vm/vfs_cache_pressure 2>/dev/null; echo 500 > /proc/sys/vm/dirty_writeback_centisecs 2>/dev/null"
+            """.trimIndent()).append("\n")
+            logs.add("Memory & LMK restored from stock backup snapshot")
         }
 
         // 10. Display Refresh Rate: Unlock full display refresh rate for smooth gaming
@@ -1559,7 +1780,7 @@ object RootBridge {
         commands: StringBuilder,
         backupPath: String
     ): List<String> {
-        logs.add("Activating HyperOS / MIUI Super Power Saving Engine")
+        logs.add("Activating HyperOS / MIUI Power Saving Engine")
 
         // 1. Permanent System Components + User Allowed Apps Protection
         val userAllowedPkgs = config.backgroundAllowedApps
@@ -1619,27 +1840,30 @@ object RootBridge {
             logs.add("SuperPowerClean: Memory cleaned in RAM (Protected: ${allProtectedPkgs.size} apps)")
         }
 
-        // Aurogon Process Freezer & Joyose/PowerKeeper SuperSave
+        // Aurogon Process Freezer (Keep power_supersave_mode_open=0 so Notification Shade & Control Center toggles are NEVER disabled)
         if (config.hyperOsAurogonFreezerEnabled) {
             commands.append("""
-                settings put system power_supersave_mode_open 1 2>/dev/null
-                settings put secure power_supersave_mode_open 1 2>/dev/null
+                settings put system power_supersave_mode_open 0 2>/dev/null
+                settings put secure power_supersave_mode_open 0 2>/dev/null
+                settings put global power_supersave_mode_open 0 2>/dev/null
                 setprop persist.sys.miui.freezer true 2>/dev/null
                 setprop persist.sys.aurogon.enabled 1 2>/dev/null
                 setprop persist.sys.spc.enabled 1 2>/dev/null
                 setprop persist.vendor.power.freezer 1 2>/dev/null
                 device_config put activity_manager use_freezer true 2>/dev/null
             """.trimIndent()).append("\n")
-            logs.add("HyperOS Aurogon Process Freezer & SuperSave enabled")
+            logs.add("HyperOS Aurogon Process Freezer enabled (Notification Panel & Control Center preserved)")
         } else {
             commands.append("""
                 settings put system power_supersave_mode_open 0 2>/dev/null
                 settings put secure power_supersave_mode_open 0 2>/dev/null
+                settings put global power_supersave_mode_open 0 2>/dev/null
                 setprop persist.sys.miui.freezer false 2>/dev/null
                 setprop persist.sys.aurogon.enabled 0 2>/dev/null
                 setprop persist.sys.spc.enabled 0 2>/dev/null
                 setprop persist.vendor.power.freezer 0 2>/dev/null
             """.trimIndent()).append("\n")
+            logs.add("HyperOS Aurogon Process Freezer restored to default")
         }
 
         // 4. Xiaomi Touch Boost Clamping & RefreshRateSelector Touch Boost
@@ -1819,7 +2043,7 @@ object RootBridge {
             }
         }
 
-        // 7. System Battery Saver (HyperOS PowerSaverProvider)
+        // 7. System Battery Saver (HyperOS PowerSaverProvider + Black Wallpaper via SuperPowerSaveManager)
         if (config.systemBatterySaverEnabled || config.systemBatterySaverWithoutDarkEnabled) {
             commands.append("""
                 cmd power set-mode 1 2>/dev/null || settings put global low_power 1 2>/dev/null
@@ -1829,11 +2053,25 @@ object RootBridge {
                 settings put secure POWER_SAVE_MODE_OPEN 1 2>/dev/null
                 settings put system POWER_SAVE_MODE_OPEN 1 2>/dev/null
                 settings put global POWER_SAVE_MODE_OPEN 1 2>/dev/null
+                settings put system hide_mode ultimate 2>/dev/null
+                settings put secure hide_mode ultimate 2>/dev/null
+
+                # Trigger SuperPowerSaveManager wallpaper policy (dark simple wallpaper on home, lockscreen & call UI)
+                content call --uri content://com.miui.powercenter.powersaver --method changeSuperPowerMode --extra power_supersave_mode_open:b:true --extra is_super_power:b:true --extra enable:b:true --extra mode:i:1 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method change_super_power_mode --extra power_supersave_mode_open:b:true --extra is_super_power:b:true --extra enable:b:true --extra mode:i:1 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method changePowerMode --extra mode:i:3 2>/dev/null
                 content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:3 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:1 2>/dev/null
                 content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:3 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method changePowerMode --extra mode:i:1 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:1 2>/dev/null
                 content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:1 2>/dev/null
                 content insert --uri content://com.miui.powercenter.powersaver/status --bind status:i:1 2>/dev/null
+
+                # Immediately clear power_supersave_mode_open so SystemUI Policy & KeyButton Policy NEVER disable Notification Panel (left swipe) or Control Center toggles
+                settings put system power_supersave_mode_open 0 2>/dev/null
+                settings put secure power_supersave_mode_open 0 2>/dev/null
+                settings put global power_supersave_mode_open 0 2>/dev/null
+
                 am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state true 2>/dev/null
                 am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
                 setprop persist.vendor.radio.5g_power_save 1 2>/dev/null
@@ -1857,18 +2095,73 @@ object RootBridge {
                 setprop persist.sys.wifi_half_ant 1 2>/dev/null
                 settings put global wifi_power_save 1 2>/dev/null
             """.trimIndent()).append("\n")
-            logs.add("HyperOS: Power mode 3 active, Master Sync suspended, Location throttled, Audio HAL & Wi-Fi SISO power saving engaged")
+            logs.add("HyperOS: PowerSaver active, dark simple wallpaper policy applied, Notification Panel & Control Center preserved")
+        } else {
+            commands.append("""
+                settings put system power_supersave_mode_open 0 2>/dev/null
+                settings put secure power_supersave_mode_open 0 2>/dev/null
+                settings put global power_supersave_mode_open 0 2>/dev/null
+                settings put system hide_mode enhance 2>/dev/null
+                settings put secure hide_mode enhance 2>/dev/null
+                cmd power set-mode 0 2>/dev/null || settings put global low_power 0 2>/dev/null
+                settings put global low_power 0 2>/dev/null
+                settings put secure low_power 0 2>/dev/null
+                settings put system low_power 0 2>/dev/null
+                settings put secure POWER_SAVE_MODE_OPEN 0 2>/dev/null
+                settings put system POWER_SAVE_MODE_OPEN 0 2>/dev/null
+                settings put global POWER_SAVE_MODE_OPEN 0 2>/dev/null
 
-            if (config.systemDarkModeEnabled) {
-                commands.append("""
-                    cmd uimode night yes 2>/dev/null
-                    settings put secure ui_night_mode 2 2>/dev/null
-                    settings put system ui_night_mode 2 2>/dev/null
-                    settings put secure dark_mode_enable 1 2>/dev/null
-                    settings put system dark_mode_enable 1 2>/dev/null
-                    am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled true 2>/dev/null
-                """.trimIndent()).append("\n")
-            }
+                # Trigger SuperPowerSaveManager leave super power (bSuperPower=false, fromuser=true) to restore com.miui.miwallpaper automatically
+                content call --uri content://com.miui.powercenter.powersaver --method changeSuperPowerMode --extra power_supersave_mode_open:b:false --extra is_super_power:b:false --extra enable:b:false --extra from_user:b:true --extra mode:i:0 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method change_super_power_mode --extra power_supersave_mode_open:b:false --extra is_super_power:b:false --extra enable:b:false --extra from_user:b:true --extra mode:i:0 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method changePowerMode --extra mode:i:0 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:0 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:0 2>/dev/null
+                content insert --uri content://com.miui.powercenter.powersaver/status --bind status:i:0 2>/dev/null
+                am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state false 2>/dev/null
+                am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
+                setprop persist.vendor.radio.5g_power_save 0 2>/dev/null
+                setprop persist.radio.power_saving 0 2>/dev/null
+                settings put global master_sync_automatically 1 2>/dev/null
+                settings put secure master_sync_automatically 1 2>/dev/null
+                service call audio 100 s16 "Audio_Power_Save_Mode=0;Audio_Power_Save_Level=0" 2>/dev/null
+                setprop vendor.audio.power_save 0 2>/dev/null
+                setprop persist.vendor.audio.power_save 0 2>/dev/null
+                setprop persist.vendor.wifi.powersave 0 2>/dev/null
+                setprop persist.sys.wifi_half_ant 0 2>/dev/null
+                settings put global wifi_power_save 0 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("HyperOS: System battery saver & original wallpaper restored via PowerSaverProvider")
+        }
+
+        // 7b. System Dark Mode / Light Mode Restoration
+        if (config.systemDarkModeEnabled) {
+            commands.append("""
+                cmd uimode night yes 2>/dev/null
+                settings put secure ui_night_mode 2 2>/dev/null
+                settings put system ui_night_mode 2 2>/dev/null
+                settings put global ui_night_mode 2 2>/dev/null
+                settings put secure dark_mode_enable 1 2>/dev/null
+                settings put system dark_mode_enable 1 2>/dev/null
+                settings put global dark_mode_enable 1 2>/dev/null
+                am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled true 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("HyperOS: Dark Mode active (UiModeManager night mode 2)")
+        } else {
+            commands.append("""
+                settings put system dark_mode_enable_by_power_save 0 2>/dev/null
+                settings put secure dark_mode_enable_by_power_save 0 2>/dev/null
+                settings put global dark_mode_enable_by_power_save 0 2>/dev/null
+                settings put secure ui_night_mode 1 2>/dev/null
+                settings put system ui_night_mode 1 2>/dev/null
+                settings put global ui_night_mode 1 2>/dev/null
+                settings put secure dark_mode_enable 0 2>/dev/null
+                settings put system dark_mode_enable 0 2>/dev/null
+                settings put global dark_mode_enable 0 2>/dev/null
+                cmd uimode night no 2>/dev/null
+                am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled false 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("HyperOS: Light Mode restored (UiModeManager night mode 1)")
         }
 
         // 8. Control Center Blur (Window Blurs) - Toggle removes blur to eliminate GPU rendering load
@@ -1890,7 +2183,7 @@ object RootBridge {
 
         val execResult = execute(commands.toString())
         if (execResult.success) {
-            logs.add("HyperOS Super Power Saving Engine applied successfully to RAM.")
+            logs.add("HyperOS Power Saving Engine applied successfully to RAM.")
         } else {
             logs.add("HyperOS tweaks applied with notices: ${execResult.stderr.take(80)}")
         }
@@ -1912,13 +2205,16 @@ object RootBridge {
             """.trimIndent()
         } else {
             """
-                cmd uimode night no 2>/dev/null
+                settings put system dark_mode_enable_by_power_save 0 2>/dev/null
+                settings put secure dark_mode_enable_by_power_save 0 2>/dev/null
+                settings put global dark_mode_enable_by_power_save 0 2>/dev/null
                 settings put secure ui_night_mode 1 2>/dev/null
                 settings put system ui_night_mode 1 2>/dev/null
                 settings put global ui_night_mode 1 2>/dev/null
                 settings put secure dark_mode_enable 0 2>/dev/null
                 settings put system dark_mode_enable 0 2>/dev/null
                 settings put global dark_mode_enable 0 2>/dev/null
+                cmd uimode night no 2>/dev/null
                 am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled false 2>/dev/null
             """.trimIndent()
         }
