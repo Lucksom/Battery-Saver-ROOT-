@@ -243,7 +243,7 @@ private fun oklch(l: Float, c: Float, hDeg: Float): Color {
     )
 }
 
-private data class MonetRolePalette(
+internal data class MonetRolePalette(
     val primary: Color,
     val onPrimary: Color,
     val pc: Color,
@@ -266,7 +266,7 @@ private data class MonetRolePalette(
     val err: Color
 )
 
-private val LocalMonetRoles = staticCompositionLocalOf {
+internal val LocalMonetRoles = staticCompositionLocalOf {
     buildMonetRolesFromHue(262f, isDark = false)
 }
 
@@ -388,6 +388,7 @@ private enum class ExpressiveTab(
 ) {
     OVERVIEW("Overview", Icons.Outlined.Dashboard, Icons.Outlined.Dashboard),
     TWEAKS("Tweaks", Icons.Outlined.Tune, Icons.Filled.Tune),
+    HYPEROS("HyperOS", Icons.Filled.DeveloperBoard, Icons.Filled.Memory),
     CONSOLE("Console", Icons.Outlined.Terminal, Icons.Filled.Terminal)
 }
 
@@ -494,10 +495,24 @@ fun MainScreen(
     val statusMessage by viewModel.statusMessage.collectAsState()
     val logs by viewModel.logs.collectAsState()
     val installedApps by viewModel.installedApps.collectAsState()
+    val kernelSnapshot by viewModel.kernelSnapshot.collectAsState()
+    val stagedKernelTweaks by viewModel.stagedKernelTweaks.collectAsState()
+    val lastKernelActionBanner by viewModel.lastKernelActionBanner.collectAsState()
 
     var currentTab by rememberSaveable { mutableStateOf(ExpressiveTab.OVERVIEW) }
     var selectedSeed by rememberSaveable { mutableStateOf(MonetSeedPreset.MINT) }
     var showMonetPicker by rememberSaveable { mutableStateOf(false) }
+
+    // Section 9: Live 2-second Temperature Watch polling while HyperOS Kernel tab is open
+    LaunchedEffect(currentTab) {
+        if (currentTab == ExpressiveTab.HYPEROS) {
+            viewModel.refreshKernelSnapshot()
+            while (currentTab == ExpressiveTab.HYPEROS) {
+                kotlinx.coroutines.delay(2000)
+                viewModel.refreshKernelSnapshot()
+            }
+        }
+    }
 
     var heroVisualActive by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(config.isMasterApplied, telemetry.isRootGranted) {
@@ -649,6 +664,42 @@ fun MainScreen(
                                         },
                                         onUpdateDeepSleepWhitelist = { csv ->
                                             viewModel.onUpdateDeepSleepWhitelist(csv)
+                                        }
+                                    )
+                                }
+
+                                ExpressiveTab.HYPEROS -> {
+                                    HyperOsKernelTabScreen(
+                                        snapshot = kernelSnapshot,
+                                        stagedTweaks = stagedKernelTweaks,
+                                        lastActionBanner = lastKernelActionBanner,
+                                        installedApps = installedApps,
+                                        onStageTweakValue = { id, value ->
+                                            viewModel.onStageKernelTweak(id, value)
+                                        },
+                                        onRunSingleLineNow = { spec, value ->
+                                            viewModel.onRunSingleKernelLine(spec, value)
+                                        },
+                                        onUndoSingleLineToWas = { spec ->
+                                            viewModel.onUndoSingleKernelLine(spec)
+                                        },
+                                        onSwipeApplyStaged = {
+                                            viewModel.onSwipeApplyStagedKernelTweaks()
+                                        },
+                                        onRestoreAllWasValues = {
+                                            viewModel.onRestoreAllWasKernelValues()
+                                        },
+                                        onRefreshSnapshot = {
+                                            viewModel.refreshKernelSnapshot()
+                                        },
+                                        onRunOneShotVmAction = { dropCaches ->
+                                            viewModel.onRunOneShotVmAction(dropCaches)
+                                        },
+                                        onToggleDaemon = { name, start ->
+                                            viewModel.onToggleXiaomiDaemon(name, start)
+                                        },
+                                        onExecuteProcessAction = { pkg, action ->
+                                            viewModel.onExecuteProcessKernelAction(pkg, action)
                                         }
                                     )
                                 }
@@ -2825,7 +2876,7 @@ private fun ExpressiveTweaksPage(
                 key = "hyperOsUltraSuperSaveUi",
                 category = TweakCategoryFilter.BAT,
                 title = "Ultra SuperSave dark wallpaper & panel off",
-                subtitle = "Dark simple wallpaper + turn off notification panel & extra control center options (Manual only)",
+                subtitle = "Dark simple wallpaper+ turn off notification panel & few control center options.",
                 sysfsCode = "",
                 icon = Icons.Filled.Visibility,
                 isChecked = { it.hyperOsUltraSuperSaveUiEnabled }

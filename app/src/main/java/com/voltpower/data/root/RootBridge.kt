@@ -702,6 +702,10 @@ object RootBridge {
             return@withContext applyPerformanceTweaksInternal(context, config, logs, commands, backupPath)
         }
 
+        if (isHyperOsPowersave) {
+            return@withContext applyHyperOsPowersaveTweaksInternal(context, config, logs, commands, backupPath)
+        }
+
         // 1. CPU Max Frequency Cap (70% in Balance Mode, 50% in Powersave Mode)
         val isCpuCapActive = if (isBalance) {
             config.balanceCpuTweaksEnabled
@@ -1210,56 +1214,7 @@ object RootBridge {
             logs.add("Double-tap wake gesture preserved")
         }
 
-        if (isHyperOsPowersave) {
-            return@withContext applyHyperOsPowersaveTweaksInternal(context, config, logs, commands, backupPath)
-        }
-
-        // 14. System Battery Saver (MIUI PowerSaverProvider + Android Core)
-        if (config.systemBatterySaverEnabled || config.systemBatterySaverWithoutDarkEnabled) {
-            commands.append("""
-                settings put system power_supersave_mode_open 0 2>/dev/null
-                settings put secure power_supersave_mode_open 0 2>/dev/null
-                settings put global power_supersave_mode_open 0 2>/dev/null
-                cmd power set-mode 1 2>/dev/null || settings put global low_power 1 2>/dev/null
-                settings put global low_power 1 2>/dev/null
-                settings put secure low_power 1 2>/dev/null
-                settings put system low_power 1 2>/dev/null
-                settings put secure POWER_SAVE_MODE_OPEN 1 2>/dev/null
-                settings put system POWER_SAVE_MODE_OPEN 1 2>/dev/null
-                settings put global POWER_SAVE_MODE_OPEN 1 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:1 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:1 2>/dev/null
-                content insert --uri content://com.miui.powercenter.powersaver/status --bind status:i:1 2>/dev/null
-                am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state true 2>/dev/null
-                am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
-                setprop persist.vendor.radio.5g_power_save 1 2>/dev/null
-                setprop persist.radio.power_saving 1 2>/dev/null
-            """.trimIndent()).append("\n")
-            logs.add("System battery saver enabled (PowerSaverProvider active)")
-        } else {
-            commands.append("""
-                settings put system power_supersave_mode_open 0 2>/dev/null
-                settings put secure power_supersave_mode_open 0 2>/dev/null
-                settings put global power_supersave_mode_open 0 2>/dev/null
-                cmd power set-mode 0 2>/dev/null || settings put global low_power 0 2>/dev/null
-                settings put global low_power 0 2>/dev/null
-                settings put secure low_power 0 2>/dev/null
-                settings put system low_power 0 2>/dev/null
-                settings put secure POWER_SAVE_MODE_OPEN 0 2>/dev/null
-                settings put system POWER_SAVE_MODE_OPEN 0 2>/dev/null
-                settings put global POWER_SAVE_MODE_OPEN 0 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:0 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:0 2>/dev/null
-                content insert --uri content://com.miui.powercenter.powersaver/status --bind status:i:0 2>/dev/null
-                am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state false 2>/dev/null
-                am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
-                setprop persist.vendor.radio.5g_power_save 0 2>/dev/null
-                setprop persist.radio.power_saving 0 2>/dev/null
-            """.trimIndent()).append("\n")
-            logs.add("System battery saver restored to normal")
-        }
-
-        // 14b. System-wide Dark Mode / Light Mode Restoration
+        // 14a. System-wide Dark Mode / Light Mode Restoration (Run BEFORE System Battery Saver so uimode changes never reset low_power state)
         if (config.systemDarkModeEnabled) {
             commands.append("""
                 cmd uimode night yes 2>/dev/null
@@ -1287,6 +1242,49 @@ object RootBridge {
                 am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled false 2>/dev/null
             """.trimIndent()).append("\n")
             logs.add("System Light Mode restored (UiModeManager night mode 1, dark_mode_enable 0)")
+        }
+
+        // 14b. System Battery Saver (MIUI PowerSaverProvider + Android Core - Applied AFTER uimode so orange battery saver stays active)
+        if (config.systemBatterySaverEnabled || config.systemBatterySaverWithoutDarkEnabled) {
+            commands.append("""
+                settings put system power_supersave_mode_open 0 2>/dev/null
+                settings put secure power_supersave_mode_open 0 2>/dev/null
+                settings put global power_supersave_mode_open 0 2>/dev/null
+                cmd power set-mode 1 2>/dev/null || settings put global low_power 1 2>/dev/null
+                settings put global low_power 1 2>/dev/null
+                settings put secure low_power 1 2>/dev/null
+                settings put system low_power 1 2>/dev/null
+                settings put secure POWER_SAVE_MODE_OPEN 1 2>/dev/null
+                settings put system POWER_SAVE_MODE_OPEN 1 2>/dev/null
+                settings put global POWER_SAVE_MODE_OPEN 1 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method changePowerMode --extra mode:i:1 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:1 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:1 2>/dev/null
+                content insert --uri content://com.miui.powercenter.powersaver/status --bind status:i:1 2>/dev/null
+                am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state true 2>/dev/null
+                am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("System battery saver enabled (PowerSaverProvider mode 1 active)")
+        } else {
+            commands.append("""
+                settings put system power_supersave_mode_open 0 2>/dev/null
+                settings put secure power_supersave_mode_open 0 2>/dev/null
+                settings put global power_supersave_mode_open 0 2>/dev/null
+                cmd power set-mode 0 2>/dev/null || settings put global low_power 0 2>/dev/null
+                settings put global low_power 0 2>/dev/null
+                settings put secure low_power 0 2>/dev/null
+                settings put system low_power 0 2>/dev/null
+                settings put secure POWER_SAVE_MODE_OPEN 0 2>/dev/null
+                settings put system POWER_SAVE_MODE_OPEN 0 2>/dev/null
+                settings put global POWER_SAVE_MODE_OPEN 0 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method changePowerMode --extra mode:i:0 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:0 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:0 2>/dev/null
+                content insert --uri content://com.miui.powercenter.powersaver/status --bind status:i:0 2>/dev/null
+                am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state false 2>/dev/null
+                am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("System battery saver restored to normal")
         }
 
         // 15. Display Refresh Rate (60 / 90 / 120 / Dynamic)
@@ -2059,102 +2057,24 @@ object RootBridge {
             }
         }
 
-        // 7. System Battery Saver (HyperOS PowerSaverProvider)
-        if (config.systemBatterySaverEnabled || config.systemBatterySaverWithoutDarkEnabled) {
+        // 7. Control Center Blur (Window Blurs) - Toggle removes blur to eliminate GPU rendering load
+        if (config.controlCenterBlurEnabled) {
             commands.append("""
-                cmd power set-mode 1 2>/dev/null || settings put global low_power 1 2>/dev/null
-                settings put global low_power 1 2>/dev/null
-                settings put secure low_power 1 2>/dev/null
-                settings put system low_power 1 2>/dev/null
-                settings put secure POWER_SAVE_MODE_OPEN 1 2>/dev/null
-                settings put system POWER_SAVE_MODE_OPEN 1 2>/dev/null
-                settings put global POWER_SAVE_MODE_OPEN 1 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method changePowerMode --extra mode:i:1 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:1 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:1 2>/dev/null
-                content insert --uri content://com.miui.powercenter.powersaver/status --bind status:i:1 2>/dev/null
-                am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state true 2>/dev/null
-                am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
-                setprop persist.vendor.radio.5g_power_save 1 2>/dev/null
-                setprop persist.radio.power_saving 1 2>/dev/null
-
-                # HyperOS Master Account Sync Disable (prevents background network wakeups)
-                settings put global master_sync_automatically 0 2>/dev/null
-                settings put secure master_sync_automatically 0 2>/dev/null
-
-                # HyperOS Location Throttle (FOREGROUND_ONLY mode)
-                settings put global location_mode 3 2>/dev/null
-                settings put global location_background_throttle_interval_ms 300000 2>/dev/null
-
-                # HyperOS Audio HAL Power Save (Audio_Power_Save_Mode=1, Audio_Power_Save_Level=1)
-                service call audio 100 s16 "Audio_Power_Save_Mode=1;Audio_Power_Save_Level=1" 2>/dev/null
-                setprop vendor.audio.power_save 1 2>/dev/null
-                setprop persist.vendor.audio.power_save 1 2>/dev/null
-
-                # HyperOS Wi-Fi Antenna Power Save (setWifiAntHalfStatus: true, SISO antenna)
-                setprop persist.vendor.wifi.powersave 1 2>/dev/null
-                setprop persist.sys.wifi_half_ant 1 2>/dev/null
-                settings put global wifi_power_save 1 2>/dev/null
+                settings put global disable_window_blurs 1 2>/dev/null
+                settings put system disable_window_blurs 1 2>/dev/null
+                settings put secure disable_window_blurs 1 2>/dev/null
             """.trimIndent()).append("\n")
-            logs.add("HyperOS: PowerSaver active, Master Sync suspended, Audio HAL & Wi-Fi SISO power saving engaged")
+            logs.add("HyperOS Control Center Blur removed for battery saving")
         } else {
             commands.append("""
-                cmd power set-mode 0 2>/dev/null || settings put global low_power 0 2>/dev/null
-                settings put global low_power 0 2>/dev/null
-                settings put secure low_power 0 2>/dev/null
-                settings put system low_power 0 2>/dev/null
-                settings put secure POWER_SAVE_MODE_OPEN 0 2>/dev/null
-                settings put system POWER_SAVE_MODE_OPEN 0 2>/dev/null
-                settings put global POWER_SAVE_MODE_OPEN 0 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method changePowerMode --extra mode:i:0 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:0 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:0 2>/dev/null
-                content insert --uri content://com.miui.powercenter.powersaver/status --bind status:i:0 2>/dev/null
-                am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state false 2>/dev/null
-                am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
-                setprop persist.vendor.radio.5g_power_save 0 2>/dev/null
-                setprop persist.radio.power_saving 0 2>/dev/null
-                settings put global master_sync_automatically 1 2>/dev/null
-                settings put secure master_sync_automatically 1 2>/dev/null
-                service call audio 100 s16 "Audio_Power_Save_Mode=0;Audio_Power_Save_Level=0" 2>/dev/null
-                setprop vendor.audio.power_save 0 2>/dev/null
-                setprop persist.vendor.audio.power_save 0 2>/dev/null
-                setprop persist.vendor.wifi.powersave 0 2>/dev/null
-                setprop persist.sys.wifi_half_ant 0 2>/dev/null
-                settings put global wifi_power_save 0 2>/dev/null
+                settings put global disable_window_blurs 0 2>/dev/null
+                settings put system disable_window_blurs 0 2>/dev/null
+                settings put secure disable_window_blurs 0 2>/dev/null
             """.trimIndent()).append("\n")
-            logs.add("HyperOS: System battery saver restored to normal")
+            logs.add("HyperOS Control Center Blur restored to stock")
         }
 
-        // 7a. Manual-Only Ultra SuperSave UI Tweak (Dark Wallpaper + Notification Panel Off & Restricted Control Center)
-        if (config.hyperOsUltraSuperSaveUiEnabled) {
-            commands.append("""
-                settings put system hide_mode ultimate 2>/dev/null
-                settings put secure hide_mode ultimate 2>/dev/null
-                settings put system power_supersave_mode_open 1 2>/dev/null
-                settings put secure power_supersave_mode_open 1 2>/dev/null
-                settings put global power_supersave_mode_open 1 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method changeSuperPowerMode --extra power_supersave_mode_open:b:true --extra is_super_power:b:true --extra enable:b:true --extra mode:i:3 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method change_super_power_mode --extra power_supersave_mode_open:b:true --extra is_super_power:b:true --extra enable:b:true --extra mode:i:3 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method changePowerMode --extra mode:i:3 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:3 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:3 2>/dev/null
-            """.trimIndent()).append("\n")
-            logs.add("HyperOS Ultra SuperSave UI active: Black wallpaper applied, Notification Panel & extra Control Center toggles turned off")
-        } else {
-            commands.append("""
-                settings put system hide_mode enhance 2>/dev/null
-                settings put secure hide_mode enhance 2>/dev/null
-                settings put system power_supersave_mode_open 0 2>/dev/null
-                settings put secure power_supersave_mode_open 0 2>/dev/null
-                settings put global power_supersave_mode_open 0 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method changeSuperPowerMode --extra power_supersave_mode_open:b:false --extra is_super_power:b:false --extra enable:b:false --extra from_user:b:true --extra mode:i:0 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method change_super_power_mode --extra power_supersave_mode_open:b:false --extra is_super_power:b:false --extra enable:b:false --extra from_user:b:true --extra mode:i:0 2>/dev/null
-            """.trimIndent()).append("\n")
-            logs.add("HyperOS Ultra SuperSave UI off: Original wallpaper, Notification Panel & Control Center preserved")
-        }
-
-        // 7b. System Dark Mode / Light Mode Restoration
+        // 8. System Dark Mode / Light Mode Restoration (Executed BEFORE Battery Saver so uimode changes never turn off Battery Saver)
         if (config.systemDarkModeEnabled) {
             commands.append("""
                 cmd uimode night yes 2>/dev/null
@@ -2184,21 +2104,115 @@ object RootBridge {
             logs.add("HyperOS: Light Mode restored (UiModeManager night mode 1)")
         }
 
-        // 8. Control Center Blur (Window Blurs) - Toggle removes blur to eliminate GPU rendering load
-        if (config.controlCenterBlurEnabled) {
+        // 9. HyperOS PowerKeeper SuperSave Standby (Audio HAL, Wi-Fi SISO antenna, Master Sync, LPM deep sleep)
+        if (config.systemBatterySaverEnabled) {
             commands.append("""
-                settings put global disable_window_blurs 1 2>/dev/null
-                settings put system disable_window_blurs 1 2>/dev/null
-                settings put secure disable_window_blurs 1 2>/dev/null
+                # HyperOS Master Account Sync Disable (prevents background network wakeups)
+                settings put global master_sync_automatically 0 2>/dev/null
+                settings put secure master_sync_automatically 0 2>/dev/null
+
+                # HyperOS Location Throttle (FOREGROUND_ONLY mode)
+                settings put global location_mode 3 2>/dev/null
+                settings put global location_background_throttle_interval_ms 300000 2>/dev/null
+
+                # HyperOS Audio HAL Power Save (Audio_Power_Save_Mode=1, Audio_Power_Save_Level=1)
+                service call audio 100 s16 "Audio_Power_Save_Mode=1;Audio_Power_Save_Level=1" 2>/dev/null
+                setprop vendor.audio.power_save 1 2>/dev/null
+                setprop persist.vendor.audio.power_save 1 2>/dev/null
+
+                # HyperOS Wi-Fi Antenna Power Save (setWifiAntHalfStatus: true, SISO antenna)
+                setprop persist.vendor.wifi.powersave 1 2>/dev/null
+                setprop persist.sys.wifi_half_ant 1 2>/dev/null
+                settings put global wifi_power_save 1 2>/dev/null
+
+                # Kernel LPM sleep & power-efficient workqueues for extreme standby
+                [ -d /sys/module/lpm_levels ] && echo "N" > /sys/module/lpm_levels/parameters/sleep_disabled 2>/dev/null
+                [ -e /sys/module/workqueue/parameters/power_efficient ] && echo "Y" > /sys/module/workqueue/parameters/power_efficient 2>/dev/null
+                [ -d /dev/cpuset/background ] && echo "0-3" > /dev/cpuset/background/cpus 2>/dev/null
             """.trimIndent()).append("\n")
-            logs.add("HyperOS Control Center Blur removed for battery saving")
+            logs.add("HyperOS PowerKeeper SuperSave: Master Sync suspended, Audio HAL & Wi-Fi SISO power saving engaged")
         } else {
             commands.append("""
-                settings put global disable_window_blurs 0 2>/dev/null
-                settings put system disable_window_blurs 0 2>/dev/null
-                settings put secure disable_window_blurs 0 2>/dev/null
+                settings put global master_sync_automatically 1 2>/dev/null
+                settings put secure master_sync_automatically 1 2>/dev/null
+                service call audio 100 s16 "Audio_Power_Save_Mode=0;Audio_Power_Save_Level=0" 2>/dev/null
+                setprop vendor.audio.power_save 0 2>/dev/null
+                setprop persist.vendor.audio.power_save 0 2>/dev/null
+                setprop persist.vendor.wifi.powersave 0 2>/dev/null
+                setprop persist.sys.wifi_half_ant 0 2>/dev/null
+                settings put global wifi_power_save 0 2>/dev/null
             """.trimIndent()).append("\n")
-            logs.add("HyperOS Control Center Blur restored to stock")
+        }
+
+        // 10. Manual-Only Ultra SuperSave UI Tweak vs Standard Battery Saver (Executed LAST so Battery Saver orange icon never gets reverted!)
+        if (config.hyperOsUltraSuperSaveUiEnabled) {
+            commands.append("""
+                settings put system hide_mode ultimate 2>/dev/null
+                settings put secure hide_mode ultimate 2>/dev/null
+                settings put system power_supersave_mode_open 1 2>/dev/null
+                settings put secure power_supersave_mode_open 1 2>/dev/null
+                settings put global power_supersave_mode_open 1 2>/dev/null
+                cmd power set-mode 1 2>/dev/null || settings put global low_power 1 2>/dev/null
+                settings put global low_power 1 2>/dev/null
+                settings put secure low_power 1 2>/dev/null
+                settings put system low_power 1 2>/dev/null
+                settings put secure POWER_SAVE_MODE_OPEN 1 2>/dev/null
+                settings put system POWER_SAVE_MODE_OPEN 1 2>/dev/null
+                settings put global POWER_SAVE_MODE_OPEN 1 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method changeSuperPowerMode --extra power_supersave_mode_open:b:true --extra is_super_power:b:true --extra enable:b:true --extra mode:i:3 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method change_super_power_mode --extra power_supersave_mode_open:b:true --extra is_super_power:b:true --extra enable:b:true --extra mode:i:3 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method changePowerMode --extra mode:i:3 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:3 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:3 2>/dev/null
+                am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state true 2>/dev/null
+                am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("HyperOS Ultra SuperSave UI active: Dark simple wallpaper applied, notification panel & few control center options turned off")
+        } else if (config.systemBatterySaverWithoutDarkEnabled || config.systemBatterySaverEnabled) {
+            // Standard HyperOS & Android Battery Saver ON (Orange battery icon stays ON, Notification Panel & Control Center 100% preserved)
+            commands.append("""
+                settings put system hide_mode enhance 2>/dev/null
+                settings put secure hide_mode enhance 2>/dev/null
+                settings put system power_supersave_mode_open 0 2>/dev/null
+                settings put secure power_supersave_mode_open 0 2>/dev/null
+                settings put global power_supersave_mode_open 0 2>/dev/null
+                cmd power set-mode 1 2>/dev/null || settings put global low_power 1 2>/dev/null
+                settings put global low_power 1 2>/dev/null
+                settings put secure low_power 1 2>/dev/null
+                settings put system low_power 1 2>/dev/null
+                settings put secure POWER_SAVE_MODE_OPEN 1 2>/dev/null
+                settings put system POWER_SAVE_MODE_OPEN 1 2>/dev/null
+                settings put global POWER_SAVE_MODE_OPEN 1 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method changePowerMode --extra mode:i:1 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:1 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:1 2>/dev/null
+                content insert --uri content://com.miui.powercenter.powersaver/status --bind status:i:1 2>/dev/null
+                am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state true 2>/dev/null
+                am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("HyperOS System Battery Saver active (Orange battery saver stays ON; Notification Panel & Control Center preserved)")
+        } else {
+            commands.append("""
+                settings put system hide_mode enhance 2>/dev/null
+                settings put secure hide_mode enhance 2>/dev/null
+                settings put system power_supersave_mode_open 0 2>/dev/null
+                settings put secure power_supersave_mode_open 0 2>/dev/null
+                settings put global power_supersave_mode_open 0 2>/dev/null
+                cmd power set-mode 0 2>/dev/null || settings put global low_power 0 2>/dev/null
+                settings put global low_power 0 2>/dev/null
+                settings put secure low_power 0 2>/dev/null
+                settings put system low_power 0 2>/dev/null
+                settings put secure POWER_SAVE_MODE_OPEN 0 2>/dev/null
+                settings put system POWER_SAVE_MODE_OPEN 0 2>/dev/null
+                settings put global POWER_SAVE_MODE_OPEN 0 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method changePowerMode --extra mode:i:0 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:0 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:0 2>/dev/null
+                content insert --uri content://com.miui.powercenter.powersaver/status --bind status:i:0 2>/dev/null
+                am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state false 2>/dev/null
+                am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("HyperOS System Battery Saver off (Normal battery state)")
         }
 
         val execResult = execute(commands.toString())
@@ -2232,8 +2246,8 @@ object RootBridge {
                 settings put system power_supersave_mode_open 0 2>/dev/null
                 settings put secure power_supersave_mode_open 0 2>/dev/null
                 settings put global power_supersave_mode_open 0 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method changeSuperPowerMode --extra power_supersave_mode_open:b:false --extra is_super_power:b:false --extra enable:b:false --extra from_user:b:true --extra mode:i:0 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method change_super_power_mode --extra power_supersave_mode_open:b:false --extra is_super_power:b:false --extra enable:b:false --extra from_user:b:true --extra mode:i:0 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method changeSuperPowerMode --extra power_supersave_mode_open:b:false --extra is_super_power:b:false --extra enable:b:false --extra from_user:b:true 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method change_super_power_mode --extra power_supersave_mode_open:b:false --extra is_super_power:b:false --extra enable:b:false --extra from_user:b:true 2>/dev/null
             """.trimIndent()
         }
         execute(cmd).success
@@ -2366,13 +2380,12 @@ object RootBridge {
                 settings put secure POWER_SAVE_MODE_OPEN 1 2>/dev/null
                 settings put system POWER_SAVE_MODE_OPEN 1 2>/dev/null
                 settings put global POWER_SAVE_MODE_OPEN 1 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method changePowerMode --extra mode:i:1 2>/dev/null
                 content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:1 2>/dev/null
                 content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:1 2>/dev/null
                 content insert --uri content://com.miui.powercenter.powersaver/status --bind status:i:1 2>/dev/null
                 am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state true 2>/dev/null
                 am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
-                setprop persist.vendor.radio.5g_power_save 1 2>/dev/null
-                setprop persist.radio.power_saving 1 2>/dev/null
             """.trimIndent()
         } else {
             """
@@ -2383,13 +2396,12 @@ object RootBridge {
                 settings put secure POWER_SAVE_MODE_OPEN 0 2>/dev/null
                 settings put system POWER_SAVE_MODE_OPEN 0 2>/dev/null
                 settings put global POWER_SAVE_MODE_OPEN 0 2>/dev/null
+                content call --uri content://com.miui.powercenter.powersaver --method changePowerMode --extra mode:i:0 2>/dev/null
                 content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:0 2>/dev/null
                 content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:0 2>/dev/null
                 content insert --uri content://com.miui.powercenter.powersaver/status --bind status:i:0 2>/dev/null
                 am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state false 2>/dev/null
                 am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
-                setprop persist.vendor.radio.5g_power_save 0 2>/dev/null
-                setprop persist.radio.power_saving 0 2>/dev/null
             """.trimIndent()
         }
         execute(cmd).success

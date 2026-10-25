@@ -8,6 +8,9 @@ import com.voltpower.data.db.TweakConfigEntity
 import com.voltpower.data.log.LogCategory
 import com.voltpower.data.log.LogEntry
 import com.voltpower.data.log.LogRepository
+import com.voltpower.data.root.KernelRamLabRepository
+import com.voltpower.data.root.KernelRamLiveSnapshot
+import com.voltpower.data.root.KernelTweakSpec
 import com.voltpower.data.root.RootBridge
 import com.voltpower.data.telemetry.CpuCoreTelemetry
 import com.voltpower.data.telemetry.DeviceTelemetry
@@ -64,6 +67,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _statusMessage = MutableStateFlow<String?>(null)
     val statusMessage: StateFlow<String?> = _statusMessage.asStateFlow()
 
+    private val _kernelSnapshot = MutableStateFlow(
+        KernelRamLiveSnapshot(
+            nodeValues = KernelRamLabRepository.tweakSpecs.associate { it.id to it.wasValue },
+            daemons = KernelRamLabRepository.defaultDaemons
+        )
+    )
+    val kernelSnapshot: StateFlow<KernelRamLiveSnapshot> = _kernelSnapshot.asStateFlow()
+
+    private val _stagedKernelTweaks = MutableStateFlow<Map<String, String>>(emptyMap())
+    val stagedKernelTweaks: StateFlow<Map<String, String>> = _stagedKernelTweaks.asStateFlow()
+
+    private val _lastKernelActionBanner = MutableStateFlow<String?>(null)
+    val lastKernelActionBanner: StateFlow<String?> = _lastKernelActionBanner.asStateFlow()
+
     init {
         viewModelScope.launch {
             if (dao.getConfigDirect() == null) {
@@ -73,6 +90,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _installedApps.value = appInfoRepository.getInstalledApps()
             }
             refreshTelemetry()
+            refreshKernelSnapshot()
             while (true) {
                 delay(2500)
                 refreshTelemetry()
@@ -597,16 +615,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 // 1. Revert previous state first so any unchecked tweaks return to system default
                 RootBridge.revertAllTweaks(getApplication())
 
-                // 2. Apply or restore explicit system UI / display / battery saver toggles based on current selection
-                RootBridge.setSystemDarkMode(updated.systemDarkModeEnabled)
-                RootBridge.setControlCenterBlur(updated.controlCenterBlurEnabled)
-                RootBridge.setSystemBatterySaver(
-                    updated.systemBatterySaverEnabled || updated.systemBatterySaverWithoutDarkEnabled
-                )
-                RootBridge.setHyperOsUltraSuperSaveUi(updated.hyperOsUltraSuperSaveUiEnabled)
-                RootBridge.setDisplayRefreshRate(updated.refreshRateHz)
-
-                // 3. Apply all selected kernel & profile tweaks
+                // 2. Apply all selected kernel, system UI, display, and profile tweaks atomically in order
                 RootBridge.applyPowersaveTweaks(getApplication(), updated)
                 dao.updateBackupStatus(true, RootBridge.BACKUP_FILE_PATH)
                 refreshTelemetry()
@@ -940,6 +949,149 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
             dao.update(updated)
             _hasUnappliedChanges.value = true
+        }
+    }
+
+    // ========================================================================
+    // HYPEROS KERNEL-ONLY RAM LAB (Sections 1 to 10 from ram_tweaks_with_functions.txt)
+    // ========================================================================
+
+    fun refreshKernelSnapshot() {
+        viewModelScope.launch {
+            val snap = KernelRamLabRepository.readLiveSnapshot()
+            _kernelSnapshot.value = snap
+
+            // Auto-safety thermal guard: if max_zone >= 46°C while thermal daemons are stopped, restart them
+            if (snap.maxZoneTempMilliC >= 46000) {
+                val thermalStopped = snap.daemons.any { it.isThermalDaemon && !it.isRunning }
+                if (thermalStopped) {
+                    KernelRamLabRepository.setDaemonRunning("mi_thermald", true)
+                    KernelRamLabRepository.setDaemonRunning("vendor.thermal-hal", true)
+                    val warn = "Safety guard: Max zone reached ${snap.maxZoneTempC}°C — restarted thermal daemons"
+                    _lastKernelActionBanner.value = warn
+                    LogRepository.addLog(category = LogCategory.TWEAK, message = warn, isSuccess = true)
+                }
+            }
+        }
+    }
+
+    fun onStageKernelTweak(id: String, value: String?) {
+        val currentMap = _stagedKernelTweaks.value.toMutableMap()
+        if (value == null) {
+            currentMap.remove(id)
+        } else {
+            currentMap[id] = value
+        }
+        _stagedKernelTweaks.value = currentMap
+    }
+
+    fun onRunSingleKernelLine(spec: KernelTweakSpec, value: String) {
+        viewModelScope.launch {
+            _isBusy.value = true
+            val (ok, msg) = KernelRamLabRepository.writeSingleKernelTweak(spec, value)
+            _lastKernelActionBanner.value = msg
+            _statusMessage.value = msg
+            LogRepository.addLog(
+                category = LogCategory.TWEAK,
+                message = msg,
+                isSuccess = ok
+            )
+            refreshKernelSnapshot()
+            _isBusy.value = false
+        }
+    }
+
+    fun onUndoSingleKernelLine(spec: KernelTweakSpec) {
+        viewModelScope.launch {
+            _isBusy.value = true
+            val (ok, msg) = KernelRamLabRepository.writeSingleKernelTweak(spec, spec.wasValue)
+            val currentMap = _stagedKernelTweaks.value.toMutableMap()
+            currentMap.remove(spec.id)
+            _stagedKernelTweaks.value = currentMap
+            val undoMsg = "Undo (# was ${spec.wasValue}): $msg"
+            _lastKernelActionBanner.value = undoMsg
+            _statusMessage.value = undoMsg
+            LogRepository.addLog(
+                category = LogCategory.TWEAK,
+                message = undoMsg,
+                isSuccess = ok
+            )
+            refreshKernelSnapshot()
+            _isBusy.value = false
+        }
+    }
+
+    fun onSwipeApplyStagedKernelTweaks() {
+        viewModelScope.launch {
+            val staged = _stagedKernelTweaks.value
+            if (staged.isEmpty()) {
+                _statusMessage.value = "Stage one or more kernel chips first, or tap 'Run Line' on any item"
+                return@launch
+            }
+            _isBusy.value = true
+            val logs = KernelRamLabRepository.applyBatchKernelTweaks(staged)
+            _stagedKernelTweaks.value = emptyMap()
+            val summary = "Applied ${logs.size} pure kernel RAM tweaks"
+            _lastKernelActionBanner.value = summary
+            _statusMessage.value = summary
+            logs.forEach { line ->
+                LogRepository.addLog(category = LogCategory.TWEAK, message = line, isSuccess = true)
+            }
+            refreshKernelSnapshot()
+            refreshTelemetry()
+            _isBusy.value = false
+        }
+    }
+
+    fun onRestoreAllWasKernelValues() {
+        viewModelScope.launch {
+            _isBusy.value = true
+            _stagedKernelTweaks.value = emptyMap()
+            val logs = KernelRamLabRepository.restoreAllWasValues()
+            val summary = logs.firstOrNull() ?: "Restored all '# was' kernel values"
+            _lastKernelActionBanner.value = summary
+            _statusMessage.value = summary
+            LogRepository.addLog(category = LogCategory.TWEAK, message = summary, isSuccess = true)
+            refreshKernelSnapshot()
+            refreshTelemetry()
+            _isBusy.value = false
+        }
+    }
+
+    fun onRunOneShotVmAction(dropCaches: Boolean) {
+        viewModelScope.launch {
+            _isBusy.value = true
+            val msg = KernelRamLabRepository.runOneShotVmAction(dropCaches)
+            _lastKernelActionBanner.value = msg
+            _statusMessage.value = msg
+            LogRepository.addLog(category = LogCategory.TWEAK, message = msg, isSuccess = true)
+            refreshKernelSnapshot()
+            refreshTelemetry()
+            _isBusy.value = false
+        }
+    }
+
+    fun onToggleXiaomiDaemon(name: String, start: Boolean) {
+        viewModelScope.launch {
+            _isBusy.value = true
+            val msg = KernelRamLabRepository.setDaemonRunning(name, start)
+            _lastKernelActionBanner.value = msg
+            _statusMessage.value = msg
+            LogRepository.addLog(category = LogCategory.TWEAK, message = msg, isSuccess = true)
+            refreshKernelSnapshot()
+            _isBusy.value = false
+        }
+    }
+
+    fun onExecuteProcessKernelAction(packageName: String, action: String) {
+        viewModelScope.launch {
+            _isBusy.value = true
+            val msg = KernelRamLabRepository.executeProcessKernelAction(packageName, action)
+            _lastKernelActionBanner.value = msg
+            _statusMessage.value = msg
+            LogRepository.addLog(category = LogCategory.TWEAK, message = msg, isSuccess = true)
+            refreshKernelSnapshot()
+            _isBusy.value = false
         }
     }
 }
