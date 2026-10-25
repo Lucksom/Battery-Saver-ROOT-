@@ -58,6 +58,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isBusy = MutableStateFlow(false)
     val isBusy: StateFlow<Boolean> = _isBusy.asStateFlow()
 
+    private val _hasUnappliedChanges = MutableStateFlow(false)
+    val hasUnappliedChanges: StateFlow<Boolean> = _hasUnappliedChanges.asStateFlow()
+
     private val _statusMessage = MutableStateFlow<String?>(null)
     val statusMessage: StateFlow<String?> = _statusMessage.asStateFlow()
 
@@ -365,6 +368,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 lastAppliedTimestamp = System.currentTimeMillis()
             )
             dao.update(allOff)
+            _hasUnappliedChanges.value = false
             _statusMessage.value = "Stock parameters restored & all toggles turned off."
             LogRepository.addLog(
                 category = LogCategory.TWEAK,
@@ -399,6 +403,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
 
             dao.update(updated)
+            _hasUnappliedChanges.value = false
 
             val profileLogLabel = when (profile) {
                 "PERFORMANCE" -> {
@@ -428,6 +433,199 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 message = "$profileLogLabel enabled (previous profile tweaks reverted first)",
                 isSuccess = true
             )
+            _isBusy.value = false
+        }
+    }
+
+    /**
+     * Used in the Tweaks section so the user can freely browse/explore Powersave, Balance,
+     * and Performance tweak categories without immediately applying them to the system.
+     */
+    fun onExploreProfileInTweaks(profile: String) {
+        viewModelScope.launch {
+            val current = configState.value
+            if (current.activeProfile == profile) return@launch
+            val updated = current.copy(activeProfile = profile)
+            dao.update(updated)
+            _hasUnappliedChanges.value = true
+        }
+    }
+
+    /**
+     * Used in the Tweaks section so the user can explore Lite / Extreme / Ultra tiers
+     * and toggle their tweaks independently before swiping to apply.
+     */
+    fun onExplorePerformanceSubModeInTweaks(subMode: String) {
+        viewModelScope.launch {
+            val normalized = when (subMode.uppercase()) {
+                "HEAVY", "EXTREME" -> "EXTREME"
+                "ULTRA" -> "ULTRA"
+                else -> "LITE"
+            }
+            val current = configState.value
+            val updated = applyPerformanceTierPreset(current, normalized).copy(
+                isMasterApplied = current.isMasterApplied
+            )
+            dao.update(updated)
+            _hasUnappliedChanges.value = true
+        }
+    }
+
+    /**
+     * Allows the user to quickly select all or uncheck all tweaks in the currently viewed category
+     * without applying until they swipe "Swipe to apply".
+     */
+    fun onSetAllCurrentProfileTweaks(selectAll: Boolean) {
+        viewModelScope.launch {
+            val current = configState.value
+            val updated = when (current.activeProfile) {
+                "PERFORMANCE" -> {
+                    if (selectAll) {
+                        applyPerformanceTierPreset(current, current.performanceSubMode).copy(
+                            isMasterApplied = current.isMasterApplied
+                        )
+                    } else {
+                        current.copy(
+                            perfCpuGovernorLockEnabled = false,
+                            perfAllCoresOnlineEnabled = false,
+                            perfSchedtuneBoostEnabled = false,
+                            perfGpuAdrenoBoostEnabled = false,
+                            perfGpuNoNapEnabled = false,
+                            perfDdrBusBoostEnabled = false,
+                            perfStorageQueue512Enabled = false,
+                            perfTouchBoostEnabled = false,
+                            perfLmkTuningEnabled = false
+                        )
+                    }
+                }
+                "BALANCE" -> {
+                    if (selectAll) {
+                        applyBalancePreset(current).copy(
+                            isMasterApplied = current.isMasterApplied
+                        )
+                    } else {
+                        current.copy(
+                            balanceCpuTweaksEnabled = false,
+                            cpuFreqCapEnabled = false,
+                            schedutilGovernorEnabled = false,
+                            schedutilRateLimitsEnabled = false,
+                            balanceRamScalingEnabled = false,
+                            balanceCfsSchedulerEnabled = false,
+                            balanceGpuOptimizationEnabled = false,
+                            balanceStorageIoEnabled = false,
+                            balanceNetworkBbrEnabled = false,
+                            deepSleepScreenOffEnabled = false,
+                            developerProcessLimitEnabled = false
+                        )
+                    }
+                }
+                else -> {
+                    if (current.hyperOsPowerSaverEnabled) {
+                        current.copy(
+                            hyperOsAodDisabled = selectAll,
+                            hyperOsAurogonFreezerEnabled = selectAll,
+                            hyperOsSuperPowerCleanEnabled = selectAll,
+                            hyperOsTouchBoostDisabled = selectAll,
+                            touchDozeModeEnabled = selectAll,
+                            backgroundScanningDisabled = selectAll,
+                            hyperOsFiveGPowerOptEnabled = selectAll,
+                            hyperOsLock60HzEnabled = selectAll,
+                            lock60HzRefreshRateEnabled = selectAll,
+                            refreshRateHz = if (selectAll) 60 else 0,
+                            controlCenterBlurEnabled = selectAll,
+                            systemBatterySaverEnabled = selectAll,
+                            systemBatterySaverWithoutDarkEnabled = selectAll,
+                            systemDarkModeEnabled = false,
+                            hyperOsUltraSuperSaveUiEnabled = false
+                        )
+                    } else {
+                        if (selectAll) {
+                            applyPowersavePreset(current).copy(
+                                isMasterApplied = current.isMasterApplied
+                            )
+                        } else {
+                            current.copy(
+                                cpuFreqCapEnabled = false,
+                                schedutilGovernorEnabled = false,
+                                schedutilRateLimitsEnabled = false,
+                                twoCoresOfflineBelow20Enabled = false,
+                                inputTouchBoostDisabled = false,
+                                gpuPowerLimitEnabled = false,
+                                adrenoIdlerEnabled = false,
+                                storageIoQueueEnabled = false,
+                                dynamicFsyncEnabled = false,
+                                vmDirtyWritebackEnabled = false,
+                                tcpBbrCongestionEnabled = false,
+                                gmsDozeEnabled = false,
+                                lpmSleepEnabled = false,
+                                doubleTapWakePreserved = false,
+                                schedtuneTopAppEnabled = false,
+                                powerEfficientWorkqueueEnabled = false,
+                                backgroundScanningDisabled = false,
+                                touchDozeModeEnabled = false,
+                                systemBatterySaverWithoutDarkEnabled = false,
+                                lock60HzRefreshRateEnabled = false,
+                                refreshRateHz = 0
+                            )
+                        }
+                    }
+                }
+            }
+            dao.update(updated)
+            _hasUnappliedChanges.value = true
+        }
+    }
+
+    /**
+     * Triggered exclusively when the user swipes the "Swipe to apply" bar in the Tweaks section.
+     * Reverts any previously active conflicting/disabled tweaks and applies all currently selected tweaks.
+     */
+    fun onSwipeToApplyTweaks() {
+        viewModelScope.launch {
+            _isBusy.value = true
+            val current = configState.value
+            val hasRoot = _telemetry.value.isRootGranted || RootBridge.isRootAvailable(forceCheck = true)
+            val updated = current.copy(
+                isMasterApplied = if (hasRoot) true else current.isMasterApplied,
+                lastAppliedTimestamp = System.currentTimeMillis()
+            )
+            dao.update(updated)
+            _hasUnappliedChanges.value = false
+
+            if (hasRoot) {
+                _statusMessage.value = "Applying selected tweaks..."
+                // 1. Revert previous state first so any unchecked tweaks return to system default
+                RootBridge.revertAllTweaks(getApplication())
+
+                // 2. Apply or restore explicit system UI / display / battery saver toggles based on current selection
+                RootBridge.setSystemDarkMode(updated.systemDarkModeEnabled)
+                RootBridge.setControlCenterBlur(updated.controlCenterBlurEnabled)
+                RootBridge.setSystemBatterySaver(
+                    updated.systemBatterySaverEnabled || updated.systemBatterySaverWithoutDarkEnabled
+                )
+                RootBridge.setHyperOsUltraSuperSaveUi(updated.hyperOsUltraSuperSaveUiEnabled)
+                RootBridge.setDisplayRefreshRate(updated.refreshRateHz)
+
+                // 3. Apply all selected kernel & profile tweaks
+                RootBridge.applyPowersaveTweaks(getApplication(), updated)
+                dao.updateBackupStatus(true, RootBridge.BACKUP_FILE_PATH)
+                refreshTelemetry()
+
+                val msg = "Selected tweaks applied (${updated.activeProfile.lowercase()} mode)"
+                _statusMessage.value = msg
+                LogRepository.addLog(
+                    category = LogCategory.TWEAK,
+                    message = msg,
+                    isSuccess = true
+                )
+            } else {
+                _statusMessage.value = "Tweaks saved (Root permission required to write to kernel)"
+                LogRepository.addLog(
+                    category = LogCategory.TWEAK,
+                    message = "Tweaks staged (no root detected)",
+                    isSuccess = false
+                )
+            }
             _isBusy.value = false
         }
     }
@@ -503,8 +701,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch {
             val current = configState.value
-            val hasRoot = _telemetry.value.isRootGranted || RootBridge.isRootAvailable()
-            val updatedBase = when (toggleKey) {
+            val updated = when (toggleKey) {
                 "cpuFreqCap" -> current.copy(cpuFreqCapEnabled = enabled)
                 "schedutilGov" -> current.copy(schedutilGovernorEnabled = enabled)
                 "schedutilRate" -> current.copy(schedutilRateLimitsEnabled = enabled)
@@ -523,63 +720,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 "powerEfficientWorkqueue" -> current.copy(powerEfficientWorkqueueEnabled = enabled)
                 "backgroundScanning" -> current.copy(backgroundScanningDisabled = enabled)
                 "touchDozeMode" -> current.copy(touchDozeModeEnabled = enabled)
-                "batterySaverNoDark" -> {
-                    if (hasRoot) {
-                        RootBridge.setSystemBatterySaver(enabled)
-                    }
-                    current.copy(
-                        systemBatterySaverWithoutDarkEnabled = enabled,
-                        systemBatterySaverEnabled = if (!enabled) false else current.systemBatterySaverEnabled
-                    )
-                }
+                "batterySaverNoDark" -> current.copy(
+                    systemBatterySaverWithoutDarkEnabled = enabled,
+                    systemBatterySaverEnabled = if (!enabled) false else current.systemBatterySaverEnabled
+                )
                 "hyperOsAodDisabled" -> current.copy(hyperOsAodDisabled = enabled)
                 "hyperOsAurogonFreezer" -> current.copy(hyperOsAurogonFreezerEnabled = enabled)
                 "hyperOsSuperPowerClean" -> current.copy(hyperOsSuperPowerCleanEnabled = enabled)
                 "hyperOsTouchBoostDisabled" -> current.copy(hyperOsTouchBoostDisabled = enabled)
                 "hyperOsFiveGPowerOpt" -> current.copy(hyperOsFiveGPowerOptEnabled = enabled)
-                "hyperOsUltraSuperSaveUi" -> {
-                    if (hasRoot) {
-                        RootBridge.setHyperOsUltraSuperSaveUi(enabled)
-                    }
-                    current.copy(hyperOsUltraSuperSaveUiEnabled = enabled)
-                }
+                "hyperOsUltraSuperSaveUi" -> current.copy(hyperOsUltraSuperSaveUiEnabled = enabled)
                 "hyperOsLock60Hz" -> {
                     val targetHz = if (enabled) 60 else 0
-                    if (hasRoot) {
-                        RootBridge.setDisplayRefreshRate(targetHz)
-                    }
                     current.copy(
                         hyperOsLock60HzEnabled = enabled,
                         lock60HzRefreshRateEnabled = enabled,
                         refreshRateHz = targetHz
                     )
                 }
-                "systemBatterySaver" -> {
-                    if (hasRoot) {
-                        RootBridge.setSystemBatterySaver(enabled)
-                    }
-                    current.copy(
-                        systemBatterySaverEnabled = enabled,
-                        systemBatterySaverWithoutDarkEnabled = if (!enabled) false else current.systemBatterySaverWithoutDarkEnabled
-                    )
-                }
-                "systemDarkMode" -> {
-                    if (hasRoot) {
-                        RootBridge.setSystemDarkMode(enabled)
-                    }
-                    current.copy(systemDarkModeEnabled = enabled)
-                }
-                "controlCenterBlur" -> {
-                    if (hasRoot) {
-                        RootBridge.setControlCenterBlur(enabled)
-                    }
-                    current.copy(controlCenterBlurEnabled = enabled)
-                }
+                "systemBatterySaver" -> current.copy(
+                    systemBatterySaverEnabled = enabled,
+                    systemBatterySaverWithoutDarkEnabled = if (!enabled) false else current.systemBatterySaverWithoutDarkEnabled
+                )
+                "systemDarkMode" -> current.copy(systemDarkModeEnabled = enabled)
+                "controlCenterBlur" -> current.copy(controlCenterBlurEnabled = enabled)
                 "lock60Hz" -> {
                     val targetHz = if (enabled) 60 else 0
-                    if (hasRoot) {
-                        RootBridge.setDisplayRefreshRate(targetHz)
-                    }
                     current.copy(
                         lock60HzRefreshRateEnabled = enabled,
                         hyperOsLock60HzEnabled = if (!enabled) false else current.hyperOsLock60HzEnabled,
@@ -610,135 +776,70 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 "perfLmkTuning" -> current.copy(perfLmkTuningEnabled = enabled)
                 else -> current
             }
-            val updated = if (enabled && !updatedBase.isMasterApplied && hasRoot) {
-                updatedBase.copy(
-                    isMasterApplied = true,
-                    lastAppliedTimestamp = System.currentTimeMillis()
-                )
-            } else {
-                updatedBase
-            }
             dao.update(updated)
-
-            val logMessage = humanReadableTweakLog(toggleKey, enabled)
-            _statusMessage.value = logMessage
-            LogRepository.addLog(
-                category = LogCategory.TWEAK,
-                message = logMessage,
-                isSuccess = true
-            )
-
-            if (hasRoot && (updated.isMasterApplied || current.isMasterApplied || !enabled)) {
-                RootBridge.applyPowersaveTweaks(getApplication(), updated)
-                refreshTelemetry()
-            }
+            _hasUnappliedChanges.value = true
         }
     }
 
     fun onToggleHyperOsPowerSaver(enabled: Boolean) {
         viewModelScope.launch {
-            _isBusy.value = true
             val current = configState.value
-            val hasRoot = _telemetry.value.isRootGranted || RootBridge.isRootAvailable()
             val updated = if (enabled) {
-                // First clear conflicting Balance/Performance toggles, then activate Powersave + HyperOS Battery Saver
+                // Switch view to HyperOS Battery Saver tweaks without applying yet (wait for Swipe to apply)
                 // NOTE: hyperOsUltraSuperSaveUiEnabled MUST remain OFF (false) by default unless manually enabled by the user!
-                val basePowersave = if (current.activeProfile != "POWERSAVE") {
-                    applyPowersavePreset(current)
+                val anyHyperOsSelected = current.hyperOsAodDisabled ||
+                    current.hyperOsAurogonFreezerEnabled ||
+                    current.hyperOsSuperPowerCleanEnabled ||
+                    current.hyperOsTouchBoostDisabled ||
+                    current.hyperOsFiveGPowerOptEnabled ||
+                    current.hyperOsLock60HzEnabled ||
+                    current.controlCenterBlurEnabled ||
+                    current.systemBatterySaverEnabled
+                if (anyHyperOsSelected) {
+                    current.copy(
+                        activeProfile = "POWERSAVE",
+                        hyperOsPowerSaverEnabled = true
+                    )
                 } else {
-                    current
+                    current.copy(
+                        activeProfile = "POWERSAVE",
+                        hyperOsPowerSaverEnabled = true,
+                        hyperOsAodDisabled = true,
+                        hyperOsAurogonFreezerEnabled = true,
+                        hyperOsSuperPowerCleanEnabled = true,
+                        hyperOsTouchBoostDisabled = true,
+                        touchDozeModeEnabled = true,
+                        backgroundScanningDisabled = true,
+                        hyperOsFiveGPowerOptEnabled = true,
+                        hyperOsLock60HzEnabled = true,
+                        lock60HzRefreshRateEnabled = true,
+                        refreshRateHz = 60,
+                        controlCenterBlurEnabled = true,
+                        systemBatterySaverEnabled = true,
+                        systemBatterySaverWithoutDarkEnabled = true,
+                        hyperOsUltraSuperSaveUiEnabled = false
+                    )
                 }
-                basePowersave.copy(
-                    activeProfile = "POWERSAVE",
-                    isMasterApplied = if (hasRoot) true else current.isMasterApplied,
-                    lastAppliedTimestamp = System.currentTimeMillis(),
-                    hyperOsPowerSaverEnabled = true,
-                    hyperOsAodDisabled = true,
-                    hyperOsAurogonFreezerEnabled = true,
-                    hyperOsSuperPowerCleanEnabled = true,
-                    hyperOsTouchBoostDisabled = true,
-                    touchDozeModeEnabled = true,
-                    backgroundScanningDisabled = true,
-                    hyperOsFiveGPowerOptEnabled = true,
-                    hyperOsLock60HzEnabled = true,
-                    lock60HzRefreshRateEnabled = true,
-                    refreshRateHz = 60,
-                    controlCenterBlurEnabled = true,
-                    systemBatterySaverEnabled = true,
-                    systemBatterySaverWithoutDarkEnabled = true,
-                    hyperOsUltraSuperSaveUiEnabled = false
-                )
             } else {
                 current.copy(
-                    hyperOsPowerSaverEnabled = false,
-                    hyperOsAodDisabled = false,
-                    hyperOsAurogonFreezerEnabled = false,
-                    hyperOsSuperPowerCleanEnabled = false,
-                    hyperOsTouchBoostDisabled = false,
-                    touchDozeModeEnabled = false,
-                    backgroundScanningDisabled = false,
-                    hyperOsFiveGPowerOptEnabled = false,
-                    hyperOsLock60HzEnabled = false,
-                    lock60HzRefreshRateEnabled = false,
-                    refreshRateHz = 0,
-                    controlCenterBlurEnabled = false,
-                    systemBatterySaverEnabled = false,
-                    systemBatterySaverWithoutDarkEnabled = false,
-                    hyperOsUltraSuperSaveUiEnabled = false
+                    hyperOsPowerSaverEnabled = false
                 )
             }
             dao.update(updated)
-            val logMsg = if (enabled) {
-                "HyperOS Power Saver enabled (Ultra SuperSave UI kept off for manual control)"
-            } else {
-                "HyperOS Power Saver disabled"
-            }
-            _statusMessage.value = logMsg
-            LogRepository.addLog(
-                category = LogCategory.TWEAK,
-                message = logMsg,
-                isSuccess = true
-            )
-            if (hasRoot) {
-                if (enabled && current.activeProfile != "POWERSAVE") {
-                    RootBridge.revertAllTweaks(getApplication())
-                } else if (!enabled) {
-                    RootBridge.setHyperOsUltraSuperSaveUi(false)
-                    RootBridge.setSystemBatterySaver(false)
-                    RootBridge.setDisplayRefreshRate(0)
-                    RootBridge.setControlCenterBlur(false)
-                }
-                RootBridge.applyPowersaveTweaks(getApplication(), updated)
-                refreshTelemetry()
-            }
-            _isBusy.value = false
+            _hasUnappliedChanges.value = true
         }
     }
 
     fun onSelectRefreshRate(hz: Int) {
         viewModelScope.launch {
             val current = configState.value
-            val hasRoot = _telemetry.value.isRootGranted || RootBridge.isRootAvailable()
             val updated = current.copy(
                 refreshRateHz = hz,
                 lock60HzRefreshRateEnabled = (hz == 60),
                 hyperOsLock60HzEnabled = (hz == 60)
             )
             dao.update(updated)
-            if (hasRoot) {
-                RootBridge.setDisplayRefreshRate(hz)
-            }
-            val logMsg = if (hz > 0) "Refresh rate set ${hz}Hz" else "Refresh rate set Auto"
-            _statusMessage.value = logMsg
-            LogRepository.addLog(
-                category = LogCategory.TWEAK,
-                message = logMsg,
-                isSuccess = true
-            )
-            if (current.isMasterApplied && hasRoot) {
-                RootBridge.applyPowersaveTweaks(getApplication(), updated)
-                refreshTelemetry()
-            }
+            _hasUnappliedChanges.value = true
         }
     }
 
@@ -748,10 +849,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val pkgString = apps.joinToString(",")
             val updated = current.copy(backgroundAllowedApps = pkgString)
             dao.update(updated)
-            _statusMessage.value = "Background app whitelist updated (${apps.size} apps allowed)"
-            if (current.isMasterApplied && _telemetry.value.isRootGranted) {
-                RootBridge.applyPowersaveTweaks(getApplication(), updated)
-            }
+            _hasUnappliedChanges.value = true
         }
     }
 
@@ -798,9 +896,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val current = configState.value
             val updated = current.copy(deepSleepWhitelist = whitelist)
             dao.update(updated)
-            if (current.isMasterApplied && _telemetry.value.isRootGranted && current.deepSleepScreenOffEnabled) {
-                RootBridge.applyPowersaveTweaks(getApplication(), updated)
-            }
+            _hasUnappliedChanges.value = true
         }
     }
 
@@ -810,14 +906,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val clp = minutes.coerceIn(1, 30)
             val updated = current.copy(deepSleepDelayMinutes = clp)
             dao.update(updated)
-            LogRepository.addLog(
-                category = LogCategory.TWEAK,
-                message = "Deep sleep delay set to ${clp}m",
-                isSuccess = true
-            )
-            if (current.isMasterApplied && _telemetry.value.isRootGranted && current.deepSleepScreenOffEnabled) {
-                RootBridge.applyPowersaveTweaks(getApplication(), updated)
-            }
+            _hasUnappliedChanges.value = true
         }
     }
 
@@ -827,14 +916,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val clp = limit.coerceIn(1, 8)
             val updated = current.copy(developerProcessLimit = clp)
             dao.update(updated)
-            LogRepository.addLog(
-                category = LogCategory.TWEAK,
-                message = "Background process limit set to $clp",
-                isSuccess = true
-            )
-            if (current.isMasterApplied && _telemetry.value.isRootGranted && current.developerProcessLimitEnabled) {
-                RootBridge.applyPowersaveTweaks(getApplication(), updated)
-            }
+            _hasUnappliedChanges.value = true
         }
     }
 
@@ -844,14 +926,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val clp = percent.coerceIn(50, 95)
             val updated = current.copy(balanceCpuCapPercent = clp)
             dao.update(updated)
-            LogRepository.addLog(
-                category = LogCategory.TWEAK,
-                message = "Balance CPU cap set ${clp}%",
-                isSuccess = true
-            )
-            if (current.isMasterApplied && _telemetry.value.isRootGranted && current.activeProfile == "BALANCE") {
-                RootBridge.applyPowersaveTweaks(getApplication(), updated)
-            }
+            _hasUnappliedChanges.value = true
         }
     }
 
@@ -864,15 +939,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 offlineBatteryThreshold = threshold
             )
             dao.update(updated)
-            LogRepository.addLog(
-                category = LogCategory.TWEAK,
-                message = "Park $clpCores big cores below ${threshold}%",
-                isSuccess = true
-            )
-            if (current.isMasterApplied && _telemetry.value.isRootGranted && current.twoCoresOfflineBelow20Enabled) {
-                RootBridge.applyPowersaveTweaks(getApplication(), updated)
-                refreshTelemetry()
-            }
+            _hasUnappliedChanges.value = true
         }
     }
 }

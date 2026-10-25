@@ -59,8 +59,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.AcUnit
 import androidx.compose.material.icons.filled.Bolt
@@ -113,6 +115,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -145,12 +148,16 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -483,6 +490,7 @@ fun MainScreen(
     val config by viewModel.configState.collectAsState()
     val telemetry by viewModel.telemetry.collectAsState()
     val isBusy by viewModel.isBusy.collectAsState()
+    val hasUnappliedChanges by viewModel.hasUnappliedChanges.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
     val logs by viewModel.logs.collectAsState()
     val installedApps by viewModel.installedApps.collectAsState()
@@ -621,9 +629,11 @@ fun MainScreen(
                                 ExpressiveTab.TWEAKS -> {
                                     ExpressiveTweaksPage(
                                         config = config,
+                                        hasUnappliedChanges = hasUnappliedChanges,
                                         installedApps = installedApps,
-                                        onSelectProfile = { viewModel.onSelectProfile(it) },
-                                        onSelectPerformanceSubMode = { viewModel.onSelectPerformanceSubMode(it) },
+                                        onSelectProfile = { viewModel.onExploreProfileInTweaks(it) },
+                                        onSelectPerformanceSubMode = { viewModel.onExplorePerformanceSubModeInTweaks(it) },
+                                        onSetAllCurrentProfileTweaks = { viewModel.onSetAllCurrentProfileTweaks(it) },
                                         onUpdateTweak = { key, enabled -> viewModel.onUpdateTweak(key, enabled) },
                                         onToggleHyperOs = { viewModel.onToggleHyperOsPowerSaver(it) },
                                         onSelectRefreshRate = { viewModel.onSelectRefreshRate(it) },
@@ -655,42 +665,23 @@ fun MainScreen(
                     }
                 }
 
-                // Floating "Revert stock" FAB on Tweaks Tab (.fab from HTML lines 224-226)
+                // Floating "Swipe to Apply" + "Revert stock" Dock on Tweaks Tab
                 AnimatedVisibility(
                     visible = currentTab == ExpressiveTab.TWEAKS,
                     enter = fadeIn() + expandVertically(),
                     exit = fadeOut() + shrinkVertically(),
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
+                        .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
-                        .padding(end = 20.dp, bottom = 104.dp)
+                        .widthIn(max = 480.dp)
+                        .padding(start = 16.dp, end = 16.dp, bottom = 104.dp)
                 ) {
-                    Surface(
-                        onClick = { viewModel.onRevertToStock() },
-                        shape = RoundedCornerShape(22.dp),
-                        color = roles.tc,
-                        contentColor = roles.onTc,
-                        shadowElevation = 10.dp,
-                        modifier = Modifier.height(58.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(start = 18.dp, end = 22.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.Undo,
-                                contentDescription = "Revert stock",
-                                modifier = Modifier.size(22.dp)
-                            )
-                            Text(
-                                text = "Revert stock",
-                                fontFamily = SpaceGroteskFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
-                            )
-                        }
-                    }
+                    ExpressiveSwipeToApplyDock(
+                        config = config,
+                        hasUnappliedChanges = hasUnappliedChanges,
+                        onSwipeApply = { viewModel.onSwipeToApplyTweaks() },
+                        onRevertStock = { viewModel.onRevertToStock() }
+                    )
                 }
 
                 // Floating Glassmorphic Pill Bottom Navigation (nav .in from HTML lines 227-234)
@@ -2548,9 +2539,11 @@ private fun ExpressiveTimelineCard(
 @Composable
 private fun ExpressiveTweaksPage(
     config: TweakConfigEntity,
+    hasUnappliedChanges: Boolean,
     installedApps: List<InstalledAppItem>,
     onSelectProfile: (String) -> Unit,
     onSelectPerformanceSubMode: (String) -> Unit,
+    onSetAllCurrentProfileTweaks: (Boolean) -> Unit,
     onUpdateTweak: (String, Boolean) -> Unit,
     onToggleHyperOs: (Boolean) -> Unit,
     onSelectRefreshRate: (Int) -> Unit,
@@ -3118,7 +3111,7 @@ private fun ExpressiveTweaksPage(
             }
         }
 
-        // 2. Connected Power Profile Selector Bar (Shows & switches Powersave / Balance / Performance)
+        // 2. Explore & Stage Power Profile Selector Bar (Explore without auto-applying)
         item {
             Surface(
                 shape = RoundedCornerShape(30.dp),
@@ -3132,20 +3125,26 @@ private fun ExpressiveTweaksPage(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "ACTIVE PROFILE TWEAKS",
+                            text = "EXPLORE & STAGE TWEAKS",
                             fontFamily = JetBrainsMonoFontFamily,
                             fontWeight = FontWeight.Bold,
                             fontSize = 10.5.sp,
                             letterSpacing = 1.sp,
                             color = roles.primary
                         )
-                        Text(
-                            text = "100% VOLATILE RAM",
-                            fontFamily = JetBrainsMonoFontFamily,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 10.sp,
-                            color = roles.onSv
-                        )
+                        Surface(
+                            shape = CircleShape,
+                            color = if (hasUnappliedChanges) roles.pc else roles.s4,
+                            contentColor = if (hasUnappliedChanges) roles.onPc else roles.onSv
+                        ) {
+                            Text(
+                                text = if (hasUnappliedChanges) "UNAPPLIED · SWIPE BELOW" else "EXPLORE FREELY",
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 9.5.sp,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                            )
+                        }
                     }
 
                     Row(
@@ -3179,6 +3178,53 @@ private fun ExpressiveTweaksPage(
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 12.sp,
                                     color = if (selected) roles.onPrimary else roles.onSv
+                                )
+                            }
+                        }
+                    }
+
+                    // Quick Select All / Uncheck All row for easy independent exploration
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Toggle any tweak freely, then swipe below to apply",
+                            fontFamily = PlusJakartaSansFontFamily,
+                            fontSize = 11.5.sp,
+                            color = roles.onSv,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Surface(
+                                onClick = { onSetAllCurrentProfileTweaks(true) },
+                                shape = CircleShape,
+                                color = roles.s4,
+                                contentColor = roles.onS
+                            ) {
+                                Text(
+                                    text = "Select all",
+                                    fontFamily = SpaceGroteskFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
+                            }
+                            Surface(
+                                onClick = { onSetAllCurrentProfileTweaks(false) },
+                                shape = CircleShape,
+                                color = roles.s4,
+                                contentColor = roles.onSv
+                            ) {
+                                Text(
+                                    text = "Uncheck all",
+                                    fontFamily = SpaceGroteskFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                 )
                             }
                         }
@@ -4700,3 +4746,259 @@ private fun ExpressiveFloatingBottomNav(
         }
     }
 }
+
+private fun countSelectedTweaks(config: TweakConfigEntity): Int {
+    return when (config.activeProfile) {
+        "PERFORMANCE" -> listOf(
+            config.perfCpuGovernorLockEnabled,
+            config.perfAllCoresOnlineEnabled,
+            config.perfSchedtuneBoostEnabled,
+            config.perfTouchBoostEnabled,
+            config.perfGpuAdrenoBoostEnabled,
+            config.perfGpuNoNapEnabled,
+            config.perfDdrBusBoostEnabled,
+            config.perfStorageQueue512Enabled,
+            config.perfLmkTuningEnabled
+        ).count { it }
+
+        "BALANCE" -> listOf(
+            config.balanceCpuTweaksEnabled,
+            config.balanceCfsSchedulerEnabled,
+            config.balanceRamScalingEnabled,
+            config.balanceGpuOptimizationEnabled,
+            config.balanceStorageIoEnabled,
+            config.balanceNetworkBbrEnabled,
+            config.deepSleepScreenOffEnabled,
+            config.developerProcessLimitEnabled,
+            config.refreshRateHz > 0
+        ).count { it }
+
+        else -> {
+            if (config.hyperOsPowerSaverEnabled) {
+                listOf(
+                    config.systemBatterySaverEnabled,
+                    config.hyperOsAurogonFreezerEnabled,
+                    config.hyperOsSuperPowerCleanEnabled,
+                    config.hyperOsAodDisabled,
+                    config.hyperOsTouchBoostDisabled,
+                    config.touchDozeModeEnabled,
+                    config.hyperOsFiveGPowerOptEnabled,
+                    config.backgroundScanningDisabled,
+                    config.hyperOsLock60HzEnabled,
+                    config.controlCenterBlurEnabled,
+                    config.systemBatterySaverWithoutDarkEnabled,
+                    config.systemDarkModeEnabled,
+                    config.hyperOsUltraSuperSaveUiEnabled
+                ).count { it }
+            } else {
+                listOf(
+                    config.cpuFreqCapEnabled,
+                    config.schedutilGovernorEnabled,
+                    config.schedutilRateLimitsEnabled,
+                    config.twoCoresOfflineBelow20Enabled,
+                    config.inputTouchBoostDisabled,
+                    config.gpuPowerLimitEnabled,
+                    config.adrenoIdlerEnabled,
+                    config.gmsDozeEnabled,
+                    config.lpmSleepEnabled,
+                    config.powerEfficientWorkqueueEnabled,
+                    config.schedtuneTopAppEnabled,
+                    config.backgroundScanningDisabled,
+                    config.storageIoQueueEnabled,
+                    config.dynamicFsyncEnabled,
+                    config.vmDirtyWritebackEnabled,
+                    config.refreshRateHz > 0
+                ).count { it }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExpressiveSwipeToApplyDock(
+    config: TweakConfigEntity,
+    hasUnappliedChanges: Boolean,
+    onSwipeApply: () -> Unit,
+    onRevertStock: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val roles = LocalMonetRoles.current
+    val density = LocalDensity.current
+    val selectedCount = remember(config) { countSelectedTweaks(config) }
+
+    var trackWidthPx by remember { mutableIntStateOf(0) }
+    val thumbSizeDp = 48.dp
+    val trackPaddingDp = 5.dp
+    val thumbSizePx = with(density) { thumbSizeDp.toPx() }
+    val trackPaddingPx = with(density) { (trackPaddingDp * 2).toPx() }
+    val maxDragPx = (trackWidthPx - thumbSizePx - trackPaddingPx).coerceAtLeast(1f)
+
+    var rawDragPx by remember { mutableFloatStateOf(0f) }
+    var isDragging by remember { mutableStateOf(false) }
+
+    val animatedOffsetPx by animateFloatAsState(
+        targetValue = if (isDragging) rawDragPx else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "SwipeThumbOffset"
+    )
+
+    val progress = (animatedOffsetPx / maxDragPx).coerceIn(0f, 1f)
+
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Swipe to Apply Interactive Track
+        Surface(
+            shape = RoundedCornerShape(29.dp),
+            color = roles.s3.copy(alpha = 0.96f),
+            border = BorderStroke(
+                width = 1.5.dp,
+                color = if (hasUnappliedChanges) roles.primary else roles.outline.copy(alpha = 0.45f)
+            ),
+            shadowElevation = 12.dp,
+            modifier = Modifier
+                .weight(1f)
+                .height(58.dp)
+                .onSizeChanged { trackWidthPx = it.width }
+                .testTag("swipe_to_apply_button")
+                .pointerInput(maxDragPx) {
+                    detectHorizontalDragGestures(
+                        onDragStart = {
+                            isDragging = true
+                        },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            rawDragPx = (rawDragPx + dragAmount).coerceIn(0f, maxDragPx)
+                        },
+                        onDragEnd = {
+                            val reachedThreshold = rawDragPx >= maxDragPx * 0.68f
+                            isDragging = false
+                            rawDragPx = 0f
+                            if (reachedThreshold) {
+                                onSwipeApply()
+                            }
+                        },
+                        onDragCancel = {
+                            isDragging = false
+                            rawDragPx = 0f
+                        }
+                    )
+                }
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(trackPaddingDp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                // Progressive glow fill as user drags thumb
+                Box(
+                    modifier = Modifier
+                        .height(thumbSizeDp)
+                        .width(
+                            with(density) {
+                                (thumbSizePx + animatedOffsetPx).toDp()
+                            }
+                        )
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(roles.primary.copy(alpha = 0.22f + 0.45f * progress))
+                )
+
+                // Center label
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 52.dp, end = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    val labelText = when {
+                        progress >= 0.68f -> "Release to apply!"
+                        hasUnappliedChanges -> "Swipe to apply · $selectedCount selected"
+                        config.isMasterApplied -> "Swipe to re-apply ($selectedCount active)"
+                        else -> "Swipe to apply ($selectedCount selected)"
+                    }
+                    Text(
+                        text = labelText,
+                        fontFamily = SpaceGroteskFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.5.sp,
+                        color = roles.onS.copy(alpha = (1f - progress * 0.5f).coerceIn(0.35f, 1f)),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = if (hasUnappliedChanges) {
+                            "UNAPPLIED ${config.activeProfile} TWEAKS"
+                        } else {
+                            "${config.activeProfile} MODE READY"
+                        },
+                        fontFamily = JetBrainsMonoFontFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 9.sp,
+                        letterSpacing = 0.7.sp,
+                        color = if (hasUnappliedChanges) roles.primary else roles.onSv
+                    )
+                }
+
+                // Draggable Pill Thumb
+                Surface(
+                    shape = CircleShape,
+                    color = roles.primary,
+                    contentColor = roles.onPrimary,
+                    shadowElevation = 6.dp,
+                    modifier = Modifier
+                        .offset { IntOffset(animatedOffsetPx.roundToInt(), 0) }
+                        .size(thumbSizeDp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = if (progress >= 0.68f) {
+                                Icons.Filled.Check
+                            } else {
+                                Icons.AutoMirrored.Filled.ArrowForward
+                            },
+                            contentDescription = "Swipe to apply tweaks",
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // Compact Revert Stock Button alongside Swipe to Apply
+        Surface(
+            onClick = onRevertStock,
+            shape = RoundedCornerShape(22.dp),
+            color = roles.tc,
+            contentColor = roles.onTc,
+            shadowElevation = 10.dp,
+            modifier = Modifier
+                .height(58.dp)
+                .testTag("revert_stock_button")
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Undo,
+                    contentDescription = "Revert stock",
+                    modifier = Modifier.size(20.dp)
+                )
+                Text(
+                    text = "Revert",
+                    fontFamily = SpaceGroteskFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
+            }
+        }
+    }
+}
+
