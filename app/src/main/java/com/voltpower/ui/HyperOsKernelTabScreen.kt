@@ -712,10 +712,10 @@ private fun ExpressiveKernelTweakItem(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
                 horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                // Left Morphing Squircle/Circle Icon Box (matches ExpressiveTweakRowItem)
+                // Left Morphing Squircle/Circle Icon Box (aligned to top of title)
                 Surface(
                     shape = RoundedCornerShape(avatarCorner),
                     color = when {
@@ -729,6 +729,7 @@ private fun ExpressiveKernelTweakItem(
                         else -> roles.onSc
                     },
                     modifier = Modifier
+                        .padding(top = 2.dp)
                         .size(46.dp)
                         .rotate(avatarRotation)
                 ) {
@@ -741,7 +742,7 @@ private fun ExpressiveKernelTweakItem(
                     }
                 }
 
-                // Center Title + Plain-English Explanation + Status Pill
+                // Center Title + Plain-English Explanation + Uniform-Plane Status Pills
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = spec.title,
@@ -759,121 +760,61 @@ private fun ExpressiveKernelTweakItem(
                         modifier = Modifier.padding(top = 2.dp)
                     )
 
-                    // Compact status & micro-actions FlowRow (prevents horizontal squeeze / vertical letter wrapping)
+                    // Uniform-plane status & micro-actions row (identical 26.dp height & Y-axis center for all pills)
                     FlowRow(
                         modifier = Modifier.padding(top = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         if (spec.isRisky) {
-                            Surface(
-                                shape = CircleShape,
-                                color = roles.err.copy(alpha = 0.16f),
+                            AlignedKernelPill(
+                                text = "Caution",
+                                backgroundColor = roles.err.copy(alpha = 0.16f),
                                 contentColor = roles.err
-                            ) {
-                                Text(
-                                    text = "Caution",
-                                    fontFamily = SpaceGroteskFontFamily,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 10.5.sp,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
-                                )
-                            }
-                        }
-
-                        Surface(
-                            shape = CircleShape,
-                            color = if (isStaged) roles.pc else roles.s4,
-                            contentColor = if (isStaged) roles.onPc else roles.onSv
-                        ) {
-                            Text(
-                                text = if (isStaged) {
-                                    "Staged: ${spec.formatValue(stagedValue ?: "")}"
-                                } else {
-                                    "Current: ${spec.formatValue(liveValue)}"
-                                },
-                                fontFamily = SpaceGroteskFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 10.5.sp,
-                                maxLines = 1,
-                                softWrap = false,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
                             )
                         }
 
+                        AlignedKernelPill(
+                            text = if (isStaged) {
+                                "Staged: ${spec.formatValue(stagedValue ?: "")}"
+                            } else {
+                                "Current: ${spec.formatValue(liveValue)}"
+                            },
+                            backgroundColor = if (isStaged) roles.pc else roles.s4,
+                            contentColor = if (isStaged) roles.onPc else roles.onSv
+                        )
+
                         if (isStaged) {
-                            Surface(
-                                onClick = { onRunSingleLineNow(stagedValue ?: spec.targetValue) },
-                                shape = CircleShape,
-                                color = roles.primary,
-                                contentColor = roles.onPrimary
-                            ) {
-                                Text(
-                                    text = "Apply now",
-                                    fontFamily = SpaceGroteskFontFamily,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 10.5.sp,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
-                                )
-                            }
+                            AlignedKernelPill(
+                                text = "Apply now",
+                                backgroundColor = roles.primary,
+                                contentColor = roles.onPrimary,
+                                onClick = { onRunSingleLineNow(stagedValue ?: spec.targetValue) }
+                            )
                         }
 
                         if (isModifiedFromWas || isStaged) {
-                            Surface(
+                            AlignedKernelPill(
+                                text = if (isStaged) "Clear" else "Default",
+                                backgroundColor = roles.tc,
+                                contentColor = roles.onTc,
                                 onClick = {
                                     if (isStaged) {
                                         onStageValue(null)
                                     } else {
                                         onUndoToWas()
                                     }
-                                },
-                                shape = CircleShape,
-                                color = roles.tc,
-                                contentColor = roles.onTc
-                            ) {
-                                Text(
-                                    text = if (isStaged) "Clear" else "Default",
-                                    fontFamily = SpaceGroteskFontFamily,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 10.5.sp,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
-                                )
-                            }
+                                }
+                            )
                         }
 
-                        Surface(
-                            onClick = { showMoreInfo = !showMoreInfo },
-                            shape = CircleShape,
-                            color = if (showMoreInfo) roles.sc else roles.s3,
-                            contentColor = roles.onSv
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Info,
-                                    contentDescription = "Effect details",
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Text(
-                                    text = if (showMoreInfo) "Hide tip" else "Tip",
-                                    fontFamily = SpaceGroteskFontFamily,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 10.5.sp,
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
-                            }
-                        }
+                        AlignedKernelPill(
+                            text = if (showMoreInfo) "Hide tip" else "Tip",
+                            backgroundColor = if (showMoreInfo) roles.sc else roles.s3,
+                            contentColor = roles.onSv,
+                            leadingIcon = Icons.Filled.Info,
+                            onClick = { showMoreInfo = !showMoreInfo }
+                        )
                     }
                 }
 
@@ -888,7 +829,8 @@ private fun ExpressiveKernelTweakItem(
                             } else {
                                 onStageValue(desiredVal)
                             }
-                        }
+                        },
+                        modifier = Modifier.padding(top = 6.dp)
                     )
                 }
             }
@@ -937,13 +879,15 @@ private fun ExpressiveKernelTweakItem(
                             .clip(CircleShape)
                             .background(roles.s4)
                             .padding(4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         spec.options.forEach { optionVal ->
                             val isSelected = effectiveVal == optionVal
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
+                                    .height(34.dp)
                                     .clip(CircleShape)
                                     .background(if (isSelected) roles.primary else Color.Transparent)
                                     .clickable {
@@ -953,7 +897,7 @@ private fun ExpressiveKernelTweakItem(
                                             onStageValue(optionVal)
                                         }
                                     }
-                                    .padding(vertical = 9.dp, horizontal = 8.dp),
+                                    .padding(horizontal = 8.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
@@ -981,32 +925,79 @@ private fun ExpressiveKernelTweakItem(
                     ) {
                         spec.options.forEach { optionVal ->
                             val isSelected = effectiveVal == optionVal
-                            Surface(
+                            AlignedKernelPill(
+                                text = spec.formatValue(optionVal),
+                                backgroundColor = if (isSelected) roles.primary else roles.s4,
+                                contentColor = if (isSelected) roles.onPrimary else roles.onSv,
+                                heightDp = 32,
+                                horizontalPaddingDp = 12,
+                                fontSizeSp = 11.5f,
                                 onClick = {
                                     if (stagedValue == optionVal) {
                                         onStageValue(null)
                                     } else {
                                         onStageValue(optionVal)
                                     }
-                                },
-                                shape = CircleShape,
-                                color = if (isSelected) roles.primary else roles.s4,
-                                contentColor = if (isSelected) roles.onPrimary else roles.onSv
-                            ) {
-                                Text(
-                                    text = spec.formatValue(optionVal),
-                                    fontFamily = SpaceGroteskFontFamily,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.5.sp,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
-                                )
-                            }
+                                }
+                            )
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun AlignedKernelPill(
+    text: String,
+    backgroundColor: Color,
+    contentColor: Color,
+    leadingIcon: ImageVector? = null,
+    heightDp: Int = 26,
+    horizontalPaddingDp: Int = 10,
+    fontSizeSp: Float = 10.5f,
+    onClick: (() -> Unit)? = null
+) {
+    val baseModifier = Modifier
+        .height(heightDp.dp)
+        .clip(CircleShape)
+        .background(backgroundColor)
+        .let { mod ->
+            if (onClick != null) {
+                mod.clickable(onClick = onClick)
+            } else {
+                mod
+            }
+        }
+        .padding(horizontal = horizontalPaddingDp.dp)
+
+    Box(
+        modifier = baseModifier,
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            if (leadingIcon != null) {
+                Icon(
+                    imageVector = leadingIcon,
+                    contentDescription = null,
+                    tint = contentColor,
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+            Text(
+                text = text,
+                fontFamily = SpaceGroteskFontFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = fontSizeSp.sp,
+                color = contentColor,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -1048,7 +1039,7 @@ private fun ExpressiveDaemonGroupSection(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalAlignment = Alignment.Top,
                     horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Surface(
@@ -1063,7 +1054,9 @@ private fun ExpressiveDaemonGroupSection(
                             d.isRunning -> roles.onPrimary
                             else -> roles.onSc
                         },
-                        modifier = Modifier.size(46.dp)
+                        modifier = Modifier
+                            .padding(top = 2.dp)
+                            .size(46.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
@@ -1090,48 +1083,29 @@ private fun ExpressiveDaemonGroupSection(
                             modifier = Modifier.padding(top = 2.dp)
                         )
                         FlowRow(
-                            modifier = Modifier.padding(top = 6.dp),
+                            modifier = Modifier.padding(top = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = if (d.isRunning) roles.pc else roles.tc,
+                            AlignedKernelPill(
+                                text = if (d.isRunning) "Status: Running" else "Status: Paused",
+                                backgroundColor = if (d.isRunning) roles.pc else roles.tc,
                                 contentColor = if (d.isRunning) roles.onPc else roles.onTc
-                            ) {
-                                Text(
-                                    text = if (d.isRunning) "Status: Running" else "Status: Paused",
-                                    fontFamily = SpaceGroteskFontFamily,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 10.5.sp,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
-                                )
-                            }
+                            )
                             if (d.isThermalDaemon) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = roles.err.copy(alpha = 0.16f),
+                                AlignedKernelPill(
+                                    text = "Thermal Protection",
+                                    backgroundColor = roles.err.copy(alpha = 0.16f),
                                     contentColor = roles.err
-                                ) {
-                                    Text(
-                                        text = "Thermal Protection",
-                                        fontFamily = SpaceGroteskFontFamily,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 10.5.sp,
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
-                                    )
-                                }
+                                )
                             }
                         }
                     }
 
                     KernelExpressiveSwitch(
                         checked = d.isRunning,
-                        onCheckedChange = { shouldRun -> onToggleDaemon(d.name, shouldRun) }
+                        onCheckedChange = { shouldRun -> onToggleDaemon(d.name, shouldRun) },
+                        modifier = Modifier.padding(top = 6.dp)
                     )
                 }
             }
@@ -1554,22 +1528,15 @@ private fun ExpressiveAppFreezerSection(
                     Triple("TASKSET_FF", "Allow All Cores", false)
                 )
                 actions.forEach { (code, label, isPrimaryTone) ->
-                    Surface(
-                        onClick = { onExecuteProcessAction(targetPackage, code) },
-                        shape = CircleShape,
-                        color = if (isPrimaryTone) roles.pc else roles.s4,
-                        contentColor = if (isPrimaryTone) roles.onPc else roles.onS
-                    ) {
-                        Text(
-                            text = label,
-                            fontFamily = SpaceGroteskFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            softWrap = false,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-                        )
-                    }
+                    AlignedKernelPill(
+                        text = label,
+                        backgroundColor = if (isPrimaryTone) roles.pc else roles.s4,
+                        contentColor = if (isPrimaryTone) roles.onPc else roles.onS,
+                        heightDp = 32,
+                        horizontalPaddingDp = 14,
+                        fontSizeSp = 12f,
+                        onClick = { onExecuteProcessAction(targetPackage, code) }
+                    )
                 }
             }
         }
