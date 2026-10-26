@@ -497,7 +497,10 @@ fun MainScreen(
     val installedApps by viewModel.installedApps.collectAsState()
     val kernelSnapshot by viewModel.kernelSnapshot.collectAsState()
     val stagedKernelTweaks by viewModel.stagedKernelTweaks.collectAsState()
+    val selectedHyperOsTemplate by viewModel.selectedHyperOsTemplate.collectAsState()
+    val isBalanceScreenOffSaverActive by viewModel.isBalanceScreenOffSaverActive.collectAsState()
     val lastKernelActionBanner by viewModel.lastKernelActionBanner.collectAsState()
+
 
     var currentTab by rememberSaveable { mutableStateOf(ExpressiveTab.OVERVIEW) }
     var selectedSeed by rememberSaveable { mutableStateOf(MonetSeedPreset.MINT) }
@@ -672,8 +675,13 @@ fun MainScreen(
                                     HyperOsKernelTabScreen(
                                         snapshot = kernelSnapshot,
                                         stagedTweaks = stagedKernelTweaks,
+                                        selectedTemplate = selectedHyperOsTemplate,
+                                        isBalanceScreenOffSaverActive = isBalanceScreenOffSaverActive,
                                         lastActionBanner = lastKernelActionBanner,
                                         installedApps = installedApps,
+                                        onSelectTemplate = { template ->
+                                            viewModel.onSelectHyperOsTemplate(template)
+                                        },
                                         onStageTweakValue = { id, value ->
                                             viewModel.onStageKernelTweak(id, value)
                                         },
@@ -2846,15 +2854,6 @@ private fun ExpressiveTweaksPage(
                 isChecked = { it.hyperOsLock60HzEnabled }
             ),
             TweakItemSpec(
-                key = "controlCenterBlur",
-                category = TweakCategoryFilter.IO,
-                title = "Remove Control Center blur",
-                subtitle = "Disable window blur effects to reduce GPU load",
-                sysfsCode = "",
-                icon = Icons.Filled.Visibility,
-                isChecked = { it.controlCenterBlurEnabled }
-            ),
-            TweakItemSpec(
                 key = "batterySaverNoDark",
                 category = TweakCategoryFilter.BAT,
                 title = "Enable system battery saver",
@@ -4836,7 +4835,6 @@ private fun countSelectedTweaks(config: TweakConfigEntity): Int {
                     config.hyperOsFiveGPowerOptEnabled,
                     config.backgroundScanningDisabled,
                     config.hyperOsLock60HzEnabled,
-                    config.controlCenterBlurEnabled,
                     config.systemBatterySaverWithoutDarkEnabled,
                     config.systemDarkModeEnabled,
                     config.hyperOsUltraSuperSaveUiEnabled

@@ -92,6 +92,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.voltpower.data.apps.InstalledAppItem
+import com.voltpower.data.root.HyperOsProfileTemplate
 import com.voltpower.data.root.KernelRamLabRepository
 import com.voltpower.data.root.KernelRamLiveSnapshot
 import com.voltpower.data.root.KernelSection
@@ -107,8 +108,11 @@ import kotlin.math.roundToInt
 fun HyperOsKernelTabScreen(
     snapshot: KernelRamLiveSnapshot,
     stagedTweaks: Map<String, String>,
+    selectedTemplate: HyperOsProfileTemplate?,
+    isBalanceScreenOffSaverActive: Boolean,
     lastActionBanner: String?,
     installedApps: List<InstalledAppItem>,
+    onSelectTemplate: (HyperOsProfileTemplate?) -> Unit,
     onStageTweakValue: (String, String?) -> Unit,
     onRunSingleLineNow: (KernelTweakSpec, String) -> Unit,
     onUndoSingleLineToWas: (KernelTweakSpec) -> Unit,
@@ -123,20 +127,23 @@ fun HyperOsKernelTabScreen(
     val roles = LocalMonetRoles.current
     var selectedSection by rememberSaveable { mutableStateOf(KernelSection.ALL) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
-    var targetPackageInput by rememberSaveable { mutableStateOf("") }
+    var targetPackageInput by rememberSaveable {
+        mutableStateOf(KernelRamLabRepository.ALL_USER_ENABLED_APPS_TOKEN)
+    }
     var showAppPickerSheet by rememberSaveable { mutableStateOf(false) }
 
-    val filteredSpecs = remember(selectedSection, searchQuery) {
+    val filteredSpecs = remember(selectedSection, searchQuery, selectedTemplate) {
         val base = if (selectedSection == KernelSection.ALL) {
             KernelRamLabRepository.tweakSpecs
         } else {
             KernelRamLabRepository.tweakSpecs.filter { it.section == selectedSection }
         }
+        val sortedBase = KernelRamLabRepository.sortSpecsForTemplate(base, selectedTemplate)
         val q = searchQuery.trim().lowercase(Locale.US)
         if (q.isEmpty()) {
-            base
+            sortedBase
         } else {
-            base.filter { spec ->
+            sortedBase.filter { spec ->
                 spec.title.lowercase(Locale.US).contains(q) ||
                     spec.functionDesc.lowercase(Locale.US).contains(q) ||
                     spec.upDownEffect.lowercase(Locale.US).contains(q) ||
@@ -145,13 +152,12 @@ fun HyperOsKernelTabScreen(
         }
     }
 
-    val groupedBySection = remember(filteredSpecs) {
-        KernelSection.entries
-            .filter { it != KernelSection.ALL }
-            .mapNotNull { sec ->
-                val list = filteredSpecs.filter { it.section == sec }
-                if (list.isNotEmpty()) sec to list else null
-            }
+    val groupedBySection = remember(filteredSpecs, selectedTemplate) {
+        val orderedSections = KernelRamLabRepository.getSectionOrderForTemplate(selectedTemplate)
+        orderedSections.mapNotNull { sec ->
+            val list = filteredSpecs.filter { it.section == sec }
+            if (list.isNotEmpty()) sec to list else null
+        }
     }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -167,14 +173,24 @@ fun HyperOsKernelTabScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // 1. EXPRESSIVE HERO / LIVE TEMPERATURE WATCH CARD
+            // 1. EXPRESSIVE HERO CARD (Processor temperature removed per user request)
             item(key = "temp_watch_header") {
                 ExpressiveKernelHeroCard(
                     snapshot = snapshot,
                     stagedCount = stagedTweaks.size,
+                    selectedTemplate = selectedTemplate,
+                    isBalanceScreenOffSaverActive = isBalanceScreenOffSaverActive,
                     lastActionBanner = lastActionBanner,
-                    onRefresh = onRefreshSnapshot,
-                    onRestoreAllWas = onRestoreAllWasValues
+                    onRefresh = onRefreshSnapshot
+                )
+            }
+
+            // 1B. HYPEROS PROFILE TEMPLATES CARD (Powersave / Balance Screen-Off / Performance)
+            item(key = "hyperos_profile_templates") {
+                ExpressiveHyperOsTemplateCard(
+                    selectedTemplate = selectedTemplate,
+                    isBalanceScreenOffSaverActive = isBalanceScreenOffSaverActive,
+                    onSelectTemplate = onSelectTemplate
                 )
             }
 
@@ -363,23 +379,23 @@ private fun sectionIcon(section: KernelSection): ImageVector {
 }
 
 // ============================================================================
-// 1. EXPRESSIVE HERO / TEMPERATURE MONITOR CARD
+// 1. EXPRESSIVE HERO CARD (Processor temperature removed per user request)
 // ============================================================================
 
 @Composable
 private fun ExpressiveKernelHeroCard(
     snapshot: KernelRamLiveSnapshot,
     stagedCount: Int,
+    selectedTemplate: HyperOsProfileTemplate?,
+    isBalanceScreenOffSaverActive: Boolean,
     lastActionBanner: String?,
-    onRefresh: () -> Unit,
-    onRestoreAllWas: () -> Unit
+    onRefresh: () -> Unit
 ) {
     val roles = LocalMonetRoles.current
-    val isHot = snapshot.isOverheatWarning
 
     Surface(
         shape = RoundedCornerShape(34.dp),
-        color = if (isHot) roles.err.copy(alpha = 0.18f) else roles.s2,
+        color = roles.s2,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -398,14 +414,14 @@ private fun ExpressiveKernelHeroCard(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(18.dp),
-                        color = if (isHot) roles.err else roles.primary,
-                        contentColor = if (isHot) Color.White else roles.onPrimary,
+                        color = roles.primary,
+                        contentColor = roles.onPrimary,
                         modifier = Modifier.size(46.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
-                                imageVector = if (isHot) Icons.Filled.Warning else Icons.Filled.Thermostat,
-                                contentDescription = "Temperature Monitor",
+                                imageVector = Icons.Filled.Tune,
+                                contentDescription = "HyperOS Hardware Tuning",
                                 modifier = Modifier.size(22.dp)
                             )
                         }
@@ -419,9 +435,9 @@ private fun ExpressiveKernelHeroCard(
                             color = roles.onS
                         )
                         Text(
-                            text = "Safe in-memory tuning · Restarting phone restores factory defaults",
+                            text = "Works alongside HyperOS Power Saver · Flushes on standard Power Save, Balance, or Performance",
                             fontFamily = PlusJakartaSansFontFamily,
-                            fontSize = 12.sp,
+                            fontSize = 11.5.sp,
                             color = roles.onSv,
                             modifier = Modifier.padding(top = 2.dp)
                         )
@@ -455,36 +471,11 @@ private fun ExpressiveKernelHeroCard(
                 }
             }
 
-            // 3 Compact Telemetry Pills (Processor Temp / Battery Temp / Selected Count)
+            // 2 Compact Telemetry Pills (Battery Temp / Selected Count — Processor Temp removed)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = roles.s3,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                        Text(
-                            text = "PROCESSOR",
-                            fontFamily = JetBrainsMonoFontFamily,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 10.sp,
-                            letterSpacing = 0.8.sp,
-                            color = roles.onSv
-                        )
-                        Text(
-                            text = String.format(Locale.US, "%.1f°C", snapshot.maxZoneTempC),
-                            fontFamily = SpaceGroteskFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            color = if (isHot) roles.err else roles.onS,
-                            modifier = Modifier.padding(top = 2.dp)
-                        )
-                    }
-                }
-
                 Surface(
                     shape = RoundedCornerShape(20.dp),
                     color = roles.s3,
@@ -525,10 +516,12 @@ private fun ExpressiveKernelHeroCard(
                             color = if (stagedCount > 0) roles.onPc.copy(alpha = 0.75f) else roles.onSv
                         )
                         Text(
-                            text = if (stagedCount > 0) "$stagedCount ready" else "Ready",
+                            text = if (stagedCount > 0) "$stagedCount staged" else (selectedTemplate?.title ?: "Custom"),
                             fontFamily = SpaceGroteskFontFamily,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
+                            fontSize = 16.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                             color = if (stagedCount > 0) roles.onPc else roles.onS,
                             modifier = Modifier.padding(top = 2.dp)
                         )
@@ -536,30 +529,28 @@ private fun ExpressiveKernelHeroCard(
                 }
             }
 
-            if (isHot) {
+            if (isBalanceScreenOffSaverActive) {
                 Surface(
-                    onClick = onRestoreAllWas,
-                    shape = RoundedCornerShape(18.dp),
-                    color = roles.err,
-                    contentColor = Color.White,
+                    shape = RoundedCornerShape(16.dp),
+                    color = roles.sc,
+                    contentColor = roles.onSc,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = "Phone is warm (45°C+) · Tap to restore default thermal protection",
-                            fontFamily = SpaceGroteskFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            modifier = Modifier.weight(1f)
-                        )
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Undo,
-                            contentDescription = "Restore defaults",
-                            modifier = Modifier.size(18.dp)
+                            imageVector = Icons.Filled.Bolt,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Immediate Battery Saver on Screen Off is armed & active",
+                            fontFamily = PlusJakartaSansFontFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp
                         )
                     }
                 }
@@ -594,6 +585,135 @@ private fun ExpressiveKernelHeroCard(
         }
     }
 }
+
+// ============================================================================
+// 1B. EXPRESSIVE HYPEROS PROFILE TEMPLATES CARD
+// (Powersave / Balance with Immediate Battery Saver when Screen Off / Performance)
+// ============================================================================
+
+@Composable
+private fun ExpressiveHyperOsTemplateCard(
+    selectedTemplate: HyperOsProfileTemplate?,
+    isBalanceScreenOffSaverActive: Boolean,
+    onSelectTemplate: (HyperOsProfileTemplate?) -> Unit
+) {
+    val roles = LocalMonetRoles.current
+
+    Surface(
+        shape = RoundedCornerShape(30.dp),
+        color = roles.s2,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "HyperOS Profile Templates",
+                        fontFamily = SpaceGroteskFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = roles.onS
+                    )
+                    Text(
+                        text = "Pre-selects & sorts HyperOS tweaks by profile · Swipe below to apply",
+                        fontFamily = PlusJakartaSansFontFamily,
+                        fontSize = 12.sp,
+                        color = roles.onSv,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+
+                if (selectedTemplate != null) {
+                    AlignedKernelPill(
+                        text = "Reset sort",
+                        backgroundColor = roles.s4,
+                        contentColor = roles.onSv,
+                        onClick = { onSelectTemplate(null) }
+                    )
+                }
+            }
+
+            // 3-Way Segmented Profile Template Selector
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(CircleShape)
+                    .background(roles.s4)
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val templates = listOf(
+                    HyperOsProfileTemplate.POWERSAVE to "Powersave",
+                    HyperOsProfileTemplate.BALANCE_SCREEN_OFF to "Balance",
+                    HyperOsProfileTemplate.PERFORMANCE to "Performance"
+                )
+                templates.forEach { (tpl, shortLabel) ->
+                    val isSelected = selectedTemplate == tpl
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(38.dp)
+                            .clip(CircleShape)
+                            .background(if (isSelected) roles.primary else Color.Transparent)
+                            .clickable { onSelectTemplate(tpl) }
+                            .padding(horizontal = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = shortLabel,
+                            fontFamily = SpaceGroteskFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.5.sp,
+                            color = if (isSelected) roles.onPrimary else roles.onSv,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+
+            // Active Template Explanation Banner
+            val activeDesc = when (selectedTemplate) {
+                HyperOsProfileTemplate.POWERSAVE ->
+                    "Powersave: Sorts sleep & power limits first and pre-stages low idle speeds, parked Core 6, and strict background caps."
+                HyperOsProfileTemplate.BALANCE_SCREEN_OFF ->
+                    if (isBalanceScreenOffSaverActive) {
+                        "Balance (Screen-Off Saver Active): Balanced daily speed while screen is on + immediate Battery Saver & deep freeze the instant your screen turns off."
+                    } else {
+                        "Balance + Immediate Screen-Off Saver: Sorts balanced speed & sleep controls first, and arms immediate Battery Saver whenever the screen turns off."
+                    }
+                HyperOsProfileTemplate.PERFORMANCE ->
+                    "Performance: Sorts processor, graphics & thermal limits first and pre-stages uncapped CPU/GPU speeds with fast ramp-up."
+                null ->
+                    "Tap Powersave, Balance, or Performance above to auto-stage pre-settings and sort HyperOS tweaks for that profile."
+            }
+
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = if (selectedTemplate != null) roles.pc.copy(alpha = 0.45f) else roles.s3,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = activeDesc,
+                    fontFamily = PlusJakartaSansFontFamily,
+                    fontSize = 12.sp,
+                    color = roles.onS,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                )
+            }
+        }
+    }
+}
+
 
 // ============================================================================
 // 2. EXPRESSIVE GROUP HEADER & CONNECTED STACK OF TWEAK CARDS
@@ -1284,16 +1404,24 @@ private fun ExpressiveAppFreezerSection(
     val roles = LocalMonetRoles.current
     var appFilterQuery by rememberSaveable { mutableStateOf("") }
 
-    val selectedApp = remember(targetPackage, installedApps) {
-        installedApps.find { it.packageName == targetPackage }
+    // Only user-installed enabled apps (excludes disabled apps & system apps)
+    val userEnabledApps = remember(installedApps) {
+        installedApps.filter { it.isUserEnabledApp }
     }
 
-    val filteredApps = remember(installedApps, appFilterQuery) {
+    val isAllUserEnabledSelected =
+        targetPackage == KernelRamLabRepository.ALL_USER_ENABLED_APPS_TOKEN
+
+    val selectedApp = remember(targetPackage, userEnabledApps) {
+        userEnabledApps.find { it.packageName == targetPackage }
+    }
+
+    val filteredApps = remember(userEnabledApps, appFilterQuery) {
         val q = appFilterQuery.trim().lowercase(Locale.US)
         if (q.isEmpty()) {
-            installedApps
+            userEnabledApps
         } else {
-            installedApps.filter {
+            userEnabledApps.filter {
                 it.appName.lowercase(Locale.US).contains(q) ||
                     it.packageName.lowercase(Locale.US).contains(q)
             }
@@ -1301,8 +1429,8 @@ private fun ExpressiveAppFreezerSection(
     }
 
     ExpressiveKernelGroupHeader(
-        title = "App Freezer & Core Limiter",
-        countLabel = "${snapshot.suspendFailedFreeze} sleep blocks"
+        title = "Select an App to Freeze",
+        countLabel = "${userEnabledApps.size} user apps"
     )
 
     Surface(
@@ -1342,17 +1470,25 @@ private fun ExpressiveAppFreezerSection(
                     }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = selectedApp?.appName ?: "Select an App to Freeze or Limit",
+                            text = when {
+                                isAllUserEnabledSelected ->
+                                    "All user enabled apps (${userEnabledApps.size} apps)"
+                                selectedApp != null -> selectedApp.appName
+                                else -> "Select an App to Freeze or Limit"
+                            },
                             fontFamily = SpaceGroteskFontFamily,
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
                             color = roles.onS
                         )
                         Text(
-                            text = if (targetPackage.isNotBlank()) {
-                                "Selected: ${selectedApp?.appName ?: targetPackage}"
-                            } else {
-                                "Pause a heavy app in RAM so it uses zero battery without closing your work"
+                            text = when {
+                                isAllUserEnabledSelected ->
+                                    "Targets all enabled user apps · Excludes disabled & system apps"
+                                selectedApp != null ->
+                                    "Selected user app: ${selectedApp.appName}"
+                                else ->
+                                    "Choose all user-enabled apps or a single app to pause in RAM"
                             },
                             fontFamily = PlusJakartaSansFontFamily,
                             fontSize = 12.sp,
@@ -1379,6 +1515,26 @@ private fun ExpressiveAppFreezerSection(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
                     )
                 }
+            }
+
+            // Quick Option Pill: "Select all user enabled apps" (excludes disabled & system apps)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AlignedKernelPill(
+                    text = "Select all user enabled apps (${userEnabledApps.size})",
+                    backgroundColor = if (isAllUserEnabledSelected) roles.primary else roles.s4,
+                    contentColor = if (isAllUserEnabledSelected) roles.onPrimary else roles.onS,
+                    leadingIcon = if (isAllUserEnabledSelected) Icons.Filled.Check else Icons.Filled.AcUnit,
+                    heightDp = 32,
+                    horizontalPaddingDp = 14,
+                    fontSizeSp = 12f,
+                    onClick = {
+                        onTargetPackageChange(KernelRamLabRepository.ALL_USER_ENABLED_APPS_TOKEN)
+                    }
+                )
             }
 
             AnimatedVisibility(
@@ -1410,7 +1566,7 @@ private fun ExpressiveAppFreezerSection(
                             Box(modifier = Modifier.weight(1f)) {
                                 if (appFilterQuery.isEmpty()) {
                                     Text(
-                                        text = "Search installed apps...",
+                                        text = "Search user enabled apps...",
                                         fontFamily = PlusJakartaSansFontFamily,
                                         fontSize = 12.5.sp,
                                         color = roles.onSv
@@ -1446,12 +1602,76 @@ private fun ExpressiveAppFreezerSection(
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 220.dp)
+                            .heightIn(max = 240.dp)
                             .clip(RoundedCornerShape(20.dp))
                             .background(roles.s3),
                         contentPadding = PaddingValues(vertical = 6.dp)
                     ) {
-                        items(filteredApps.take(50), key = { it.packageName }) { app ->
+                        // Top Row Option: Select all user enabled apps (not disabled or system ones)
+                        item(key = "__all_user_enabled_option__") {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onTargetPackageChange(
+                                            KernelRamLabRepository.ALL_USER_ENABLED_APPS_TOKEN
+                                        )
+                                        onToggleAppPicker()
+                                    }
+                                    .background(
+                                        if (isAllUserEnabledSelected) {
+                                            roles.pc.copy(alpha = 0.45f)
+                                        } else {
+                                            Color.Transparent
+                                        }
+                                    )
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = roles.primary,
+                                    contentColor = roles.onPrimary,
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Filled.AcUnit,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Select all user enabled apps (${userEnabledApps.size})",
+                                        fontFamily = SpaceGroteskFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.5.sp,
+                                        color = roles.onS,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "Excludes disabled apps and system apps",
+                                        fontFamily = PlusJakartaSansFontFamily,
+                                        fontSize = 11.sp,
+                                        color = roles.onSv
+                                    )
+                                }
+                                if (isAllUserEnabledSelected) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Check,
+                                        contentDescription = "Selected",
+                                        tint = roles.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        items(filteredApps.take(80), key = { it.packageName }) { app ->
                             val isSelected = app.packageName == targetPackage
                             Row(
                                 modifier = Modifier
@@ -1513,7 +1733,7 @@ private fun ExpressiveAppFreezerSection(
                 }
             }
 
-            // Clean Action Pills
+            // Clean Action Pills (Uniform X & Y plane via AlignedKernelPill)
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)

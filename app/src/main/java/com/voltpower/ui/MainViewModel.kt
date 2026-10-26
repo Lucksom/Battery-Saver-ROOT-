@@ -1,6 +1,10 @@
 package com.voltpower.ui
 
 import android.app.Application
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.voltpower.data.db.AppDatabase
@@ -8,6 +12,7 @@ import com.voltpower.data.db.TweakConfigEntity
 import com.voltpower.data.log.LogCategory
 import com.voltpower.data.log.LogEntry
 import com.voltpower.data.log.LogRepository
+import com.voltpower.data.root.HyperOsProfileTemplate
 import com.voltpower.data.root.KernelRamLabRepository
 import com.voltpower.data.root.KernelRamLiveSnapshot
 import com.voltpower.data.root.KernelTweakSpec
@@ -78,10 +83,70 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _stagedKernelTweaks = MutableStateFlow<Map<String, String>>(emptyMap())
     val stagedKernelTweaks: StateFlow<Map<String, String>> = _stagedKernelTweaks.asStateFlow()
 
+    private val _appliedKernelTweaks = MutableStateFlow<Map<String, String>>(emptyMap())
+
+    private val _selectedHyperOsTemplate = MutableStateFlow<HyperOsProfileTemplate?>(null)
+    val selectedHyperOsTemplate: StateFlow<HyperOsProfileTemplate?> = _selectedHyperOsTemplate.asStateFlow()
+
+    private val _isBalanceScreenOffSaverActive = MutableStateFlow(false)
+    val isBalanceScreenOffSaverActive: StateFlow<Boolean> = _isBalanceScreenOffSaverActive.asStateFlow()
+
     private val _lastKernelActionBanner = MutableStateFlow<String?>(null)
     val lastKernelActionBanner: StateFlow<String?> = _lastKernelActionBanner.asStateFlow()
 
+    private var screenReceiverRegistered = false
+    private val screenStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (!_isBalanceScreenOffSaverActive.value) return
+            when (intent?.action) {
+                Intent.ACTION_SCREEN_OFF -> {
+                    viewModelScope.launch {
+                        val msg = KernelRamLabRepository.applyImmediateScreenOffBatterySaver(
+                            screenOff = true,
+                            keepBatterySaverOnWhenScreenOn = false
+                        )
+                        _lastKernelActionBanner.value = msg
+                        LogRepository.addLog(
+                            category = LogCategory.TWEAK,
+                            message = msg,
+                            isSuccess = true
+                        )
+                    }
+                }
+                Intent.ACTION_SCREEN_ON -> {
+                    viewModelScope.launch {
+                        val cfg = configState.value
+                        val keepOn = cfg.activeProfile == "POWERSAVE" &&
+                            cfg.hyperOsPowerSaverEnabled &&
+                            (cfg.systemBatterySaverEnabled || cfg.systemBatterySaverWithoutDarkEnabled)
+                        val msg = KernelRamLabRepository.applyImmediateScreenOffBatterySaver(
+                            screenOff = false,
+                            keepBatterySaverOnWhenScreenOn = keepOn
+                        )
+                        _lastKernelActionBanner.value = msg
+                        LogRepository.addLog(
+                            category = LogCategory.TWEAK,
+                            message = msg,
+                            isSuccess = true
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     init {
+        try {
+            val filter = IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_SCREEN_ON)
+            }
+            application.registerReceiver(screenStateReceiver, filter)
+            screenReceiverRegistered = true
+        } catch (_: Exception) {
+            screenReceiverRegistered = false
+        }
+
         viewModelScope.launch {
             if (dao.getConfigDirect() == null) {
                 dao.insertOrUpdate(TweakConfigEntity())
@@ -95,6 +160,50 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 delay(2500)
                 refreshTelemetry()
             }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        if (screenReceiverRegistered) {
+            try {
+                getApplication<Application>().unregisterReceiver(screenStateReceiver)
+            } catch (_: Exception) {
+            }
+            screenReceiverRegistered = false
+        }
+    }
+
+    /**
+     * Flushes and reverts all HyperOS RAM tweaks back to their original state whenever the user
+     * switches to standard Powersave (not HyperOS powersaver), Balance, or Performance profile.
+     * HyperOS tweaks are only allowed to coexist alongside HyperOS Power Saver in Tweaks.
+     */
+    private suspend fun flushHyperOsRamTweaksForProfileSwitch(reasonLabel: String) {
+        val hadHyperOsState = _appliedKernelTweaks.value.isNotEmpty() ||
+            _stagedKernelTweaks.value.isNotEmpty() ||
+            _selectedHyperOsTemplate.value != null ||
+            _isBalanceScreenOffSaverActive.value
+
+        _stagedKernelTweaks.value = emptyMap()
+        _appliedKernelTweaks.value = emptyMap()
+        _selectedHyperOsTemplate.value = null
+        _isBalanceScreenOffSaverActive.value = false
+
+        val hasRoot = _telemetry.value.isRootGranted || RootBridge.isRootAvailable()
+        if (hasRoot) {
+            KernelRamLabRepository.restoreAllWasValues()
+            refreshKernelSnapshot()
+        }
+
+        if (hadHyperOsState) {
+            val flushMsg = "HyperOS RAM tweaks flushed & reverted to original state ($reasonLabel)"
+            _lastKernelActionBanner.value = flushMsg
+            LogRepository.addLog(
+                category = LogCategory.TWEAK,
+                message = flushMsg,
+                isSuccess = true
+            )
         }
     }
 
@@ -336,8 +445,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 _statusMessage.value = "Applying ${toApply.activeProfile.lowercase()} tweaks to RAM..."
                 dao.update(toApply)
+                val isCoexistingHyperOsSaver =
+                    toApply.activeProfile == "POWERSAVE" && toApply.hyperOsPowerSaverEnabled
+                if (!isCoexistingHyperOsSaver) {
+                    flushHyperOsRamTweaksForProfileSwitch("${toApply.activeProfile.lowercase()} profile")
+                }
                 RootBridge.revertAllTweaks(getApplication())
                 RootBridge.applyPowersaveTweaks(getApplication(), toApply)
+                if (isCoexistingHyperOsSaver && _appliedKernelTweaks.value.isNotEmpty()) {
+                    KernelRamLabRepository.applyBatchKernelTweaks(_appliedKernelTweaks.value)
+                    refreshKernelSnapshot()
+                }
                 dao.updateBackupStatus(true, RootBridge.BACKUP_FILE_PATH)
                 _statusMessage.value = "Tweaks active in RAM!"
                 val profileName = when (toApply.activeProfile) {
@@ -355,6 +473,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             } else {
                 _statusMessage.value = "Restoring factory kernel parameters..."
+                flushHyperOsRamTweaksForProfileSwitch("engine turned off")
                 RootBridge.revertAllTweaks(getApplication())
                 val allOff = resetAllTogglesToOff(current).copy(
                     isMasterApplied = false,
@@ -377,6 +496,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isBusy.value = true
             _statusMessage.value = "Restoring stock kernel parameters..."
+            flushHyperOsRamTweaksForProfileSwitch("revert to stock")
             if (_telemetry.value.isRootGranted || RootBridge.isRootAvailable()) {
                 RootBridge.revertAllTweaks(getApplication())
             }
@@ -436,6 +556,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 else -> "Powersave profile"
             }
 
+            // Standard Powersave, Balance, and Performance flush HyperOS RAM tweaks back to original state
+            flushHyperOsRamTweaksForProfileSwitch(profileLogLabel)
+
             if (hasRoot) {
                 _statusMessage.value = "Reverting previous profile & applying $profileLogLabel..."
                 // First revert previous profile tweaks to system default, then apply the selected profile
@@ -448,7 +571,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _statusMessage.value = "$profileLogLabel applied"
             LogRepository.addLog(
                 category = LogCategory.PROFILE,
-                message = "$profileLogLabel enabled (previous profile tweaks reverted first)",
+                message = "$profileLogLabel enabled (HyperOS RAM tweaks flushed & previous profile reverted)",
                 isSuccess = true
             )
             _isBusy.value = false
@@ -458,6 +581,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * Used in the Tweaks section so the user can freely browse/explore Powersave, Balance,
      * and Performance tweak categories without immediately applying them to the system.
+     * Switching to Balance, Performance, or non-HyperOS Powersave flushes HyperOS RAM tweaks.
      */
     fun onExploreProfileInTweaks(profile: String) {
         viewModelScope.launch {
@@ -466,6 +590,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val updated = current.copy(activeProfile = profile)
             dao.update(updated)
             _hasUnappliedChanges.value = true
+
+            val isCoexistingHyperOsSaver =
+                updated.activeProfile == "POWERSAVE" && updated.hyperOsPowerSaverEnabled
+            if (!isCoexistingHyperOsSaver) {
+                flushHyperOsRamTweaksForProfileSwitch("${profile.lowercase()} profile")
+            }
         }
     }
 
@@ -486,6 +616,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
             dao.update(updated)
             _hasUnappliedChanges.value = true
+            flushHyperOsRamTweaksForProfileSwitch("performance ($normalized) profile")
         }
     }
 
@@ -550,7 +681,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             hyperOsLock60HzEnabled = selectAll,
                             lock60HzRefreshRateEnabled = selectAll,
                             refreshRateHz = if (selectAll) 60 else 0,
-                            controlCenterBlurEnabled = selectAll,
+                            controlCenterBlurEnabled = false,
                             systemBatterySaverEnabled = selectAll,
                             systemBatterySaverWithoutDarkEnabled = selectAll,
                             systemDarkModeEnabled = false,
@@ -597,6 +728,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * Triggered exclusively when the user swipes the "Swipe to apply" bar in the Tweaks section.
      * Reverts any previously active conflicting/disabled tweaks and applies all currently selected tweaks.
+     * HyperOS tweaks can coexist ONLY alongside HyperOS Power Saver; if applying standard Powersave,
+     * Balance, or Performance, HyperOS tweaks in RAM are flushed back to original state.
      */
     fun onSwipeToApplyTweaks() {
         viewModelScope.launch {
@@ -610,6 +743,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             dao.update(updated)
             _hasUnappliedChanges.value = false
 
+            val isCoexistingHyperOsSaver =
+                updated.activeProfile == "POWERSAVE" && updated.hyperOsPowerSaverEnabled
+
+            if (!isCoexistingHyperOsSaver) {
+                val label = if (updated.activeProfile == "POWERSAVE") {
+                    "standard powersave profile"
+                } else {
+                    "${updated.activeProfile.lowercase()} profile"
+                }
+                flushHyperOsRamTweaksForProfileSwitch(label)
+            }
+
             if (hasRoot) {
                 _statusMessage.value = "Applying selected tweaks..."
                 // 1. Revert previous state first so any unchecked tweaks return to system default
@@ -617,10 +762,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 // 2. Apply all selected kernel, system UI, display, and profile tweaks atomically in order
                 RootBridge.applyPowersaveTweaks(getApplication(), updated)
+
+                // 3. If HyperOS Power Saver is active, keep HyperOS RAM tweaks applied alongside it
+                if (isCoexistingHyperOsSaver && _appliedKernelTweaks.value.isNotEmpty()) {
+                    KernelRamLabRepository.applyBatchKernelTweaks(_appliedKernelTweaks.value)
+                    refreshKernelSnapshot()
+                }
+
                 dao.updateBackupStatus(true, RootBridge.BACKUP_FILE_PATH)
                 refreshTelemetry()
 
-                val msg = "Selected tweaks applied (${updated.activeProfile.lowercase()} mode)"
+                val msg = if (isCoexistingHyperOsSaver && _appliedKernelTweaks.value.isNotEmpty()) {
+                    "HyperOS Power Saver + ${_appliedKernelTweaks.value.size} HyperOS RAM tweaks active"
+                } else if (isCoexistingHyperOsSaver) {
+                    "HyperOS Power Saver tweaks applied"
+                } else {
+                    "Selected tweaks applied (${updated.activeProfile.lowercase()} mode · HyperOS RAM flushed)"
+                }
                 _statusMessage.value = msg
                 LogRepository.addLog(
                     category = LogCategory.TWEAK,
@@ -802,12 +960,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     current.hyperOsTouchBoostDisabled ||
                     current.hyperOsFiveGPowerOptEnabled ||
                     current.hyperOsLock60HzEnabled ||
-                    current.controlCenterBlurEnabled ||
                     current.systemBatterySaverEnabled
                 if (anyHyperOsSelected) {
                     current.copy(
                         activeProfile = "POWERSAVE",
-                        hyperOsPowerSaverEnabled = true
+                        hyperOsPowerSaverEnabled = true,
+                        controlCenterBlurEnabled = false
                     )
                 } else {
                     current.copy(
@@ -823,7 +981,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         hyperOsLock60HzEnabled = true,
                         lock60HzRefreshRateEnabled = true,
                         refreshRateHz = 60,
-                        controlCenterBlurEnabled = true,
+                        controlCenterBlurEnabled = false,
                         systemBatterySaverEnabled = true,
                         systemBatterySaverWithoutDarkEnabled = true,
                         hyperOsUltraSuperSaveUiEnabled = false
@@ -831,11 +989,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } else {
                 current.copy(
-                    hyperOsPowerSaverEnabled = false
+                    hyperOsPowerSaverEnabled = false,
+                    controlCenterBlurEnabled = false
                 )
             }
             dao.update(updated)
             _hasUnappliedChanges.value = true
+
+            // Turning OFF HyperOS Power Saver switches to standard Powersave -> flush HyperOS RAM tweaks
+            if (!enabled) {
+                flushHyperOsRamTweaksForProfileSwitch("switched to standard powersave")
+            }
         }
     }
 
@@ -884,6 +1048,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 else -> "Lite"
             }
             val logMsg = "Performance mode set to $tierLabel"
+            flushHyperOsRamTweaksForProfileSwitch("Performance ($tierLabel)")
             _statusMessage.value = logMsg
             LogRepository.addLog(
                 category = LogCategory.PROFILE,
@@ -975,6 +1140,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun onSelectHyperOsTemplate(template: HyperOsProfileTemplate?) {
+        val next = if (_selectedHyperOsTemplate.value == template) null else template
+        _selectedHyperOsTemplate.value = next
+        if (next != null) {
+            val presets = KernelRamLabRepository.getTemplatePresets(next)
+            _stagedKernelTweaks.value = presets
+            val banner = when (next) {
+                HyperOsProfileTemplate.POWERSAVE ->
+                    "Powersave template staged (${presets.size} settings) & sorted for battery saving"
+                HyperOsProfileTemplate.BALANCE_SCREEN_OFF ->
+                    "Balance template staged (${presets.size} settings) · Immediate Battery Saver on screen off ready"
+                HyperOsProfileTemplate.PERFORMANCE ->
+                    "Performance template staged (${presets.size} settings) & sorted for peak speed"
+            }
+            _lastKernelActionBanner.value = banner
+            _statusMessage.value = banner
+        } else {
+            _stagedKernelTweaks.value = emptyMap()
+            _isBalanceScreenOffSaverActive.value = false
+            _lastKernelActionBanner.value = "Template cleared · Showing default order"
+        }
+    }
+
     fun onStageKernelTweak(id: String, value: String?) {
         val currentMap = _stagedKernelTweaks.value.toMutableMap()
         if (value == null) {
@@ -988,7 +1176,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun onRunSingleKernelLine(spec: KernelTweakSpec, value: String) {
         viewModelScope.launch {
             _isBusy.value = true
+            val currentCfg = configState.value
+            val isNonHyperOsProfile =
+                currentCfg.activeProfile != "POWERSAVE" || !currentCfg.hyperOsPowerSaverEnabled
+            if (isNonHyperOsProfile && currentCfg.isMasterApplied) {
+                // HyperOS tweaks cannot be combined with standard Powersave, Balance, or Performance
+                val updatedCfg = currentCfg.copy(
+                    activeProfile = "POWERSAVE",
+                    hyperOsPowerSaverEnabled = true
+                )
+                dao.update(updatedCfg)
+            }
             val (ok, msg) = KernelRamLabRepository.writeSingleKernelTweak(spec, value)
+            if (ok) {
+                val appliedMap = _appliedKernelTweaks.value.toMutableMap()
+                appliedMap[spec.id] = value
+                _appliedKernelTweaks.value = appliedMap
+            }
             _lastKernelActionBanner.value = msg
             _statusMessage.value = msg
             LogRepository.addLog(
@@ -1008,7 +1212,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val currentMap = _stagedKernelTweaks.value.toMutableMap()
             currentMap.remove(spec.id)
             _stagedKernelTweaks.value = currentMap
-            val undoMsg = "Undo (# was ${spec.wasValue}): $msg"
+            val appliedMap = _appliedKernelTweaks.value.toMutableMap()
+            appliedMap.remove(spec.id)
+            _appliedKernelTweaks.value = appliedMap
+            val undoMsg = "Restored default (${spec.formatValue(spec.wasValue)}): $msg"
             _lastKernelActionBanner.value = undoMsg
             _statusMessage.value = undoMsg
             LogRepository.addLog(
@@ -1025,13 +1232,47 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val staged = _stagedKernelTweaks.value
             if (staged.isEmpty()) {
-                _statusMessage.value = "Stage one or more kernel chips first, or tap 'Run Line' on any item"
+                _statusMessage.value = "Select a HyperOS template or tweak options above first"
                 return@launch
             }
             _isBusy.value = true
+
+            // Coexistence check: HyperOS tweaks can coexist with HyperOS Power Saver in 'Tweaks',
+            // but not with standard Powersave, Balance, or Performance profiles.
+            val currentCfg = configState.value
+            val isCoexistingWithHyperOsSaver =
+                currentCfg.activeProfile == "POWERSAVE" && currentCfg.hyperOsPowerSaverEnabled
+            if (!isCoexistingWithHyperOsSaver) {
+                // Switch Tweaks profile indicator to HyperOS Power Saver compatibility mode
+                dao.update(
+                    currentCfg.copy(
+                        activeProfile = "POWERSAVE",
+                        hyperOsPowerSaverEnabled = true
+                    )
+                )
+            }
+
             val logs = KernelRamLabRepository.applyBatchKernelTweaks(staged)
+            val mergedApplied = _appliedKernelTweaks.value.toMutableMap().apply {
+                putAll(staged)
+            }
+            _appliedKernelTweaks.value = mergedApplied
             _stagedKernelTweaks.value = emptyMap()
-            val summary = "Applied ${logs.size} pure kernel RAM tweaks"
+
+            val activeTemplate = _selectedHyperOsTemplate.value
+            _isBalanceScreenOffSaverActive.value =
+                (activeTemplate == HyperOsProfileTemplate.BALANCE_SCREEN_OFF)
+
+            val summary = when (activeTemplate) {
+                HyperOsProfileTemplate.BALANCE_SCREEN_OFF ->
+                    "Applied ${logs.size} HyperOS tweaks · Immediate Battery Saver on screen off armed"
+                HyperOsProfileTemplate.POWERSAVE ->
+                    "Applied ${logs.size} HyperOS Powersave template tweaks in RAM"
+                HyperOsProfileTemplate.PERFORMANCE ->
+                    "Applied ${logs.size} HyperOS Performance template tweaks in RAM"
+                null ->
+                    "Applied ${logs.size} HyperOS tweaks in RAM"
+            }
             _lastKernelActionBanner.value = summary
             _statusMessage.value = summary
             logs.forEach { line ->
@@ -1047,8 +1288,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isBusy.value = true
             _stagedKernelTweaks.value = emptyMap()
+            _appliedKernelTweaks.value = emptyMap()
+            _selectedHyperOsTemplate.value = null
+            _isBalanceScreenOffSaverActive.value = false
             val logs = KernelRamLabRepository.restoreAllWasValues()
-            val summary = logs.firstOrNull() ?: "Restored all '# was' kernel values"
+            val summary = logs.firstOrNull() ?: "Restored all HyperOS settings to default values"
             _lastKernelActionBanner.value = summary
             _statusMessage.value = summary
             LogRepository.addLog(category = LogCategory.TWEAK, message = summary, isSuccess = true)
@@ -1086,7 +1330,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun onExecuteProcessKernelAction(packageName: String, action: String) {
         viewModelScope.launch {
             _isBusy.value = true
-            val msg = KernelRamLabRepository.executeProcessKernelAction(packageName, action)
+            val msg = if (packageName == KernelRamLabRepository.ALL_USER_ENABLED_APPS_TOKEN) {
+                val userEnabledPackages = _installedApps.value
+                    .filter { it.isUserEnabledApp }
+                    .map { it.packageName }
+                KernelRamLabRepository.executeBatchProcessKernelAction(userEnabledPackages, action)
+            } else {
+                KernelRamLabRepository.executeProcessKernelAction(packageName, action)
+            }
             _lastKernelActionBanner.value = msg
             _statusMessage.value = msg
             LogRepository.addLog(category = LogCategory.TWEAK, message = msg, isSuccess = true)

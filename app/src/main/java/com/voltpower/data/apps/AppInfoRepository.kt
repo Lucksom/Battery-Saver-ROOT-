@@ -15,8 +15,12 @@ data class InstalledAppItem(
     val appName: String,
     val isSystemApp: Boolean,
     val isPermanentlyProtected: Boolean,
+    val isEnabled: Boolean = true,
     val iconBitmap: Bitmap? = null
-)
+) {
+    val isUserEnabledApp: Boolean
+        get() = !isSystemApp && isEnabled && !isPermanentlyProtected && packageName != "com.voltpower"
+}
 
 class AppInfoRepository(private val context: Context) {
 
@@ -35,6 +39,7 @@ class AppInfoRepository(private val context: Context) {
 
     suspend fun getInstalledApps(): List<InstalledAppItem> = withContext(Dispatchers.IO) {
         val pm = context.packageManager
+        val selfPkg = context.packageName
         val packages = try {
             pm.getInstalledApplications(PackageManager.GET_META_DATA)
         } catch (_: Exception) {
@@ -45,7 +50,10 @@ class AppInfoRepository(private val context: Context) {
 
         for (app in packages) {
             val pkg = app.packageName
-            val isSystem = (app.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            if (pkg == selfPkg) continue
+            val isSystem = (app.flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
+                (app.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+            val isEnabled = app.enabled
             val isPermanent = PERMANENT_SYSTEM_EXCEPTIONS.contains(pkg)
             val label = try {
                 pm.getApplicationLabel(app).toString()
@@ -66,14 +74,17 @@ class AppInfoRepository(private val context: Context) {
                     appName = label,
                     isSystemApp = isSystem,
                     isPermanentlyProtected = isPermanent,
+                    isEnabled = isEnabled,
                     iconBitmap = iconBitmap
                 )
             )
         }
 
-        // Sort: user apps first alphabetically, then system apps
+        // Sort: enabled user apps first alphabetically, then other apps
         appList.sortedWith(
-            compareBy<InstalledAppItem> { it.isSystemApp }
+            compareBy<InstalledAppItem> { !it.isUserEnabledApp }
+                .thenBy { it.isSystemApp }
+                .thenBy { !it.isEnabled }
                 .thenBy { it.appName.lowercase() }
         )
     }

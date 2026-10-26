@@ -16,6 +16,33 @@ enum class KernelSection(val id: String, val title: String, val badge: String) {
     DAEMONS("DAEMONS", "System Services", "SERVICE")
 }
 
+enum class HyperOsProfileTemplate(
+    val id: String,
+    val title: String,
+    val shortBadge: String,
+    val subtitle: String
+) {
+    POWERSAVE(
+        id = "POWERSAVE",
+        title = "Powersave",
+        shortBadge = "POWERSAVE",
+        subtitle = "Sorts & pre-selects low idle speeds, background core limits, and fast deep sleep"
+    ),
+    BALANCE_SCREEN_OFF(
+        id = "BALANCE_SCREEN_OFF",
+        title = "Balance · Screen-Off Saver",
+        shortBadge = "BALANCE + SCREEN OFF",
+        subtitle = "Balanced speed while using phone + immediate battery saver when screen turns off"
+    ),
+    PERFORMANCE(
+        id = "PERFORMANCE",
+        title = "Performance",
+        shortBadge = "PERFORMANCE",
+        subtitle = "Sorts & pre-selects uncapped CPU/GPU speeds, fast ramp-up, and released thermal limits"
+    )
+}
+
+
 data class KernelTweakSpec(
     val id: String,
     val section: KernelSection,
@@ -1251,4 +1278,392 @@ object KernelRamLabRepository {
             val res = RootBridge.execute(script)
             res.stdout.lines().lastOrNull()?.trim().orEmpty().ifBlank { "Updated $cleanPkg" }
         }
+
+    const val ALL_USER_ENABLED_APPS_TOKEN = "__ALL_USER_ENABLED_APPS__"
+
+    /**
+     * Batch process action across all user-installed enabled apps (excludes system & disabled apps).
+     */
+    suspend fun executeBatchProcessKernelAction(
+        packageNames: List<String>,
+        action: String
+    ): String = withContext(Dispatchers.IO) {
+        val cleanPkgs = packageNames.map { it.trim() }.filter { it.isNotEmpty() }
+        if (cleanPkgs.isEmpty()) {
+            return@withContext "No user-enabled apps found to update"
+        }
+
+        val pkgListJoined = cleanPkgs.joinToString(" ")
+        val script = when (action) {
+            "FREEZE_SIGSTOP" -> """
+                cnt=0
+                for pkg in $pkgListJoined; do
+                    P=${'$'}(pidof ${'$'}pkg 2>/dev/null)
+                    if [ -n "${'$'}P" ]; then
+                        kill -STOP ${'$'}P 2>/dev/null && cnt=${'$'}((cnt + 1))
+                    fi
+                done
+                echo "Paused ${'$'}cnt running user apps in RAM (${cleanPkgs.size} user-enabled apps checked)"
+            """.trimIndent()
+
+            "RESUME_SIGCONT" -> """
+                cnt=0
+                for pkg in $pkgListJoined; do
+                    P=${'$'}(pidof ${'$'}pkg 2>/dev/null)
+                    if [ -n "${'$'}P" ]; then
+                        kill -CONT ${'$'}P 2>/dev/null && cnt=${'$'}((cnt + 1))
+                    fi
+                done
+                echo "Resumed ${'$'}cnt user apps in RAM (${cleanPkgs.size} user-enabled apps checked)"
+            """.trimIndent()
+
+            "CGROUP_FREEZE" -> """
+                cnt=0
+                for pkg in $pkgListJoined; do
+                    U=${'$'}(dumpsys package ${'$'}pkg 2>/dev/null | grep -m1 userId= | sed 's/.*userId=\([0-9]*\).*/\1/')
+                    if [ -n "${'$'}U" ] && [ -e "/sys/fs/cgroup/uid_${'$'}U/cgroup.freeze" ]; then
+                        echo 1 > "/sys/fs/cgroup/uid_${'$'}U/cgroup.freeze" 2>/dev/null && cnt=${'$'}((cnt + 1))
+                    else
+                        P=${'$'}(pidof ${'$'}pkg 2>/dev/null)
+                        if [ -n "${'$'}P" ]; then
+                            kill -STOP ${'$'}P 2>/dev/null && cnt=${'$'}((cnt + 1))
+                        fi
+                    fi
+                done
+                echo "Deep-froze ${'$'}cnt user apps (${cleanPkgs.size} user-enabled apps checked)"
+            """.trimIndent()
+
+            "CGROUP_UNFREEZE" -> """
+                cnt=0
+                for pkg in $pkgListJoined; do
+                    U=${'$'}(dumpsys package ${'$'}pkg 2>/dev/null | grep -m1 userId= | sed 's/.*userId=\([0-9]*\).*/\1/')
+                    if [ -n "${'$'}U" ] && [ -e "/sys/fs/cgroup/uid_${'$'}U/cgroup.freeze" ]; then
+                        echo 0 > "/sys/fs/cgroup/uid_${'$'}U/cgroup.freeze" 2>/dev/null && cnt=${'$'}((cnt + 1))
+                    else
+                        P=${'$'}(pidof ${'$'}pkg 2>/dev/null)
+                        if [ -n "${'$'}P" ]; then
+                            kill -CONT ${'$'}P 2>/dev/null && cnt=${'$'}((cnt + 1))
+                        fi
+                    fi
+                done
+                echo "Unfroze ${'$'}cnt user apps (${cleanPkgs.size} user-enabled apps checked)"
+            """.trimIndent()
+
+            "RENICE_10" -> """
+                cnt=0
+                for pkg in $pkgListJoined; do
+                    P=${'$'}(pidof ${'$'}pkg 2>/dev/null)
+                    if [ -n "${'$'}P" ]; then
+                        renice -n 10 -p ${'$'}P 2>/dev/null && cnt=${'$'}((cnt + 1))
+                    fi
+                done
+                echo "Lowered priority for ${'$'}cnt running user apps"
+            """.trimIndent()
+
+            "TASKSET_0F" -> """
+                cnt=0
+                for pkg in $pkgListJoined; do
+                    P=${'$'}(pidof ${'$'}pkg 2>/dev/null)
+                    if [ -n "${'$'}P" ]; then
+                        for pid in ${'$'}P; do taskset -p 0F ${'$'}pid 2>/dev/null; done
+                        cnt=${'$'}((cnt + 1))
+                    fi
+                done
+                echo "Restricted ${'$'}cnt running user apps to small cores"
+            """.trimIndent()
+
+            "TASKSET_FF" -> """
+                cnt=0
+                for pkg in $pkgListJoined; do
+                    P=${'$'}(pidof ${'$'}pkg 2>/dev/null)
+                    if [ -n "${'$'}P" ]; then
+                        for pid in ${'$'}P; do taskset -p FF ${'$'}pid 2>/dev/null; done
+                        cnt=${'$'}((cnt + 1))
+                    fi
+                done
+                echo "Allowed ${'$'}cnt running user apps to use all cores"
+            """.trimIndent()
+
+            else -> "echo 'Completed batch action for user-enabled apps'"
+        }
+
+        val res = RootBridge.execute(script)
+        res.stdout.lines().lastOrNull()?.trim().orEmpty()
+            .ifBlank { "Applied action to ${cleanPkgs.size} user-enabled apps" }
+    }
+
+    /**
+     * Immediate Battery Saver when screen turns OFF for the HyperOS Balance template,
+     * and restoration when the screen turns back ON.
+     */
+    suspend fun applyImmediateScreenOffBatterySaver(
+        screenOff: Boolean,
+        keepBatterySaverOnWhenScreenOn: Boolean
+    ): String = withContext(Dispatchers.IO) {
+        if (!RootBridge.isRootAvailable()) return@withContext "Screen-off saver skipped (no root)"
+        if (screenOff) {
+            val cmd = buildString {
+                append("settings put global low_power 1 2>/dev/null\n")
+                append("echo 5000 > /sys/power/pm_freeze_timeout 2>/dev/null\n")
+                append("echo 0 > /sys/power/pm_async 2>/dev/null\n")
+                append("echo 0-1 > /dev/cpuset/background/cpus 2>/dev/null\n")
+                append("echo 15.00 > /dev/cpuctl/background/cpu.uclamp.max 2>/dev/null\n")
+            }
+            RootBridge.execute(cmd)
+            "Screen off: Immediate Battery Saver & deep freeze engaged"
+        } else {
+            val cmd = buildString {
+                if (!keepBatterySaverOnWhenScreenOn) {
+                    append("settings put global low_power 0 2>/dev/null\n")
+                }
+                append("echo 10000 > /sys/power/pm_freeze_timeout 2>/dev/null\n")
+                append("echo 0-3 > /dev/cpuset/background/cpus 2>/dev/null\n")
+                append("echo 20.00 > /dev/cpuctl/background/cpu.uclamp.max 2>/dev/null\n")
+            }
+            RootBridge.execute(cmd)
+            "Screen on: Balanced HyperOS speed restored"
+        }
+    }
+
+    /**
+     * Returns the pre-configured settings map (specId -> targetValue) for each HyperOS template.
+     */
+    fun getTemplatePresets(template: HyperOsProfileTemplate): Map<String, String> {
+        return when (template) {
+            HyperOsProfileTemplate.POWERSAVE -> mapOf(
+                "policy0_max_freq" to "1612800",
+                "policy0_min_freq" to "364800",
+                "policy2_max_freq" to "1804800",
+                "policy2_min_freq" to "480000",
+                "policy5_max_freq" to "1056000",
+                "policy5_min_freq" to "480000",
+                "policy7_max_freq" to "1612800",
+                "policy7_min_freq" to "480000",
+                "policy5_governor" to "powersave",
+                "policy7_boost" to "0",
+                "walt_hispeed_load" to "95",
+                "walt_hispeed_freq" to "960000",
+                "cpu6_online" to "0",
+                "sched_energy_aware" to "1",
+                "sched_pelt_multiplier" to "1",
+                "sched_schedstats" to "0",
+                "sched_rt_runtime_us" to "950000",
+                "sched_rr_timeslice_ms" to "100",
+                "uclamp_bg_max" to "15.00",
+                "uclamp_sysbg_max" to "25.00",
+                "uclamp_nnapi_min" to "0.00",
+                "uclamp_topapp_min" to "0.00",
+                "cpuset_misf" to "0-3",
+                "cpuset_background" to "0-1",
+                "gpu_max_freq" to "600000000",
+                "gpu_min_freq" to "264000000",
+                "gpu_idle_timer" to "50",
+                "gpu_max_pwrlevel" to "4",
+                "gpu_min_pwrlevel" to "10",
+                "kgsl_busmon_max" to "600000000",
+                "vm_swappiness" to "60",
+                "vm_min_free_kbytes" to "11584",
+                "vm_vfs_cache_pressure" to "50",
+                "vm_watermark_scale" to "10",
+                "sda_read_ahead_kb" to "64",
+                "irq_359_msm_drm" to "0-1",
+                "irq_361_touchscreen" to "0-1",
+                "irq_367_glink" to "0-1",
+                "pm_freeze_timeout" to "5000",
+                "pm_async" to "0",
+                "thermal_cooling_gpu" to "4",
+                "thermal_cooling_cpu3" to "3",
+                "thermal_cooling_cdsp" to "1",
+                "battery_charge_control_limit" to "8"
+            )
+
+            HyperOsProfileTemplate.BALANCE_SCREEN_OFF -> mapOf(
+                "policy0_max_freq" to "2016000",
+                "policy0_min_freq" to "364800",
+                "policy2_max_freq" to "2400000",
+                "policy2_min_freq" to "480000",
+                "policy5_max_freq" to "1958400",
+                "policy5_min_freq" to "480000",
+                "policy7_max_freq" to "2054400",
+                "policy7_min_freq" to "480000",
+                "policy5_governor" to "schedutil",
+                "policy7_boost" to "0",
+                "walt_hispeed_load" to "90",
+                "walt_hispeed_freq" to "1056000",
+                "cpu6_online" to "1",
+                "sched_energy_aware" to "1",
+                "sched_pelt_multiplier" to "2",
+                "sched_schedstats" to "0",
+                "sched_rt_runtime_us" to "1250000",
+                "sched_rr_timeslice_ms" to "100",
+                "uclamp_bg_max" to "20.00",
+                "uclamp_sysbg_max" to "30.00",
+                "uclamp_nnapi_min" to "0.00",
+                "uclamp_topapp_min" to "10.00",
+                "cpuset_misf" to "0-7",
+                "cpuset_background" to "0-3",
+                "gpu_max_freq" to "873000000",
+                "gpu_min_freq" to "264000000",
+                "gpu_idle_timer" to "64",
+                "gpu_max_pwrlevel" to "2",
+                "gpu_min_pwrlevel" to "10",
+                "kgsl_busmon_max" to "873000000",
+                "vm_swappiness" to "80",
+                "vm_min_free_kbytes" to "24576",
+                "vm_vfs_cache_pressure" to "100",
+                "vm_watermark_scale" to "20",
+                "sda_read_ahead_kb" to "128",
+                "irq_359_msm_drm" to "2-4",
+                "irq_361_touchscreen" to "2-4",
+                "irq_367_glink" to "0-1",
+                "pm_freeze_timeout" to "10000",
+                "pm_async" to "0",
+                "thermal_cooling_gpu" to "4",
+                "thermal_cooling_cpu3" to "3",
+                "thermal_cooling_cdsp" to "1",
+                "battery_charge_control_limit" to "4"
+            )
+
+            HyperOsProfileTemplate.PERFORMANCE -> mapOf(
+                "policy0_max_freq" to "2016000",
+                "policy0_min_freq" to "748800",
+                "policy2_max_freq" to "3014400",
+                "policy2_min_freq" to "806400",
+                "policy5_max_freq" to "2803200",
+                "policy5_min_freq" to "806400",
+                "policy7_max_freq" to "3206400",
+                "policy7_min_freq" to "633600",
+                "policy5_governor" to "performance",
+                "policy7_boost" to "1",
+                "walt_hispeed_load" to "75",
+                "walt_hispeed_freq" to "1497600",
+                "cpu6_online" to "1",
+                "sched_energy_aware" to "0",
+                "sched_pelt_multiplier" to "4",
+                "sched_schedstats" to "0",
+                "sched_rt_runtime_us" to "1250000",
+                "sched_rr_timeslice_ms" to "50",
+                "uclamp_bg_max" to "50.00",
+                "uclamp_sysbg_max" to "60.00",
+                "uclamp_nnapi_min" to "1.00",
+                "uclamp_topapp_min" to "20.00",
+                "cpuset_misf" to "0-7",
+                "cpuset_background" to "0-7",
+                "gpu_max_freq" to "1150000000",
+                "gpu_min_freq" to "400000000",
+                "gpu_idle_timer" to "120",
+                "gpu_max_pwrlevel" to "0",
+                "gpu_min_pwrlevel" to "8",
+                "kgsl_busmon_max" to "1150000000",
+                "vm_swappiness" to "60",
+                "vm_min_free_kbytes" to "32768",
+                "vm_vfs_cache_pressure" to "120",
+                "vm_watermark_scale" to "40",
+                "sda_read_ahead_kb" to "512",
+                "irq_359_msm_drm" to "2-4",
+                "irq_361_touchscreen" to "2-4",
+                "irq_367_glink" to "2-4",
+                "pm_freeze_timeout" to "20000",
+                "pm_async" to "1",
+                "thermal_cooling_gpu" to "0",
+                "thermal_cooling_cpu3" to "0",
+                "thermal_cooling_cdsp" to "0",
+                "battery_charge_control_limit" to "0"
+            )
+        }
+    }
+
+    /**
+     * Returns sections ordered by priority for the selected HyperOS profile template.
+     */
+    fun getSectionOrderForTemplate(template: HyperOsProfileTemplate?): List<KernelSection> {
+        return when (template) {
+            HyperOsProfileTemplate.POWERSAVE -> listOf(
+                KernelSection.FREEZE,
+                KernelSection.CPU,
+                KernelSection.SCHED,
+                KernelSection.GPU,
+                KernelSection.RAM,
+                KernelSection.CHARGING,
+                KernelSection.IRQ,
+                KernelSection.THERMAL
+            )
+
+            HyperOsProfileTemplate.BALANCE_SCREEN_OFF -> listOf(
+                KernelSection.FREEZE,
+                KernelSection.SCHED,
+                KernelSection.CPU,
+                KernelSection.RAM,
+                KernelSection.GPU,
+                KernelSection.IRQ,
+                KernelSection.CHARGING,
+                KernelSection.THERMAL
+            )
+
+            HyperOsProfileTemplate.PERFORMANCE -> listOf(
+                KernelSection.CPU,
+                KernelSection.GPU,
+                KernelSection.THERMAL,
+                KernelSection.SCHED,
+                KernelSection.RAM,
+                KernelSection.IRQ,
+                KernelSection.CHARGING,
+                KernelSection.FREEZE
+            )
+
+            null -> KernelSection.entries.filter { it != KernelSection.ALL && it != KernelSection.DAEMONS }
+        }
+    }
+
+    /**
+     * Sorts tweaks within a section according to the selected profile template ('powersave', 'balance', 'performance').
+     */
+    fun sortSpecsForTemplate(
+        specs: List<KernelTweakSpec>,
+        template: HyperOsProfileTemplate?
+    ): List<KernelTweakSpec> {
+        if (template == null) return specs
+        val priorityOrder: List<String> = when (template) {
+            HyperOsProfileTemplate.POWERSAVE -> listOf(
+                // Freeze & Idle power first
+                "pm_freeze_timeout", "pm_async",
+                "cpu6_online", "policy0_min_freq", "policy2_min_freq", "policy5_min_freq", "policy7_min_freq",
+                "policy5_governor", "walt_hispeed_load", "walt_hispeed_freq",
+                "policy7_max_freq", "policy2_max_freq", "policy5_max_freq", "policy0_max_freq", "policy7_boost",
+                "cpuset_background", "uclamp_bg_max", "uclamp_sysbg_max", "sched_energy_aware",
+                "sched_pelt_multiplier", "uclamp_nnapi_min", "uclamp_topapp_min", "cpuset_misf",
+                "gpu_idle_timer", "gpu_min_pwrlevel", "gpu_max_pwrlevel", "gpu_max_freq", "gpu_min_freq", "kgsl_busmon_max",
+                "vm_swappiness", "vm_vfs_cache_pressure", "sda_read_ahead_kb", "vm_min_free_kbytes", "vm_watermark_scale",
+                "battery_charge_control_limit"
+            )
+
+            HyperOsProfileTemplate.BALANCE_SCREEN_OFF -> listOf(
+                // Screen-off sleep + balanced UI smoothness first
+                "pm_freeze_timeout", "pm_async",
+                "cpuset_background", "uclamp_bg_max", "uclamp_sysbg_max", "uclamp_topapp_min",
+                "sched_pelt_multiplier", "sched_energy_aware", "cpuset_misf", "uclamp_nnapi_min",
+                "policy5_governor", "walt_hispeed_load", "walt_hispeed_freq",
+                "policy5_max_freq", "policy2_max_freq", "policy7_max_freq", "policy0_max_freq",
+                "policy0_min_freq", "policy7_min_freq", "policy2_min_freq", "policy5_min_freq", "cpu6_online",
+                "vm_swappiness", "vm_min_free_kbytes", "vm_watermark_scale", "vm_vfs_cache_pressure", "sda_read_ahead_kb",
+                "gpu_idle_timer", "gpu_max_freq", "gpu_min_freq", "kgsl_busmon_max"
+            )
+
+            HyperOsProfileTemplate.PERFORMANCE -> listOf(
+                // Peak clocks, boost, thermal unthrottling & gaming responsiveness first
+                "policy7_max_freq", "policy5_max_freq", "policy2_max_freq", "policy0_max_freq",
+                "policy7_boost", "policy5_governor", "walt_hispeed_load", "walt_hispeed_freq",
+                "cpu6_online", "policy7_min_freq", "policy2_min_freq", "policy5_min_freq", "policy0_min_freq",
+                "gpu_max_freq", "gpu_max_pwrlevel", "kgsl_busmon_max", "gpu_idle_timer", "gpu_min_freq", "gpu_min_pwrlevel",
+                "thermal_cooling_gpu", "thermal_cooling_cpu3", "thermal_cooling_cdsp",
+                "uclamp_topapp_min", "sched_energy_aware", "sched_pelt_multiplier", "sched_rr_timeslice_ms",
+                "cpuset_misf", "cpuset_background", "uclamp_bg_max", "uclamp_sysbg_max",
+                "vm_min_free_kbytes", "vm_watermark_scale", "sda_read_ahead_kb", "vm_vfs_cache_pressure", "vm_swappiness",
+                "irq_361_touchscreen", "irq_359_msm_drm", "irq_367_glink"
+            )
+        }
+        val rankMap = priorityOrder.withIndex().associate { (idx, id) -> id to idx }
+        return specs.sortedBy { rankMap[it.id] ?: Int.MAX_VALUE }
+    }
 }
+
