@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "VoltPower"
+rootProject.name = "HyperVolt"
 
 include(":app")

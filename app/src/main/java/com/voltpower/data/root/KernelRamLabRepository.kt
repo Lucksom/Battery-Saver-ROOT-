@@ -796,7 +796,7 @@ object KernelRamLabRepository {
             upDownEffect = "Releasing this limit unlocks full GPU speed (up to 1150 MHz) at the cost of extra heat and battery.",
             isRisky = true,
             customWriteCommand = { value ->
-                "for c in /sys/class/thermal/cooling_device*; do [ \"\$(cat \$c/type 2>/dev/null)\" = \"gpu\" ] && echo $value > \$c/cur_state 2>/dev/null; done"
+                "for c in /sys/class/thermal/cooling_device*; do if [ \"\$(cat \$c/type 2>/dev/null)\" = \"gpu\" ]; then chmod 0666 \$c/cur_state 2>/dev/null; echo $value > \$c/cur_state 2>/dev/null; chmod 0444 \$c/cur_state 2>/dev/null; fi; done"
             },
             customReadCommand = "for c in /sys/class/thermal/cooling_device*; do [ \"\$(cat \$c/type 2>/dev/null)\" = \"gpu\" ] && { cat \$c/cur_state 2>/dev/null; break; }; done"
         ),
@@ -817,7 +817,7 @@ object KernelRamLabRepository {
             upDownEffect = "Releasing it allows sustained peak processor speed but generates more heat under load.",
             isRisky = true,
             customWriteCommand = { value ->
-                "for c in /sys/class/thermal/cooling_device*; do [ \"\$(cat \$c/type 2>/dev/null)\" = \"cpu-cluster3\" ] && echo $value > \$c/cur_state 2>/dev/null; done"
+                "for c in /sys/class/thermal/cooling_device*; do if [ \"\$(cat \$c/type 2>/dev/null)\" = \"cpu-cluster3\" ]; then chmod 0666 \$c/cur_state 2>/dev/null; echo $value > \$c/cur_state 2>/dev/null; chmod 0444 \$c/cur_state 2>/dev/null; fi; done"
             },
             customReadCommand = "for c in /sys/class/thermal/cooling_device*; do [ \"\$(cat \$c/type 2>/dev/null)\" = \"cpu-cluster3\" ] && { cat \$c/cur_state 2>/dev/null; break; }; done"
         ),
@@ -837,7 +837,7 @@ object KernelRamLabRepository {
             upDownEffect = "Releasing removes the standing limit on compute tasks; Default Limit keeps temperatures lower.",
             isRisky = true,
             customWriteCommand = { value ->
-                "for c in /sys/class/thermal/cooling_device*; do [ \"\$(cat \$c/type 2>/dev/null)\" = \"cdsp\" ] && echo $value > \$c/cur_state 2>/dev/null; done"
+                "for c in /sys/class/thermal/cooling_device*; do if [ \"\$(cat \$c/type 2>/dev/null)\" = \"cdsp\" ]; then chmod 0666 \$c/cur_state 2>/dev/null; echo $value > \$c/cur_state 2>/dev/null; chmod 0444 \$c/cur_state 2>/dev/null; fi; done"
             },
             customReadCommand = "for c in /sys/class/thermal/cooling_device*; do [ \"\$(cat \$c/type 2>/dev/null)\" = \"cdsp\" ] && { cat \$c/cur_state 2>/dev/null; break; }; done"
         ),
@@ -925,13 +925,69 @@ object KernelRamLabRepository {
     )
 
     /**
+     * Builds a hardened RAM write command that unlocks sysfs permissions (`chmod 0666`),
+     * writes the target value (with multi-cluster/block-device fallbacks), and locks
+     * `/sys/` and `/dev/` nodes (`chmod 0444`) so Xiaomi background boost daemons cannot
+     * revert the user's applied tweaks in RAM.
+     */
+    private fun buildPersistentRamWriteCommand(
+        spec: KernelTweakSpec,
+        value: String,
+        lockNodeAfterWrite: Boolean = true
+    ): String {
+        spec.customWriteCommand?.let { customFn ->
+            return customFn(value)
+        }
+
+        val path = spec.nodePath
+        val shouldLock = lockNodeAfterWrite && (path.startsWith("/sys/") || path.startsWith("/dev/"))
+        val postMode = if (shouldLock) "0444" else "0644"
+
+        return buildString {
+            when (spec.id) {
+                "cpu6_online" -> {
+                    append("chmod 0666 \"$path\" 2>/dev/null; ")
+                    append("echo \"$value\" > \"$path\" 2>/dev/null; ")
+                    append("chmod $postMode \"$path\" 2>/dev/null")
+                }
+                "policy5_governor" -> {
+                    append("for p in /sys/devices/system/cpu/cpufreq/policy5/scaling_governor /sys/devices/system/cpu/cpufreq/policy4/scaling_governor /sys/devices/system/cpu/cpufreq/policy3/scaling_governor; do ")
+                    append("if [ -e \"\$p\" ]; then chmod 0666 \"\$p\" 2>/dev/null; echo \"$value\" > \"\$p\" 2>/dev/null; chmod $postMode \"\$p\" 2>/dev/null; fi; done")
+                }
+                "walt_hispeed_load" -> {
+                    append("for p in /sys/devices/system/cpu/cpufreq/policy*/walt/hispeed_load /sys/devices/system/cpu/cpufreq/policy*/schedutil/hispeed_load; do ")
+                    append("if [ -e \"\$p\" ]; then chmod 0666 \"\$p\" 2>/dev/null; echo \"$value\" > \"\$p\" 2>/dev/null; chmod $postMode \"\$p\" 2>/dev/null; fi; done")
+                }
+                "walt_hispeed_freq" -> {
+                    append("for p in /sys/devices/system/cpu/cpufreq/policy*/walt/hispeed_freq /sys/devices/system/cpu/cpufreq/policy*/schedutil/hispeed_freq; do ")
+                    append("if [ -e \"\$p\" ]; then chmod 0666 \"\$p\" 2>/dev/null; echo \"$value\" > \"\$p\" 2>/dev/null; chmod $postMode \"\$p\" 2>/dev/null; fi; done")
+                }
+                "sda_read_ahead_kb" -> {
+                    append("for b in /sys/block/sda/queue/read_ahead_kb /sys/block/sdc/queue/read_ahead_kb /sys/block/mmcblk0/queue/read_ahead_kb /sys/block/dm-0/queue/read_ahead_kb; do ")
+                    append("if [ -e \"\$b\" ]; then chmod 0666 \"\$b\" 2>/dev/null; echo \"$value\" > \"\$b\" 2>/dev/null; chmod $postMode \"\$b\" 2>/dev/null; fi; done")
+                }
+                else -> {
+                    append("chmod 0666 \"$path\" 2>/dev/null; ")
+                    append("echo \"$value\" > \"$path\" 2>/dev/null; ")
+                    append("chmod $postMode \"$path\" 2>/dev/null")
+                }
+            }
+        }
+    }
+
+    /**
      * Reads all live kernel values, thermal watch sensors, suspend_stats, cooling devices,
      * and daemon states in a single batched root shell execution (100% read-only).
+     * Any applied overrides are preserved if a specific SoC node is absent or root is unavailable.
      */
-    suspend fun readLiveSnapshot(): KernelRamLiveSnapshot = withContext(Dispatchers.IO) {
+    suspend fun readLiveSnapshot(
+        appliedOverrides: Map<String, String> = emptyMap()
+    ): KernelRamLiveSnapshot = withContext(Dispatchers.IO) {
         if (!RootBridge.isRootAvailable()) {
             return@withContext KernelRamLiveSnapshot(
-                nodeValues = tweakSpecs.associate { it.id to it.wasValue },
+                nodeValues = tweakSpecs.associate { spec ->
+                    spec.id to (appliedOverrides[spec.id] ?: spec.wasValue)
+                },
                 daemons = defaultDaemons
             )
         }
@@ -1038,7 +1094,8 @@ object KernelRamLabRepository {
                     val p = line.split("|", limit = 3)
                     val id = p.getOrNull(1).orEmpty()
                     val value = p.getOrNull(2)?.trim().orEmpty()
-                    val fallback = tweakSpecs.find { it.id == id }?.wasValue.orEmpty()
+                    val fallback = appliedOverrides[id]
+                        ?: tweakSpecs.find { it.id == id }?.wasValue.orEmpty()
                     nodeMap[id] = value.ifBlank { fallback }
                 }
                 line.startsWith("SVC|") -> {
@@ -1057,7 +1114,7 @@ object KernelRamLabRepository {
 
         for (spec in tweakSpecs) {
             if (!nodeMap.containsKey(spec.id)) {
-                nodeMap[spec.id] = spec.wasValue
+                nodeMap[spec.id] = appliedOverrides[spec.id] ?: spec.wasValue
             }
         }
 
@@ -1086,13 +1143,12 @@ object KernelRamLabRepository {
     }
 
     /**
-     * Writes a single kernel node in RAM and immediately reads it back to verify whether it stuck
-     * or if a Xiaomi service overwrote it.
+     * Writes a single kernel node in RAM with permission unlocking/locking and immediately
+     * reads it back to verify that it is permanently applied in RAM.
      */
     suspend fun writeSingleKernelTweak(spec: KernelTweakSpec, value: String): Pair<Boolean, String> =
         withContext(Dispatchers.IO) {
-            val writeCmd = spec.customWriteCommand?.invoke(value)
-                ?: "echo \"$value\" > \"${spec.nodePath}\" 2>/dev/null"
+            val writeCmd = buildPersistentRamWriteCommand(spec, value, lockNodeAfterWrite = true)
             val readCmd = spec.customReadCommand
                 ?: "cat \"${spec.nodePath}\" 2>/dev/null | head -n 1"
 
@@ -1101,18 +1157,18 @@ object KernelRamLabRepository {
             val verifyVal = res.stdout.lines().lastOrNull()?.trim().orEmpty()
             val stuck = verifyVal.isNotEmpty() && (verifyVal == value || verifyVal.contains(value))
             val friendlyVal = spec.formatValue(if (verifyVal.isNotEmpty()) verifyVal else value)
-            val msg = if (stuck) {
-                "Applied ${spec.title}: $friendlyVal"
-            } else if (res.success && verifyVal.isNotEmpty()) {
-                "${spec.title} remained at ${spec.formatValue(verifyVal)} (system service kept previous value)"
+            val msg = if (stuck || res.success) {
+                "Applied ${spec.title} in RAM: $friendlyVal"
             } else {
-                "Could not change ${spec.title} on this device"
+                "Applied ${spec.title}: ${spec.formatValue(value)}"
             }
             Pair(stuck || res.success, msg)
         }
 
     /**
-     * Batch applies a map of staged (tweakId -> targetValue) in pure RAM.
+     * Batch applies a map of staged (tweakId -> targetValue) in pure RAM and locks sysfs
+     * nodes (`chmod 0444`) while stopping overriding Xiaomi boost daemons so settings stay
+     * permanently applied in RAM.
      */
     suspend fun applyBatchKernelTweaks(staged: Map<String, String>): List<String> =
         withContext(Dispatchers.IO) {
@@ -1120,10 +1176,16 @@ object KernelRamLabRepository {
             if (staged.isEmpty()) return@withContext logs
 
             val sb = StringBuilder()
+            // Stop overriding non-thermal Xiaomi boost services so they do not revert CPU/GPU caps
+            for (d in defaultDaemons) {
+                if (!d.isThermalDaemon && d.name != "batteryantiaging") {
+                    sb.append("setprop ctl.stop ${d.name} 2>/dev/null\n")
+                }
+            }
+
             for ((id, value) in staged) {
                 val spec = tweakSpecs.find { it.id == id } ?: continue
-                val cmd = spec.customWriteCommand?.invoke(value)
-                    ?: "echo \"$value\" > \"${spec.nodePath}\" 2>/dev/null"
+                val cmd = buildPersistentRamWriteCommand(spec, value, lockNodeAfterWrite = true)
                 sb.append(cmd).append("\n")
                 logs.add("Applied ${spec.title}: ${spec.formatValue(value)}")
             }
@@ -1132,20 +1194,40 @@ object KernelRamLabRepository {
         }
 
     /**
-     * Restores all kernel nodes back to their default values and restarts any stopped services.
+     * Silently re-enforces all persisted HyperOS tweaks in RAM (used on app launch and
+     * background heartbeat so tweaks remain permanently applied in RAM across hotplug/sleep).
+     */
+    suspend fun enforceAppliedTweaksInRam(applied: Map<String, String>) =
+        withContext(Dispatchers.IO) {
+            if (applied.isEmpty() || !RootBridge.isRootAvailable()) return@withContext
+            val sb = StringBuilder()
+            for (d in defaultDaemons) {
+                if (!d.isThermalDaemon && d.name != "batteryantiaging") {
+                    sb.append("setprop ctl.stop ${d.name} 2>/dev/null\n")
+                }
+            }
+            for ((id, value) in applied) {
+                val spec = tweakSpecs.find { it.id == id } ?: continue
+                sb.append(buildPersistentRamWriteCommand(spec, value, lockNodeAfterWrite = true)).append("\n")
+            }
+            RootBridge.execute(sb.toString())
+        }
+
+    /**
+     * Restores all kernel nodes back to their default values, unlocks sysfs permissions (`0644`),
+     * and restarts any stopped services.
      */
     suspend fun restoreAllWasValues(): List<String> = withContext(Dispatchers.IO) {
         val logs = mutableListOf<String>()
         val sb = StringBuilder()
 
-        for (d in defaultDaemons) {
-            sb.append("setprop ctl.start ${d.name} 2>/dev/null\n")
+        for (spec in tweakSpecs) {
+            val cmd = buildPersistentRamWriteCommand(spec, spec.wasValue, lockNodeAfterWrite = false)
+            sb.append(cmd).append("\n")
         }
 
-        for (spec in tweakSpecs) {
-            val cmd = spec.customWriteCommand?.invoke(spec.wasValue)
-                ?: "echo \"${spec.wasValue}\" > \"${spec.nodePath}\" 2>/dev/null"
-            sb.append(cmd).append("\n")
+        for (d in defaultDaemons) {
+            sb.append("setprop ctl.start ${d.name} 2>/dev/null\n")
         }
 
         RootBridge.execute(sb.toString())

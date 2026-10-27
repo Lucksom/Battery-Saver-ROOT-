@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.DeveloperBoard
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Search
@@ -62,6 +63,8 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -112,6 +115,8 @@ fun HyperOsKernelTabScreen(
     isBalanceScreenOffSaverActive: Boolean,
     lastActionBanner: String?,
     installedApps: List<InstalledAppItem>,
+    freezeCheckedAppsRaw: String,
+    backgroundAllowedAppsCsv: String,
     onSelectTemplate: (HyperOsProfileTemplate?) -> Unit,
     onStageTweakValue: (String, String?) -> Unit,
     onRunSingleLineNow: (KernelTweakSpec, String) -> Unit,
@@ -121,16 +126,15 @@ fun HyperOsKernelTabScreen(
     onRefreshSnapshot: () -> Unit,
     onRunOneShotVmAction: (Boolean) -> Unit,
     onToggleDaemon: (String, Boolean) -> Unit,
+    onUpdateFreezeCheckedApps: (Set<String>, Boolean) -> Unit,
+    onUpdateBackgroundAllowedApps: (String) -> Unit,
     onExecuteProcessAction: (String, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val roles = LocalMonetRoles.current
     var selectedSection by rememberSaveable { mutableStateOf(KernelSection.ALL) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
-    var targetPackageInput by rememberSaveable {
-        mutableStateOf(KernelRamLabRepository.ALL_USER_ENABLED_APPS_TOKEN)
-    }
-    var showAppPickerSheet by rememberSaveable { mutableStateOf(false) }
+    var showAppPickerSheet by rememberSaveable { mutableStateOf(true) }
 
     val filteredSpecs = remember(selectedSection, searchQuery, selectedTemplate) {
         val base = if (selectedSection == KernelSection.ALL) {
@@ -320,12 +324,13 @@ fun HyperOsKernelTabScreen(
             ) {
                 item(key = "suspend_and_app_freezer") {
                     ExpressiveAppFreezerSection(
-                        snapshot = snapshot,
-                        targetPackage = targetPackageInput,
                         installedApps = installedApps,
+                        freezeCheckedAppsRaw = freezeCheckedAppsRaw,
+                        backgroundAllowedAppsCsv = backgroundAllowedAppsCsv,
                         showAppPicker = showAppPickerSheet,
-                        onTargetPackageChange = { targetPackageInput = it },
                         onToggleAppPicker = { showAppPickerSheet = !showAppPickerSheet },
+                        onUpdateFreezeCheckedApps = onUpdateFreezeCheckedApps,
+                        onUpdateBackgroundAllowedApps = onUpdateBackgroundAllowedApps,
                         onExecuteProcessAction = onExecuteProcessAction
                     )
                 }
@@ -1387,18 +1392,20 @@ private fun ExpressiveOneShotRamSection(
 }
 
 // ============================================================================
-// 5. EXPRESSIVE PER-APP BACKGROUND FREEZER (Matches Background Exception Card)
+// ============================================================================
+// 5. EXPRESSIVE PER-APP BACKGROUND FREEZER (Multi-Select Checkboxes + Pinned Top + Synced Exceptions)
 // ============================================================================
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ExpressiveAppFreezerSection(
-    snapshot: KernelRamLiveSnapshot,
-    targetPackage: String,
     installedApps: List<InstalledAppItem>,
+    freezeCheckedAppsRaw: String,
+    backgroundAllowedAppsCsv: String,
     showAppPicker: Boolean,
-    onTargetPackageChange: (String) -> Unit,
     onToggleAppPicker: () -> Unit,
+    onUpdateFreezeCheckedApps: (Set<String>, Boolean) -> Unit,
+    onUpdateBackgroundAllowedApps: (String) -> Unit,
     onExecuteProcessAction: (String, String) -> Unit
 ) {
     val roles = LocalMonetRoles.current
@@ -1408,17 +1415,44 @@ private fun ExpressiveAppFreezerSection(
     val userEnabledApps = remember(installedApps) {
         installedApps.filter { it.isUserEnabledApp }
     }
-
-    val isAllUserEnabledSelected =
-        targetPackage == KernelRamLabRepository.ALL_USER_ENABLED_APPS_TOKEN
-
-    val selectedApp = remember(targetPackage, userEnabledApps) {
-        userEnabledApps.find { it.packageName == targetPackage }
+    val allUserEnabledPkgSet = remember(userEnabledApps) {
+        userEnabledApps.map { it.packageName }.toSet()
     }
 
-    val filteredApps = remember(userEnabledApps, appFilterQuery) {
+    // Exceptions list synced from HyperOS Battery Saver in Tweaks
+    val exceptionPackages = remember(backgroundAllowedAppsCsv) {
+        backgroundAllowedAppsCsv
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .toSet()
+    }
+
+    // Checked user-enabled apps to freeze
+    val checkedFreezePackages = remember(freezeCheckedAppsRaw, allUserEnabledPkgSet) {
+        when (freezeCheckedAppsRaw) {
+            "__ALL_USER_ENABLED__" -> allUserEnabledPkgSet
+            "__NONE__" -> emptySet()
+            else -> {
+                val explicit = freezeCheckedAppsRaw
+                    .split(",")
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                    .toSet()
+                if (allUserEnabledPkgSet.isEmpty()) explicit else (explicit intersect allUserEnabledPkgSet)
+            }
+        }
+    }
+
+    val isAllUserEnabledChecked = remember(freezeCheckedAppsRaw, checkedFreezePackages, allUserEnabledPkgSet) {
+        freezeCheckedAppsRaw == "__ALL_USER_ENABLED__" ||
+            (allUserEnabledPkgSet.isNotEmpty() && checkedFreezePackages.size == allUserEnabledPkgSet.size)
+    }
+
+    // Checked apps are ALWAYS pinned at the top of the list
+    val filteredAndPinnedApps = remember(userEnabledApps, checkedFreezePackages, appFilterQuery) {
         val q = appFilterQuery.trim().lowercase(Locale.US)
-        if (q.isEmpty()) {
+        val filtered = if (q.isEmpty()) {
             userEnabledApps
         } else {
             userEnabledApps.filter {
@@ -1426,22 +1460,58 @@ private fun ExpressiveAppFreezerSection(
                     it.packageName.lowercase(Locale.US).contains(q)
             }
         }
+        filtered.sortedWith(
+            compareByDescending<InstalledAppItem> { it.packageName in checkedFreezePackages }
+                .thenBy { it.appName.lowercase(Locale.US) }
+        )
+    }
+
+    fun toggleSelectAllUserEnabled(selectAll: Boolean) {
+        if (selectAll) {
+            onUpdateFreezeCheckedApps(allUserEnabledPkgSet, true)
+        } else {
+            onUpdateFreezeCheckedApps(emptySet(), false)
+        }
+    }
+
+    fun toggleSingleApp(packageName: String) {
+        val updated = checkedFreezePackages.toMutableSet()
+        if (packageName in updated) {
+            updated.remove(packageName)
+        } else {
+            updated.add(packageName)
+        }
+        val nowAllChecked = allUserEnabledPkgSet.isNotEmpty() && updated.size == allUserEnabledPkgSet.size
+        onUpdateFreezeCheckedApps(updated, nowAllChecked)
+    }
+
+    fun toggleExceptionApp(packageName: String) {
+        val updatedExceptions = exceptionPackages.toMutableSet()
+        if (packageName in updatedExceptions) {
+            updatedExceptions.remove(packageName)
+        } else {
+            updatedExceptions.add(packageName)
+        }
+        onUpdateBackgroundAllowedApps(updatedExceptions.joinToString(","))
     }
 
     ExpressiveKernelGroupHeader(
         title = "Select an App to Freeze",
-        countLabel = "${userEnabledApps.size} user apps"
+        countLabel = "${checkedFreezePackages.size}/${userEnabledApps.size} checked"
     )
 
     Surface(
         shape = RoundedCornerShape(30.dp),
         color = roles.s2,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("hyperos_app_freezer_card")
     ) {
         Column(
             modifier = Modifier.padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // Card Header Row
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1456,8 +1526,8 @@ private fun ExpressiveAppFreezerSection(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(16.dp),
-                        color = if (targetPackage.isNotBlank()) roles.pc else roles.s4,
-                        contentColor = if (targetPackage.isNotBlank()) roles.onPc else roles.onSv,
+                        color = if (checkedFreezePackages.isNotEmpty()) roles.pc else roles.s4,
+                        contentColor = if (checkedFreezePackages.isNotEmpty()) roles.onPc else roles.onSv,
                         modifier = Modifier.size(44.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
@@ -1471,10 +1541,12 @@ private fun ExpressiveAppFreezerSection(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = when {
-                                isAllUserEnabledSelected ->
-                                    "All user enabled apps (${userEnabledApps.size} apps)"
-                                selectedApp != null -> selectedApp.appName
-                                else -> "Select an App to Freeze or Limit"
+                                isAllUserEnabledChecked ->
+                                    "All user enabled apps (${userEnabledApps.size} checked)"
+                                checkedFreezePackages.isNotEmpty() ->
+                                    "${checkedFreezePackages.size} user apps checked (pinned at top)"
+                                else ->
+                                    "No apps checked to freeze"
                             },
                             fontFamily = SpaceGroteskFontFamily,
                             fontWeight = FontWeight.Bold,
@@ -1482,14 +1554,7 @@ private fun ExpressiveAppFreezerSection(
                             color = roles.onS
                         )
                         Text(
-                            text = when {
-                                isAllUserEnabledSelected ->
-                                    "Targets all enabled user apps · Excludes disabled & system apps"
-                                selectedApp != null ->
-                                    "Selected user app: ${selectedApp.appName}"
-                                else ->
-                                    "Choose all user-enabled apps or a single app to pause in RAM"
-                            },
+                            text = "Checked apps are pinned at top · Exceptions synced with HyperOS Battery Saver",
                             fontFamily = PlusJakartaSansFontFamily,
                             fontSize = 12.sp,
                             color = roles.onSv,
@@ -1506,7 +1571,7 @@ private fun ExpressiveAppFreezerSection(
                     modifier = Modifier.padding(start = 8.dp)
                 ) {
                     Text(
-                        text = if (showAppPicker) "Hide apps" else "Choose app",
+                        text = if (showAppPicker) "Hide apps" else "Select apps (${checkedFreezePackages.size})",
                         fontFamily = SpaceGroteskFontFamily,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
@@ -1517,26 +1582,179 @@ private fun ExpressiveAppFreezerSection(
                 }
             }
 
-            // Quick Option Pill: "Select all user enabled apps" (excludes disabled & system apps)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+            // Prominent "Select all user enabled apps" Row with Checkbox
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = if (isAllUserEnabledChecked) roles.pc.copy(alpha = 0.38f) else roles.s3,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { toggleSelectAllUserEnabled(!isAllUserEnabledChecked) }
+                    .testTag("select_all_user_enabled_apps_row")
             ) {
-                AlignedKernelPill(
-                    text = "Select all user enabled apps (${userEnabledApps.size})",
-                    backgroundColor = if (isAllUserEnabledSelected) roles.primary else roles.s4,
-                    contentColor = if (isAllUserEnabledSelected) roles.onPrimary else roles.onS,
-                    leadingIcon = if (isAllUserEnabledSelected) Icons.Filled.Check else Icons.Filled.AcUnit,
-                    heightDp = 32,
-                    horizontalPaddingDp = 14,
-                    fontSizeSp = 12f,
-                    onClick = {
-                        onTargetPackageChange(KernelRamLabRepository.ALL_USER_ENABLED_APPS_TOKEN)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isAllUserEnabledChecked) roles.primary else roles.s4,
+                        contentColor = if (isAllUserEnabledChecked) roles.onPrimary else roles.onSv,
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Filled.AcUnit,
+                                contentDescription = null,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
                     }
-                )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Select all user enabled apps (${userEnabledApps.size})",
+                            fontFamily = SpaceGroteskFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.5.sp,
+                            color = roles.onS,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "Checks all enabled user apps · Excludes disabled & system apps",
+                            fontFamily = PlusJakartaSansFontFamily,
+                            fontSize = 11.sp,
+                            color = roles.onSv
+                        )
+                    }
+                    Checkbox(
+                        checked = isAllUserEnabledChecked,
+                        onCheckedChange = { wantAll -> toggleSelectAllUserEnabled(wantAll) },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = roles.primary,
+                            checkmarkColor = roles.onPrimary,
+                            uncheckedColor = roles.outline
+                        ),
+                        modifier = Modifier.testTag("select_all_user_enabled_apps_checkbox")
+                    )
+                }
             }
 
+            // Synced Exceptions List Banner & Chips (Synced from HyperOS Battery Saver in Tweaks)
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = roles.s3,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "EXCEPTIONS LIST (SYNCED WITH HYPEROS BATTERY SAVER)",
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp,
+                                letterSpacing = 0.6.sp,
+                                color = roles.primary
+                            )
+                            Text(
+                                text = if (exceptionPackages.isEmpty()) {
+                                    "No exceptions active · Uncheck any app below to add it to exceptions"
+                                } else {
+                                    "${exceptionPackages.size} apps exempt from freezing · Tap chip to remove exception"
+                                },
+                                fontFamily = PlusJakartaSansFontFamily,
+                                fontSize = 11.sp,
+                                color = roles.onSv,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                        if (exceptionPackages.isNotEmpty()) {
+                            AlignedKernelPill(
+                                text = "Sync exceptions",
+                                backgroundColor = roles.s4,
+                                contentColor = roles.onS,
+                                heightDp = 28,
+                                horizontalPaddingDp = 10,
+                                fontSizeSp = 11f,
+                                onClick = {
+                                    onUpdateBackgroundAllowedApps(exceptionPackages.joinToString(","))
+                                }
+                            )
+                        }
+                    }
+
+                    if (exceptionPackages.isNotEmpty()) {
+                        val exceptionAppItems = remember(installedApps, exceptionPackages) {
+                            val mapByPkg = installedApps.associateBy { it.packageName }
+                            exceptionPackages.map { pkg ->
+                                mapByPkg[pkg] ?: InstalledAppItem(
+                                    packageName = pkg,
+                                    appName = pkg.substringAfterLast('.').replaceFirstChar { it.uppercase() },
+                                    isSystemApp = false,
+                                    isPermanentlyProtected = false,
+                                    iconBitmap = null
+                                )
+                            }.sortedBy { it.appName.lowercase(Locale.US) }
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            exceptionAppItems.forEach { app ->
+                                Surface(
+                                    onClick = { toggleExceptionApp(app.packageName) },
+                                    shape = CircleShape,
+                                    color = roles.s4,
+                                    contentColor = roles.onS
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Security,
+                                            contentDescription = null,
+                                            tint = roles.primary,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Text(
+                                            text = app.appName,
+                                            fontFamily = SpaceGroteskFontFamily,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.5.sp,
+                                            maxLines = 1
+                                        )
+                                        Icon(
+                                            imageVector = Icons.Filled.Close,
+                                            contentDescription = "Remove exception ${app.appName}",
+                                            tint = roles.onSv,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Expandable User-Enabled Apps List with Checkboxes & Pinned-at-Top Sorting
             AnimatedVisibility(
                 visible = showAppPicker,
                 enter = fadeIn() + expandVertically(),
@@ -1602,129 +1820,146 @@ private fun ExpressiveAppFreezerSection(
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 240.dp)
+                            .heightIn(max = 300.dp)
                             .clip(RoundedCornerShape(20.dp))
                             .background(roles.s3),
                         contentPadding = PaddingValues(vertical = 6.dp)
                     ) {
-                        // Top Row Option: Select all user enabled apps (not disabled or system ones)
-                        item(key = "__all_user_enabled_option__") {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        onTargetPackageChange(
-                                            KernelRamLabRepository.ALL_USER_ENABLED_APPS_TOKEN
-                                        )
-                                        onToggleAppPicker()
-                                    }
-                                    .background(
-                                        if (isAllUserEnabledSelected) {
-                                            roles.pc.copy(alpha = 0.45f)
-                                        } else {
-                                            Color.Transparent
-                                        }
-                                    )
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = roles.primary,
-                                    contentColor = roles.onPrimary,
-                                    modifier = Modifier.size(32.dp)
+                        if (filteredAndPinnedApps.isEmpty()) {
+                            item(key = "__no_user_apps__") {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(20.dp),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = Icons.Filled.AcUnit,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                }
-                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "Select all user enabled apps (${userEnabledApps.size})",
-                                        fontFamily = SpaceGroteskFontFamily,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.5.sp,
-                                        color = roles.onS,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = "Excludes disabled apps and system apps",
+                                        text = if (installedApps.isEmpty()) {
+                                            "Loading user enabled apps..."
+                                        } else {
+                                            "No matching user enabled apps found"
+                                        },
                                         fontFamily = PlusJakartaSansFontFamily,
-                                        fontSize = 11.sp,
+                                        fontSize = 12.5.sp,
                                         color = roles.onSv
                                     )
                                 }
-                                if (isAllUserEnabledSelected) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Check,
-                                        contentDescription = "Selected",
-                                        tint = roles.primary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
                             }
-                        }
-
-                        items(filteredApps.take(80), key = { it.packageName }) { app ->
-                            val isSelected = app.packageName == targetPackage
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        onTargetPackageChange(app.packageName)
-                                        onToggleAppPicker()
-                                    }
-                                    .background(if (isSelected) roles.pc.copy(alpha = 0.35f) else Color.Transparent)
-                                    .padding(horizontal = 14.dp, vertical = 9.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                if (app.iconBitmap != null) {
-                                    Image(
-                                        bitmap = app.iconBitmap.asImageBitmap(),
-                                        contentDescription = app.appName,
-                                        modifier = Modifier
-                                            .size(32.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                    )
-                                } else {
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = roles.s4,
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(
-                                                imageVector = Icons.Filled.DeveloperBoard,
-                                                contentDescription = null,
-                                                tint = roles.onSv,
-                                                modifier = Modifier.size(16.dp)
-                                            )
+                        } else {
+                            items(
+                                items = filteredAndPinnedApps,
+                                key = { it.packageName }
+                            ) { app ->
+                                val isChecked = app.packageName in checkedFreezePackages
+                                val isException = app.packageName in exceptionPackages
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { toggleSingleApp(app.packageName) }
+                                        .background(
+                                            if (isChecked) roles.pc.copy(alpha = 0.28f) else Color.Transparent
+                                        )
+                                        .padding(horizontal = 14.dp, vertical = 9.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    if (app.iconBitmap != null) {
+                                        Image(
+                                            bitmap = app.iconBitmap.asImageBitmap(),
+                                            contentDescription = app.appName,
+                                            modifier = Modifier
+                                                .size(34.dp)
+                                                .clip(RoundedCornerShape(9.dp))
+                                        )
+                                    } else {
+                                        Surface(
+                                            shape = RoundedCornerShape(9.dp),
+                                            color = roles.s4,
+                                            modifier = Modifier.size(34.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.DeveloperBoard,
+                                                    contentDescription = null,
+                                                    tint = roles.onSv,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
                                         }
                                     }
-                                }
-                                Text(
-                                    text = app.appName,
-                                    fontFamily = SpaceGroteskFontFamily,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.5.sp,
-                                    color = roles.onS,
-                                    modifier = Modifier.weight(1f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                if (isSelected) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Check,
-                                        contentDescription = "Selected",
-                                        tint = roles.primary,
-                                        modifier = Modifier.size(18.dp)
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = app.appName,
+                                                fontFamily = SpaceGroteskFontFamily,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.5.sp,
+                                                color = roles.onS,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            if (isChecked) {
+                                                Surface(
+                                                    shape = CircleShape,
+                                                    color = roles.primary,
+                                                    contentColor = roles.onPrimary
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.PushPin,
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(9.dp)
+                                                        )
+                                                        Text(
+                                                            text = "PINNED",
+                                                            fontFamily = JetBrainsMonoFontFamily,
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 8.5.sp
+                                                        )
+                                                    }
+                                                }
+                                            } else if (isException) {
+                                                Surface(
+                                                    shape = CircleShape,
+                                                    color = roles.s4,
+                                                    contentColor = roles.onSv
+                                                ) {
+                                                    Text(
+                                                        text = "EXCEPTION",
+                                                        fontFamily = JetBrainsMonoFontFamily,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        fontSize = 8.5.sp,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Text(
+                                            text = app.packageName,
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            fontSize = 10.5.sp,
+                                            color = roles.onSv,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+
+                                    Checkbox(
+                                        checked = isChecked,
+                                        onCheckedChange = { toggleSingleApp(app.packageName) },
+                                        colors = CheckboxDefaults.colors(
+                                            checkedColor = roles.primary,
+                                            checkmarkColor = roles.onPrimary,
+                                            uncheckedColor = roles.outline
+                                        )
                                     )
                                 }
                             }
@@ -1734,6 +1969,14 @@ private fun ExpressiveAppFreezerSection(
             }
 
             // Clean Action Pills (Uniform X & Y plane via AlignedKernelPill)
+            val targetPayload = remember(isAllUserEnabledChecked, checkedFreezePackages) {
+                when {
+                    isAllUserEnabledChecked -> KernelRamLabRepository.ALL_USER_ENABLED_APPS_TOKEN
+                    checkedFreezePackages.isNotEmpty() -> checkedFreezePackages.joinToString(",")
+                    else -> ""
+                }
+            }
+
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1755,7 +1998,7 @@ private fun ExpressiveAppFreezerSection(
                         heightDp = 32,
                         horizontalPaddingDp = 14,
                         fontSizeSp = 12f,
-                        onClick = { onExecuteProcessAction(targetPackage, code) }
+                        onClick = { onExecuteProcessAction(targetPayload, code) }
                     )
                 }
             }

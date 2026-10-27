@@ -1,6 +1,6 @@
 {
-  "name": "VoltPower",
-  "description": "Comprehensive Android optimizer and kernel manager with MIUIX design.",
+  "name": "HyperVolt",
+  "description": "Material 3 Expressive root battery saver and kernel performance controller for Android and Xiaomi HyperOS devices.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -148,19 +148,69 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         viewModelScope.launch {
-            if (dao.getConfigDirect() == null) {
-                dao.insertOrUpdate(TweakConfigEntity())
+            var existingCfg = dao.getConfigDirect()
+            if (existingCfg == null) {
+                existingCfg = TweakConfigEntity()
+                dao.insertOrUpdate(existingCfg)
             }
+
+            // Restore persisted HyperOS template & applied/staged tweaks so closing app from Recents preserves state
+            val restoredTemplate = HyperOsProfileTemplate.entries.find {
+                it.id == existingCfg.hyperOsActiveTemplate
+            }
+            val restoredApplied = parseTweaksMap(existingCfg.hyperOsAppliedTweaks)
+            val restoredStaged = parseTweaksMap(existingCfg.hyperOsStagedTweaks)
+            _selectedHyperOsTemplate.value = restoredTemplate
+            _appliedKernelTweaks.value = restoredApplied
+            _stagedKernelTweaks.value = restoredStaged
+            _isBalanceScreenOffSaverActive.value = existingCfg.hyperOsBalanceScreenOffArmed
+
+            // Permanently re-enforce applied HyperOS tweaks in RAM on app startup
+            if (restoredApplied.isNotEmpty()) {
+                KernelRamLabRepository.enforceAppliedTweaksInRam(restoredApplied)
+            }
+
             launch {
                 _installedApps.value = appInfoRepository.getInstalledApps()
             }
             refreshTelemetry()
             refreshKernelSnapshot()
+            var heartbeatTick = 0
             while (true) {
                 delay(2500)
                 refreshTelemetry()
+                heartbeatTick++
+                if (heartbeatTick % 4 == 0 && _appliedKernelTweaks.value.isNotEmpty()) {
+                    KernelRamLabRepository.enforceAppliedTweaksInRam(_appliedKernelTweaks.value)
+                }
             }
         }
+    }
+
+    private fun serializeTweaksMap(map: Map<String, String>): String {
+        return map.entries.joinToString(";") { "${it.key}=${it.value}" }
+    }
+
+    private fun parseTweaksMap(raw: String): Map<String, String> {
+        if (raw.isBlank()) return emptyMap()
+        return raw.split(";")
+            .mapNotNull { entry ->
+                val idx = entry.indexOf('=')
+                if (idx <= 0) null
+                else entry.substring(0, idx).trim() to entry.substring(idx + 1).trim()
+            }
+            .toMap()
+    }
+
+    private suspend fun persistHyperOsKernelState() {
+        val current = dao.getConfigDirect() ?: configState.value
+        val updated = current.copy(
+            hyperOsActiveTemplate = _selectedHyperOsTemplate.value?.id.orEmpty(),
+            hyperOsAppliedTweaks = serializeTweaksMap(_appliedKernelTweaks.value),
+            hyperOsStagedTweaks = serializeTweaksMap(_stagedKernelTweaks.value),
+            hyperOsBalanceScreenOffArmed = _isBalanceScreenOffSaverActive.value
+        )
+        dao.update(updated)
     }
 
     override fun onCleared() {
@@ -189,6 +239,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _appliedKernelTweaks.value = emptyMap()
         _selectedHyperOsTemplate.value = null
         _isBalanceScreenOffSaverActive.value = false
+        persistHyperOsKernelState()
 
         val hasRoot = _telemetry.value.isRootGranted || RootBridge.isRootAvailable()
         if (hasRoot) {
@@ -1018,11 +1069,72 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onUpdateBackgroundAllowedApps(apps: Set<String>) {
         viewModelScope.launch {
-            val current = configState.value
+            val current = dao.getConfigDirect() ?: configState.value
             val pkgString = apps.joinToString(",")
-            val updated = current.copy(backgroundAllowedApps = pkgString)
+            val userEnabledPkgs = _installedApps.value
+                .filter { it.isUserEnabledApp }
+                .map { it.packageName }
+                .toSet()
+            // Sync HyperOS App Freezer checked apps with HyperOS Battery Saver exceptions list:
+            // User-enabled apps NOT in the exceptions list remain checked to freeze
+            val syncedFreezeChecked = if (userEnabledPkgs.isEmpty()) {
+                current.hyperOsFreezeCheckedApps
+            } else {
+                val nonExemptUserApps = userEnabledPkgs - apps
+                when {
+                    nonExemptUserApps.isEmpty() -> "__NONE__"
+                    nonExemptUserApps.size == userEnabledPkgs.size -> "__ALL_USER_ENABLED__"
+                    else -> nonExemptUserApps.joinToString(",")
+                }
+            }
+            val updated = current.copy(
+                backgroundAllowedApps = pkgString,
+                hyperOsFreezeCheckedApps = syncedFreezeChecked
+            )
             dao.update(updated)
             _hasUnappliedChanges.value = true
+        }
+    }
+
+    fun onUpdateHyperOsFreezeCheckedApps(checkedApps: Set<String>, selectAllUserEnabled: Boolean) {
+        viewModelScope.launch {
+            val current = dao.getConfigDirect() ?: configState.value
+            val userEnabledPkgs = _installedApps.value
+                .filter { it.isUserEnabledApp }
+                .map { it.packageName }
+                .toSet()
+            val currentExceptions = current.backgroundAllowedApps
+                .split(",")
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .toSet()
+            val systemExceptionsOnly = currentExceptions - userEnabledPkgs
+
+            val (newFreezeRaw, newExceptionsSet) = when {
+                selectAllUserEnabled -> {
+                    // When 'Select all user enabled apps' is checked, all user-enabled apps are checked
+                    "__ALL_USER_ENABLED__" to systemExceptionsOnly
+                }
+                checkedApps.isEmpty() -> {
+                    "__NONE__" to currentExceptions
+                }
+                else -> {
+                    // Unchecked user-enabled apps are synced into the HyperOS Battery Saver exceptions list
+                    val uncheckedUserApps = userEnabledPkgs - checkedApps
+                    val freezeCsv = if (checkedApps.size == userEnabledPkgs.size && userEnabledPkgs.isNotEmpty()) {
+                        "__ALL_USER_ENABLED__"
+                    } else {
+                        checkedApps.joinToString(",")
+                    }
+                    freezeCsv to (systemExceptionsOnly + uncheckedUserApps)
+                }
+            }
+
+            val updated = current.copy(
+                hyperOsFreezeCheckedApps = newFreezeRaw,
+                backgroundAllowedApps = newExceptionsSet.joinToString(",")
+            )
+            dao.update(updated)
         }
     }
 
@@ -1123,7 +1235,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun refreshKernelSnapshot() {
         viewModelScope.launch {
-            val snap = KernelRamLabRepository.readLiveSnapshot()
+            val snap = KernelRamLabRepository.readLiveSnapshot(_appliedKernelTweaks.value)
             _kernelSnapshot.value = snap
 
             // Auto-safety thermal guard: if max_zone >= 46°C while thermal daemons are stopped, restart them
@@ -1141,42 +1253,48 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onSelectHyperOsTemplate(template: HyperOsProfileTemplate?) {
-        val next = if (_selectedHyperOsTemplate.value == template) null else template
-        _selectedHyperOsTemplate.value = next
-        if (next != null) {
-            val presets = KernelRamLabRepository.getTemplatePresets(next)
-            _stagedKernelTweaks.value = presets
-            val banner = when (next) {
-                HyperOsProfileTemplate.POWERSAVE ->
-                    "Powersave template staged (${presets.size} settings) & sorted for battery saving"
-                HyperOsProfileTemplate.BALANCE_SCREEN_OFF ->
-                    "Balance template staged (${presets.size} settings) · Immediate Battery Saver on screen off ready"
-                HyperOsProfileTemplate.PERFORMANCE ->
-                    "Performance template staged (${presets.size} settings) & sorted for peak speed"
+        viewModelScope.launch {
+            val next = if (_selectedHyperOsTemplate.value == template) null else template
+            _selectedHyperOsTemplate.value = next
+            if (next != null) {
+                val presets = KernelRamLabRepository.getTemplatePresets(next)
+                _stagedKernelTweaks.value = presets
+                val banner = when (next) {
+                    HyperOsProfileTemplate.POWERSAVE ->
+                        "Powersave template staged (${presets.size} settings) & sorted for battery saving"
+                    HyperOsProfileTemplate.BALANCE_SCREEN_OFF ->
+                        "Balance template staged (${presets.size} settings) · Immediate Battery Saver on screen off ready"
+                    HyperOsProfileTemplate.PERFORMANCE ->
+                        "Performance template staged (${presets.size} settings) & sorted for peak speed"
+                }
+                _lastKernelActionBanner.value = banner
+                _statusMessage.value = banner
+            } else {
+                _stagedKernelTweaks.value = emptyMap()
+                _isBalanceScreenOffSaverActive.value = false
+                _lastKernelActionBanner.value = "Template cleared · Showing default order"
             }
-            _lastKernelActionBanner.value = banner
-            _statusMessage.value = banner
-        } else {
-            _stagedKernelTweaks.value = emptyMap()
-            _isBalanceScreenOffSaverActive.value = false
-            _lastKernelActionBanner.value = "Template cleared · Showing default order"
+            persistHyperOsKernelState()
         }
     }
 
     fun onStageKernelTweak(id: String, value: String?) {
-        val currentMap = _stagedKernelTweaks.value.toMutableMap()
-        if (value == null) {
-            currentMap.remove(id)
-        } else {
-            currentMap[id] = value
+        viewModelScope.launch {
+            val currentMap = _stagedKernelTweaks.value.toMutableMap()
+            if (value == null) {
+                currentMap.remove(id)
+            } else {
+                currentMap[id] = value
+            }
+            _stagedKernelTweaks.value = currentMap
+            persistHyperOsKernelState()
         }
-        _stagedKernelTweaks.value = currentMap
     }
 
     fun onRunSingleKernelLine(spec: KernelTweakSpec, value: String) {
         viewModelScope.launch {
             _isBusy.value = true
-            val currentCfg = configState.value
+            val currentCfg = dao.getConfigDirect() ?: configState.value
             val isNonHyperOsProfile =
                 currentCfg.activeProfile != "POWERSAVE" || !currentCfg.hyperOsPowerSaverEnabled
             if (isNonHyperOsProfile && currentCfg.isMasterApplied) {
@@ -1192,6 +1310,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val appliedMap = _appliedKernelTweaks.value.toMutableMap()
                 appliedMap[spec.id] = value
                 _appliedKernelTweaks.value = appliedMap
+                persistHyperOsKernelState()
             }
             _lastKernelActionBanner.value = msg
             _statusMessage.value = msg
@@ -1215,6 +1334,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val appliedMap = _appliedKernelTweaks.value.toMutableMap()
             appliedMap.remove(spec.id)
             _appliedKernelTweaks.value = appliedMap
+            persistHyperOsKernelState()
             val undoMsg = "Restored default (${spec.formatValue(spec.wasValue)}): $msg"
             _lastKernelActionBanner.value = undoMsg
             _statusMessage.value = undoMsg
@@ -1237,21 +1357,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             _isBusy.value = true
 
-            // Coexistence check: HyperOS tweaks can coexist with HyperOS Power Saver in 'Tweaks',
-            // but not with standard Powersave, Balance, or Performance profiles.
-            val currentCfg = configState.value
-            val isCoexistingWithHyperOsSaver =
-                currentCfg.activeProfile == "POWERSAVE" && currentCfg.hyperOsPowerSaverEnabled
-            if (!isCoexistingWithHyperOsSaver) {
-                // Switch Tweaks profile indicator to HyperOS Power Saver compatibility mode
-                dao.update(
-                    currentCfg.copy(
-                        activeProfile = "POWERSAVE",
-                        hyperOsPowerSaverEnabled = true
-                    )
-                )
-            }
-
             val logs = KernelRamLabRepository.applyBatchKernelTweaks(staged)
             val mergedApplied = _appliedKernelTweaks.value.toMutableMap().apply {
                 putAll(staged)
@@ -1263,15 +1368,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _isBalanceScreenOffSaverActive.value =
                 (activeTemplate == HyperOsProfileTemplate.BALANCE_SCREEN_OFF)
 
+            // Persist active template, applied tweaks, and HyperOS Power Saver compatibility in Room DB
+            val currentCfg = dao.getConfigDirect() ?: configState.value
+            dao.update(
+                currentCfg.copy(
+                    activeProfile = "POWERSAVE",
+                    hyperOsPowerSaverEnabled = true,
+                    hyperOsActiveTemplate = activeTemplate?.id.orEmpty(),
+                    hyperOsAppliedTweaks = serializeTweaksMap(mergedApplied),
+                    hyperOsStagedTweaks = "",
+                    hyperOsBalanceScreenOffArmed = _isBalanceScreenOffSaverActive.value
+                )
+            )
+
             val summary = when (activeTemplate) {
                 HyperOsProfileTemplate.BALANCE_SCREEN_OFF ->
-                    "Applied ${logs.size} HyperOS tweaks · Immediate Battery Saver on screen off armed"
+                    "Applied ${logs.size} HyperOS tweaks in RAM · Screen-off Battery Saver armed"
                 HyperOsProfileTemplate.POWERSAVE ->
-                    "Applied ${logs.size} HyperOS Powersave template tweaks in RAM"
+                    "Applied ${logs.size} HyperOS Powersave tweaks permanently in RAM"
                 HyperOsProfileTemplate.PERFORMANCE ->
-                    "Applied ${logs.size} HyperOS Performance template tweaks in RAM"
+                    "Applied ${logs.size} HyperOS Performance tweaks permanently in RAM"
                 null ->
-                    "Applied ${logs.size} HyperOS tweaks in RAM"
+                    "Applied ${logs.size} HyperOS tweaks permanently in RAM"
             }
             _lastKernelActionBanner.value = summary
             _statusMessage.value = summary
@@ -1291,6 +1409,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _appliedKernelTweaks.value = emptyMap()
             _selectedHyperOsTemplate.value = null
             _isBalanceScreenOffSaverActive.value = false
+            persistHyperOsKernelState()
             val logs = KernelRamLabRepository.restoreAllWasValues()
             val summary = logs.firstOrNull() ?: "Restored all HyperOS settings to default values"
             _lastKernelActionBanner.value = summary
@@ -1327,16 +1446,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun onExecuteProcessKernelAction(packageName: String, action: String) {
+    fun onExecuteProcessKernelAction(packageNamesCsvOrToken: String, action: String) {
         viewModelScope.launch {
             _isBusy.value = true
-            val msg = if (packageName == KernelRamLabRepository.ALL_USER_ENABLED_APPS_TOKEN) {
-                val userEnabledPackages = _installedApps.value
-                    .filter { it.isUserEnabledApp }
-                    .map { it.packageName }
-                KernelRamLabRepository.executeBatchProcessKernelAction(userEnabledPackages, action)
-            } else {
-                KernelRamLabRepository.executeProcessKernelAction(packageName, action)
+            val msg = when {
+                packageNamesCsvOrToken == KernelRamLabRepository.ALL_USER_ENABLED_APPS_TOKEN -> {
+                    val userEnabledPackages = _installedApps.value
+                        .filter { it.isUserEnabledApp }
+                        .map { it.packageName }
+                    KernelRamLabRepository.executeBatchProcessKernelAction(userEnabledPackages, action)
+                }
+                packageNamesCsvOrToken.contains(",") -> {
+                    val pkgs = packageNamesCsvOrToken
+                        .split(",")
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() }
+                    KernelRamLabRepository.executeBatchProcessKernelAction(pkgs, action)
+                }
+                packageNamesCsvOrToken.isNotBlank() -> {
+                    KernelRamLabRepository.executeProcessKernelAction(packageNamesCsvOrToken.trim(), action)
+                }
+                else -> {
+                    "No user-enabled apps checked to update"
+                }
             }
             _lastKernelActionBanner.value = msg
             _statusMessage.value = msg

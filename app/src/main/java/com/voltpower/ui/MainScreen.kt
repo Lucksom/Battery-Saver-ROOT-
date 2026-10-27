@@ -672,13 +672,19 @@ fun MainScreen(
                                 }
 
                                 ExpressiveTab.HYPEROS -> {
+                                    val resolvedTemplate = selectedHyperOsTemplate
+                                        ?: com.voltpower.data.root.HyperOsProfileTemplate.entries.find {
+                                            it.id == config.hyperOsActiveTemplate
+                                        }
                                     HyperOsKernelTabScreen(
                                         snapshot = kernelSnapshot,
                                         stagedTweaks = stagedKernelTweaks,
-                                        selectedTemplate = selectedHyperOsTemplate,
-                                        isBalanceScreenOffSaverActive = isBalanceScreenOffSaverActive,
+                                        selectedTemplate = resolvedTemplate,
+                                        isBalanceScreenOffSaverActive = isBalanceScreenOffSaverActive || config.hyperOsBalanceScreenOffArmed,
                                         lastActionBanner = lastKernelActionBanner,
                                         installedApps = installedApps,
+                                        freezeCheckedAppsRaw = config.hyperOsFreezeCheckedApps,
+                                        backgroundAllowedAppsCsv = config.backgroundAllowedApps,
                                         onSelectTemplate = { template ->
                                             viewModel.onSelectHyperOsTemplate(template)
                                         },
@@ -705,6 +711,20 @@ fun MainScreen(
                                         },
                                         onToggleDaemon = { name, start ->
                                             viewModel.onToggleXiaomiDaemon(name, start)
+                                        },
+                                        onUpdateFreezeCheckedApps = { checkedSet, selectAllUserEnabled ->
+                                            viewModel.onUpdateHyperOsFreezeCheckedApps(
+                                                checkedApps = checkedSet,
+                                                selectAllUserEnabled = selectAllUserEnabled
+                                            )
+                                        },
+                                        onUpdateBackgroundAllowedApps = { csv ->
+                                            val set = csv
+                                                .split(",")
+                                                .map { it.trim() }
+                                                .filter { it.isNotEmpty() }
+                                                .toSet()
+                                            viewModel.onUpdateBackgroundAllowedApps(set)
                                         },
                                         onExecuteProcessAction = { pkg, action ->
                                             viewModel.onExecuteProcessKernelAction(pkg, action)
@@ -924,7 +944,7 @@ private fun ExpressiveMonetHeader(
             // Brand + pulsing root status (.brand & .sub)
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "VoltPower",
+                    text = "HyperVolt",
                     fontFamily = SpaceGroteskFontFamily,
                     fontWeight = FontWeight.Bold,
                     fontSize = 26.sp,
