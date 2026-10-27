@@ -1900,33 +1900,10 @@ private fun ExpressiveAppFreezerSection(
                                                 fontSize = 13.5.sp,
                                                 color = roles.onS,
                                                 maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
                                             )
-                                            if (isChecked) {
-                                                Surface(
-                                                    shape = CircleShape,
-                                                    color = roles.primary,
-                                                    contentColor = roles.onPrimary
-                                                ) {
-                                                    Row(
-                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Filled.PushPin,
-                                                            contentDescription = null,
-                                                            modifier = Modifier.size(9.dp)
-                                                        )
-                                                        Text(
-                                                            text = "PINNED",
-                                                            fontFamily = JetBrainsMonoFontFamily,
-                                                            fontWeight = FontWeight.Bold,
-                                                            fontSize = 8.5.sp
-                                                        )
-                                                    }
-                                                }
-                                            } else if (isException) {
+                                            if (!isChecked && isException) {
                                                 Surface(
                                                     shape = CircleShape,
                                                     color = roles.s4,
@@ -1937,6 +1914,8 @@ private fun ExpressiveAppFreezerSection(
                                                         fontFamily = JetBrainsMonoFontFamily,
                                                         fontWeight = FontWeight.SemiBold,
                                                         fontSize = 8.5.sp,
+                                                        maxLines = 1,
+                                                        softWrap = false,
                                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                                     )
                                                 }
