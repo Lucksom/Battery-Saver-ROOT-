@@ -604,6 +604,25 @@ object KernelRamLabRepository {
             functionDesc = "Controls the memory bus bandwidth ceiling linked to the graphics processor.",
             upDownEffect = "Max Bandwidth feeds textures faster in heavy games; Eco Bandwidth saves memory bus power."
         ),
+        KernelTweakSpec(
+            id = "notification_window_blur",
+            section = KernelSection.GPU,
+            title = "Remove Notification Blur",
+            nodePath = "settings:global:disable_window_blurs",
+            wasValue = "0",
+            targetValue = "1",
+            options = listOf("0", "1"),
+            optionLabels = mapOf(
+                "0" to "Blur On (Default)",
+                "1" to "Blur Removed (Save Power)"
+            ),
+            functionDesc = "Turns off real-time background blur behind the notification shade and system panels.",
+            upDownEffect = "Removing notification blur reduces GPU rendering work every time you pull down notifications and saves battery.",
+            customWriteCommand = { value ->
+                "settings put global disable_window_blurs $value 2>/dev/null; settings put system disable_window_blurs $value 2>/dev/null; settings put secure disable_window_blurs $value 2>/dev/null"
+            },
+            customReadCommand = "v=\$(settings get global disable_window_blurs 2>/dev/null); [ \"\$v\" = \"1\" ] && echo 1 || echo 0"
+        ),
 
         // ====================================================================
         // 4. RAM, SWAP & STORAGE
@@ -1485,7 +1504,8 @@ object KernelRamLabRepository {
         if (!RootBridge.isRootAvailable()) return@withContext "Screen-off saver skipped (no root)"
         if (screenOff) {
             val cmd = buildString {
-                append("settings put global low_power 1 2>/dev/null\n")
+                append("if [ \"\$(settings get system POWER_SAVE_MODE_OPEN 2>/dev/null)\" != \"1\" ]; then content call --uri content://com.miui.powercenter.powersaver --method changePowerMode 2>/dev/null; fi\n")
+                append("settings put system POWER_SAVE_MODE_OPEN 1 2>/dev/null\n")
                 append("echo 5000 > /sys/power/pm_freeze_timeout 2>/dev/null\n")
                 append("echo 0 > /sys/power/pm_async 2>/dev/null\n")
                 append("echo 0-1 > /dev/cpuset/background/cpus 2>/dev/null\n")
@@ -1496,7 +1516,8 @@ object KernelRamLabRepository {
         } else {
             val cmd = buildString {
                 if (!keepBatterySaverOnWhenScreenOn) {
-                    append("settings put global low_power 0 2>/dev/null\n")
+                    append("if [ \"\$(settings get system POWER_SAVE_MODE_OPEN 2>/dev/null)\" = \"1\" ]; then content call --uri content://com.miui.powercenter.powersaver --method changePowerMode 2>/dev/null; fi\n")
+                    append("settings put system POWER_SAVE_MODE_OPEN 0 2>/dev/null\n")
                 }
                 append("echo 10000 > /sys/power/pm_freeze_timeout 2>/dev/null\n")
                 append("echo 0-3 > /dev/cpuset/background/cpus 2>/dev/null\n")
@@ -1543,9 +1564,10 @@ object KernelRamLabRepository {
                 "gpu_max_pwrlevel" to "4",
                 "gpu_min_pwrlevel" to "10",
                 "kgsl_busmon_max" to "600000000",
+                "notification_window_blur" to "1",
                 "vm_swappiness" to "60",
                 "vm_min_free_kbytes" to "11584",
-                "vm_vfs_cache_pressure" to "50",
+                "vm_vfs_cache_pressure" to "100",
                 "vm_watermark_scale" to "10",
                 "sda_read_ahead_kb" to "64",
                 "irq_359_msm_drm" to "0-1",
@@ -1590,6 +1612,7 @@ object KernelRamLabRepository {
                 "gpu_max_pwrlevel" to "2",
                 "gpu_min_pwrlevel" to "10",
                 "kgsl_busmon_max" to "873000000",
+                "notification_window_blur" to "0",
                 "vm_swappiness" to "80",
                 "vm_min_free_kbytes" to "24576",
                 "vm_vfs_cache_pressure" to "100",
@@ -1637,6 +1660,7 @@ object KernelRamLabRepository {
                 "gpu_max_pwrlevel" to "0",
                 "gpu_min_pwrlevel" to "8",
                 "kgsl_busmon_max" to "1150000000",
+                "notification_window_blur" to "0",
                 "vm_swappiness" to "60",
                 "vm_min_free_kbytes" to "32768",
                 "vm_vfs_cache_pressure" to "120",
@@ -1714,7 +1738,7 @@ object KernelRamLabRepository {
                 "policy7_max_freq", "policy2_max_freq", "policy5_max_freq", "policy0_max_freq", "policy7_boost",
                 "cpuset_background", "uclamp_bg_max", "uclamp_sysbg_max", "sched_energy_aware",
                 "sched_pelt_multiplier", "uclamp_nnapi_min", "uclamp_topapp_min", "cpuset_misf",
-                "gpu_idle_timer", "gpu_min_pwrlevel", "gpu_max_pwrlevel", "gpu_max_freq", "gpu_min_freq", "kgsl_busmon_max",
+                "gpu_idle_timer", "gpu_min_pwrlevel", "gpu_max_pwrlevel", "gpu_max_freq", "gpu_min_freq", "kgsl_busmon_max", "notification_window_blur",
                 "vm_swappiness", "vm_vfs_cache_pressure", "sda_read_ahead_kb", "vm_min_free_kbytes", "vm_watermark_scale",
                 "battery_charge_control_limit"
             )
@@ -1728,7 +1752,7 @@ object KernelRamLabRepository {
                 "policy5_max_freq", "policy2_max_freq", "policy7_max_freq", "policy0_max_freq",
                 "policy0_min_freq", "policy7_min_freq", "policy2_min_freq", "policy5_min_freq", "cpu6_online",
                 "vm_swappiness", "vm_min_free_kbytes", "vm_watermark_scale", "vm_vfs_cache_pressure", "sda_read_ahead_kb",
-                "gpu_idle_timer", "gpu_max_freq", "gpu_min_freq", "kgsl_busmon_max"
+                "gpu_idle_timer", "gpu_max_freq", "gpu_min_freq", "kgsl_busmon_max", "notification_window_blur"
             )
 
             HyperOsProfileTemplate.PERFORMANCE -> listOf(
@@ -1736,7 +1760,7 @@ object KernelRamLabRepository {
                 "policy7_max_freq", "policy5_max_freq", "policy2_max_freq", "policy0_max_freq",
                 "policy7_boost", "policy5_governor", "walt_hispeed_load", "walt_hispeed_freq",
                 "cpu6_online", "policy7_min_freq", "policy2_min_freq", "policy5_min_freq", "policy0_min_freq",
-                "gpu_max_freq", "gpu_max_pwrlevel", "kgsl_busmon_max", "gpu_idle_timer", "gpu_min_freq", "gpu_min_pwrlevel",
+                "gpu_max_freq", "gpu_max_pwrlevel", "kgsl_busmon_max", "gpu_idle_timer", "gpu_min_freq", "gpu_min_pwrlevel", "notification_window_blur",
                 "thermal_cooling_gpu", "thermal_cooling_cpu3", "thermal_cooling_cdsp",
                 "uclamp_topapp_min", "sched_energy_aware", "sched_pelt_multiplier", "sched_rr_timeslice_ms",
                 "cpuset_misf", "cpuset_background", "uclamp_bg_max", "uclamp_sysbg_max",

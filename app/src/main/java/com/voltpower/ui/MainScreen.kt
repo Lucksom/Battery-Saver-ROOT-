@@ -2785,6 +2785,15 @@ private fun ExpressiveTweaksPage(
                 sysfsCode = "",
                 icon = Icons.Filled.Memory,
                 isChecked = { it.vmDirtyWritebackEnabled }
+            ),
+            TweakItemSpec(
+                key = "controlCenterBlur",
+                category = TweakCategoryFilter.IO,
+                title = "Remove notification blur",
+                subtitle = "Disable real-time GPU window blur on notification shade to save battery",
+                sysfsCode = "",
+                icon = Icons.Filled.Contrast,
+                isChecked = { it.controlCenterBlurEnabled }
             )
         )
     }
@@ -2872,6 +2881,15 @@ private fun ExpressiveTweaksPage(
                 sysfsCode = "",
                 icon = Icons.Filled.Tune,
                 isChecked = { it.hyperOsLock60HzEnabled }
+            ),
+            TweakItemSpec(
+                key = "controlCenterBlur",
+                category = TweakCategoryFilter.BAT,
+                title = "Remove notification blur",
+                subtitle = "Disable real-time GPU window blur on notification shade to save battery",
+                sysfsCode = "",
+                icon = Icons.Filled.Contrast,
+                isChecked = { it.controlCenterBlurEnabled }
             ),
             TweakItemSpec(
                 key = "batterySaverNoDark",

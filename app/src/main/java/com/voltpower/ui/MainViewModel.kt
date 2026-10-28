@@ -118,7 +118,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         val cfg = configState.value
                         val keepOn = cfg.activeProfile == "POWERSAVE" &&
                             cfg.hyperOsPowerSaverEnabled &&
-                            (cfg.systemBatterySaverEnabled || cfg.systemBatterySaverWithoutDarkEnabled)
+                            cfg.systemBatterySaverWithoutDarkEnabled
                         val msg = KernelRamLabRepository.applyImmediateScreenOffBatterySaver(
                             screenOff = false,
                             keepBatterySaverOnWhenScreenOn = keepOn
@@ -732,7 +732,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             hyperOsLock60HzEnabled = selectAll,
                             lock60HzRefreshRateEnabled = selectAll,
                             refreshRateHz = if (selectAll) 60 else 0,
-                            controlCenterBlurEnabled = false,
+                            controlCenterBlurEnabled = selectAll,
                             systemBatterySaverEnabled = selectAll,
                             systemBatterySaverWithoutDarkEnabled = selectAll,
                             systemDarkModeEnabled = false,
@@ -881,7 +881,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             "systemBatterySaver" -> if (enabled) "HyperOS PowerKeeper Battery Saver enabled" else "HyperOS PowerKeeper Battery Saver disabled"
             "batterySaverNoDark" -> if (enabled) "Android & HyperOS system battery saver enabled" else "Android & HyperOS system battery saver disabled"
             "systemDarkMode" -> if (enabled) "Force AMOLED dark mode enabled" else "Force AMOLED dark mode disabled (Light mode restored)"
-            "controlCenterBlur" -> if (enabled) "Remove Control Center blur" else "Control Center blur restored"
+            "controlCenterBlur" -> if (enabled) "Remove notification blur enabled" else "Notification blur restored"
             "lock60Hz" -> if (enabled) "Refresh rate set 60Hz" else "Refresh rate set Auto"
             "hyperOsAodDisabled" -> if (enabled) "Disable Always-On Display (AOD)" else "Always-On Display (AOD) enabled"
             "hyperOsAurogonFreezer" -> if (enabled) "HyperOS Aurogon process freezer enabled" else "HyperOS Aurogon process freezer disabled"
@@ -939,8 +939,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 "backgroundScanning" -> current.copy(backgroundScanningDisabled = enabled)
                 "touchDozeMode" -> current.copy(touchDozeModeEnabled = enabled)
                 "batterySaverNoDark" -> current.copy(
-                    systemBatterySaverWithoutDarkEnabled = enabled,
-                    systemBatterySaverEnabled = if (!enabled) false else current.systemBatterySaverEnabled
+                    systemBatterySaverWithoutDarkEnabled = enabled
                 )
                 "hyperOsAodDisabled" -> current.copy(hyperOsAodDisabled = enabled)
                 "hyperOsAurogonFreezer" -> current.copy(hyperOsAurogonFreezerEnabled = enabled)
@@ -957,8 +956,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
                 "systemBatterySaver" -> current.copy(
-                    systemBatterySaverEnabled = enabled,
-                    systemBatterySaverWithoutDarkEnabled = if (!enabled) false else current.systemBatterySaverWithoutDarkEnabled
+                    systemBatterySaverEnabled = enabled
                 )
                 "systemDarkMode" -> current.copy(systemDarkModeEnabled = enabled)
                 "controlCenterBlur" -> current.copy(controlCenterBlurEnabled = enabled)
@@ -1015,8 +1013,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (anyHyperOsSelected) {
                     current.copy(
                         activeProfile = "POWERSAVE",
-                        hyperOsPowerSaverEnabled = true,
-                        controlCenterBlurEnabled = false
+                        hyperOsPowerSaverEnabled = true
                     )
                 } else {
                     current.copy(
@@ -1032,7 +1029,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         hyperOsLock60HzEnabled = true,
                         lock60HzRefreshRateEnabled = true,
                         refreshRateHz = 60,
-                        controlCenterBlurEnabled = false,
+                        controlCenterBlurEnabled = true,
                         systemBatterySaverEnabled = true,
                         systemBatterySaverWithoutDarkEnabled = true,
                         hyperOsUltraSuperSaveUiEnabled = false
@@ -1040,8 +1037,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } else {
                 current.copy(
-                    hyperOsPowerSaverEnabled = false,
-                    controlCenterBlurEnabled = false
+                    hyperOsPowerSaverEnabled = false
                 )
             }
             dao.update(updated)
