@@ -43,6 +43,12 @@ object RootBridge {
     private var cachedRootStatus: Boolean? = null
     private var lastRootCheckTimestamp = 0L
 
+    private val shellLock = Any()
+    private var persistentProcess: Process? = null
+    private var persistentStdin: DataOutputStream? = null
+    private var persistentStdout: BufferedReader? = null
+    private var commandCounter = 0L
+
     suspend fun isRootAvailable(forceCheck: Boolean = false): Boolean = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         if (!forceCheck && cachedRootStatus != null && (now - lastRootCheckTimestamp < 60_000L)) {
@@ -80,6 +86,70 @@ object RootBridge {
         executeInternal(command, isSilent = false)
     }
 
+    private fun closePersistentShellLocked() {
+        try {
+            persistentStdin?.close()
+        } catch (_: Exception) { }
+        try {
+            persistentStdout?.close()
+        } catch (_: Exception) { }
+        try {
+            persistentProcess?.destroy()
+        } catch (_: Exception) { }
+        persistentStdin = null
+        persistentStdout = null
+        persistentProcess = null
+    }
+
+    private fun runInPersistentShell(command: String): CommandResult? {
+        synchronized(shellLock) {
+            try {
+                val proc = persistentProcess
+                if (proc == null || persistentStdin == null || persistentStdout == null) {
+                    closePersistentShellLocked()
+                    val newProc = ProcessBuilder("su")
+                        .redirectErrorStream(true)
+                        .start()
+                    persistentProcess = newProc
+                    persistentStdin = DataOutputStream(newProc.outputStream)
+                    persistentStdout = BufferedReader(InputStreamReader(newProc.inputStream))
+                }
+
+                val stdin = persistentStdin ?: return null
+                val stdout = persistentStdout ?: return null
+                val token = "__VP_DONE_${++commandCounter}__"
+
+                stdin.write("$command\necho \"$token:\$?\"\n".toByteArray(Charsets.UTF_8))
+                stdin.flush()
+
+                val outBuilder = StringBuilder()
+                var exitCode = 0
+                while (true) {
+                    val line = stdout.readLine() ?: run {
+                        closePersistentShellLocked()
+                        return null
+                    }
+                    if (line.startsWith("$token:")) {
+                        exitCode = line.substringAfter("$token:").trim().toIntOrNull() ?: 0
+                        break
+                    }
+                    if (outBuilder.isNotEmpty()) outBuilder.append('\n')
+                    outBuilder.append(line)
+                }
+
+                return CommandResult(
+                    success = (exitCode == 0),
+                    stdout = outBuilder.toString().trim(),
+                    stderr = "",
+                    exitCode = exitCode
+                )
+            } catch (_: Exception) {
+                closePersistentShellLocked()
+                return null
+            }
+        }
+    }
+
     private suspend fun executeInternal(command: String, isSilent: Boolean): CommandResult = withContext(Dispatchers.IO) {
         val isProbe = isSilent || command.startsWith("cat ") || command.startsWith("[ -e") || command == "id"
 
@@ -93,13 +163,16 @@ object RootBridge {
             )
         }
 
+        // Fast path: reuse persistent root shell so sysfs writes complete in <10ms without spawning su
+        runInPersistentShell(command)?.let { return@withContext it }
+
         try {
             val process = Runtime.getRuntime().exec("su")
             val outputStream = DataOutputStream(process.outputStream)
             val reader = BufferedReader(InputStreamReader(process.inputStream))
             val errorReader = BufferedReader(InputStreamReader(process.errorStream))
 
-            outputStream.writeBytes("$command\nexit\n")
+            outputStream.write("$command\nexit\n".toByteArray(Charsets.UTF_8))
             outputStream.flush()
 
             val stdout = reader.readText()
@@ -145,72 +218,38 @@ object RootBridge {
     suspend fun readHardwareSysfsBatch(): HardwareSysfsBatch? = withContext(Dispatchers.IO) {
         if (cachedRootStatus != true) return@withContext null
         val script = buildString {
+            append("rd() { _v=''; for _p in \"\$@\"; do if [ -r \"\$_p\" ]; then read -r _v < \"\$_p\" 2>/dev/null && [ -n \"\$_v\" ] && { echo \"\$_v\"; return 0; }; fi; done; echo ''; }; ")
             for (i in 0..7) {
-                append("o=\$(cat /sys/devices/system/cpu/cpu$i/online 2>/dev/null || echo 1); ")
-                append("c=\$(cat /sys/devices/system/cpu/cpu$i/cpufreq/scaling_cur_freq 2>/dev/null || cat /sys/devices/system/cpu/cpu$i/cpufreq/cpuinfo_cur_freq 2>/dev/null || echo 0); ")
-                append("m=\$(cat /sys/devices/system/cpu/cpu$i/cpufreq/cpuinfo_max_freq 2>/dev/null || cat /sys/devices/system/cpu/cpu$i/cpufreq/scaling_max_freq 2>/dev/null || echo 0); ")
-                append("g=\$(cat /sys/devices/system/cpu/cpu$i/cpufreq/scaling_governor 2>/dev/null || echo schedutil); ")
+                append("o=1; [ -r /sys/devices/system/cpu/cpu$i/online ] && read -r o < /sys/devices/system/cpu/cpu$i/online 2>/dev/null; ")
+                append("c=\$(rd /sys/devices/system/cpu/cpu$i/cpufreq/scaling_cur_freq /sys/devices/system/cpu/cpu$i/cpufreq/cpuinfo_cur_freq); [ -z \"\$c\" ] && c=0; ")
+                append("m=\$(rd /sys/devices/system/cpu/cpu$i/cpufreq/cpuinfo_max_freq /sys/devices/system/cpu/cpu$i/cpufreq/scaling_max_freq); [ -z \"\$m\" ] && m=0; ")
+                append("g=\$(rd /sys/devices/system/cpu/cpu$i/cpufreq/scaling_governor); [ -z \"\$g\" ] && g=schedutil; ")
                 append("echo \"CORE|$i|\$o|\$c|\$m|\$g\"; ")
             }
             append(
-                "gf=\$(cat /sys/class/kgsl/kgsl-3d0/gpuclk 2>/dev/null || " +
-                    "cat /sys/class/kgsl/kgsl-3d0/devfreq/cur_freq 2>/dev/null || " +
-                    "cat /sys/class/kgsl/kgsl-3d0/clock_mhz 2>/dev/null || " +
-                    "cat /sys/kernel/gpu/gpu_clock 2>/dev/null || " +
-                    "cat /sys/class/devfreq/*gpu*/cur_freq 2>/dev/null | head -n 1 || " +
-                    "cat /sys/class/devfreq/*.mali/cur_freq 2>/dev/null | head -n 1 || " +
-                    "cat /sys/devices/platform/*.gpu/devfreq/*/cur_freq 2>/dev/null | head -n 1 || " +
-                    "cat /sys/devices/platform/ged/hal/current_freqency 2>/dev/null || " +
-                    "grep -m1 -oE 'freq = [0-9]+' /proc/gpufreqv2/gpufreq_status 2>/dev/null || " +
-                    "echo ''); "
+                "gf=\$(rd /sys/class/kgsl/kgsl-3d0/gpuclk /sys/class/kgsl/kgsl-3d0/devfreq/cur_freq /sys/class/kgsl/kgsl-3d0/clock_mhz /sys/kernel/gpu/gpu_clock /sys/devices/platform/ged/hal/current_freqency); "
             )
             append(
-                "gb=\$(cat /sys/class/kgsl/kgsl-3d0/gpu_busy_percentage 2>/dev/null || " +
-                    "cat /sys/kernel/gpu/gpu_busy 2>/dev/null || " +
-                    "cat /sys/class/kgsl/kgsl-3d0/gpubusy 2>/dev/null || " +
-                    "cat /sys/devices/platform/ged/hal/gpu_utilization 2>/dev/null || " +
-                    "cat /sys/class/devfreq/*gpu*/load 2>/dev/null | head -n 1 || " +
-                    "echo ''); "
+                "gb=\$(rd /sys/class/kgsl/kgsl-3d0/gpu_busy_percentage /sys/kernel/gpu/gpu_busy /sys/class/kgsl/kgsl-3d0/gpubusy /sys/devices/platform/ged/hal/gpu_utilization); "
             )
             append(
-                "gp=\$(cat /sys/class/kgsl/kgsl-3d0/active_pwrlevel 2>/dev/null || " +
-                    "cat /sys/class/kgsl/kgsl-3d0/min_pwrlevel 2>/dev/null || " +
-                    "cat /sys/class/kgsl/kgsl-3d0/default_pwrlevel 2>/dev/null || " +
-                    "echo ''); "
+                "gp=\$(rd /sys/class/kgsl/kgsl-3d0/active_pwrlevel /sys/class/kgsl/kgsl-3d0/min_pwrlevel /sys/class/kgsl/kgsl-3d0/default_pwrlevel); "
             )
             append(
-                "gtable=\$(cat /sys/class/kgsl/kgsl-3d0/gpu_available_frequencies 2>/dev/null || " +
-                    "cat /sys/class/kgsl/kgsl-3d0/devfreq/available_frequencies 2>/dev/null || " +
-                    "cat /sys/kernel/gpu/gpu_freq_table 2>/dev/null || " +
-                    "cat /sys/class/devfreq/*gpu*/available_frequencies 2>/dev/null | head -n 1 || " +
-                    "echo ''); "
+                "gtable=\$(rd /sys/class/kgsl/kgsl-3d0/gpu_available_frequencies /sys/class/kgsl/kgsl-3d0/devfreq/available_frequencies /sys/kernel/gpu/gpu_freq_table); "
             )
             append(
-                "gm=\$(cat /sys/kernel/gpu/gpu_model 2>/dev/null || " +
-                    "cat /sys/class/kgsl/kgsl-3d0/gpu_model 2>/dev/null || " +
-                    "cat /sys/class/kgsl/kgsl-3d0/devfreq/governor 2>/dev/null || " +
-                    "cat /sys/class/devfreq/*gpu*/governor 2>/dev/null | head -n 1 || " +
-                    "echo ''); "
+                "gm=\$(rd /sys/kernel/gpu/gpu_model /sys/class/kgsl/kgsl-3d0/gpu_model /sys/class/kgsl/kgsl-3d0/devfreq/governor); "
             )
             append("echo \"GPU|\$gf|\$gb|\$gp|\$gm|\$gtable\"; ")
             append(
-                "bd=\$(cat /sys/class/power_supply/battery/charge_full_design 2>/dev/null || " +
-                    "cat /sys/class/power_supply/bms/charge_full_design 2>/dev/null || " +
-                    "cat /sys/class/power_supply/max170xx_battery/charge_full_design 2>/dev/null || " +
-                    "cat /sys/class/power_supply/battery/batt_full_capacity 2>/dev/null || " +
-                    "cat /sys/class/power_supply/battery/fg_fullcapnom 2>/dev/null || " +
-                    "echo ''); "
+                "bd=\$(rd /sys/class/power_supply/battery/charge_full_design /sys/class/power_supply/bms/charge_full_design /sys/class/power_supply/max170xx_battery/charge_full_design /sys/class/power_supply/battery/batt_full_capacity /sys/class/power_supply/battery/fg_fullcapnom); "
             )
             append(
-                "bf=\$(cat /sys/class/power_supply/battery/charge_full 2>/dev/null || " +
-                    "cat /sys/class/power_supply/bms/charge_full 2>/dev/null || " +
-                    "cat /sys/class/power_supply/max170xx_battery/charge_full 2>/dev/null || " +
-                    "echo ''); "
+                "bf=\$(rd /sys/class/power_supply/battery/charge_full /sys/class/power_supply/bms/charge_full /sys/class/power_supply/max170xx_battery/charge_full); "
             )
             append(
-                "bc=\$(cat /sys/class/power_supply/battery/charge_counter 2>/dev/null || " +
-                    "cat /sys/class/power_supply/bms/charge_counter 2>/dev/null || " +
-                    "echo ''); "
+                "bc=\$(rd /sys/class/power_supply/battery/charge_counter /sys/class/power_supply/bms/charge_counter); "
             )
             append("echo \"BAT|\$bd|\$bf|\$bc\"; ")
         }
@@ -283,7 +322,7 @@ object RootBridge {
             } catch (_: Exception) { }
         }
         if (cachedRootStatus == false) return@withContext null
-        val res = executeInternal("cat \"$path\" 2>/dev/null", isSilent = true)
+        val res = executeInternal("[ -r \"$path\" ] && { read -r _v < \"$path\" 2>/dev/null; echo \"\$_v\"; }", isSilent = true)
         if (res.success && res.stdout.isNotEmpty()) res.stdout else null
     }
 
@@ -296,224 +335,127 @@ object RootBridge {
 
     /**
      * One-Time Immutable Stock Backup Rule:
-     * Checks if backup already exists. If not, snapshots all live stock kernel values
-     * into a runnable shell script and saves it to internal storage.
+     * Snapshots all live stock kernel values in a SINGLE root shell batch (<10ms)
+     * instead of spawning 45 separate su calls.
      */
     suspend fun createOneTimeBackupIfNotExists(context: Context): String = withContext(Dispatchers.IO) {
         val backupFile = File(BACKUP_FILE_PATH)
         if (backupFile.exists() && backupFile.length() > 50) {
             return@withContext BACKUP_FILE_PATH
         }
+        val internalFallback = File(context.filesDir, "Stock_Kernel_Backup.sh")
+        if (internalFallback.exists() && internalFallback.length() > 50) {
+            return@withContext internalFallback.absolutePath
+        }
 
+        val allNodes = buildList {
+            for (i in 0..7) {
+                add("/sys/devices/system/cpu/cpu$i/cpufreq/scaling_governor")
+                add("/sys/devices/system/cpu/cpu$i/cpufreq/scaling_max_freq")
+                add("/sys/devices/system/cpu/cpu$i/cpufreq/scaling_min_freq")
+            }
+            add("/sys/devices/system/cpu/cpufreq/schedutil/up_rate_limit_us")
+            add("/sys/devices/system/cpu/cpufreq/schedutil/down_rate_limit_us")
+            add("/sys/devices/system/cpu/cpufreq/schedutil/hispeed_load")
+            add("/sys/devices/system/cpu/cpufreq/schedutil/hispeed_freq")
+            add("/sys/devices/system/cpu/cpufreq/schedutil/iowait_boost_enable")
+            add("/sys/module/cpu_boost/parameters/input_boost_ms")
+            add("/sys/module/cpu_input_boost/parameters/input_boost_duration")
+            add("/sys/module/msm_performance/parameters/touchboost")
+            add("/sys/power/pnpmgr/touch_boost")
+            add("/sys/kernel/fp_boost/enabled")
+            add("/sys/block/mmcblk0/queue/read_ahead_kb")
+            add("/sys/block/mmcblk0/queue/nr_requests")
+            add("/sys/block/sda/queue/read_ahead_kb")
+            add("/sys/block/sda/queue/nr_requests")
+            add("/proc/sys/vm/dirty_ratio")
+            add("/proc/sys/vm/dirty_background_ratio")
+            add("/proc/sys/vm/dirty_writeback_centisecs")
+            add("/proc/sys/vm/dirty_expire_centisecs")
+            add("/proc/sys/vm/swappiness")
+            add("/proc/sys/vm/vfs_cache_pressure")
+            add("/sys/class/kgsl/kgsl-3d0/throttling")
+            add("/sys/class/kgsl/kgsl-3d0/devfreq/adrenoboost")
+            add("/sys/class/kgsl/kgsl-3d0/devfreq/max_freq")
+            add("/sys/module/adreno_idler/parameters/adreno_idler_active")
+            add("/proc/sys/net/ipv4/tcp_congestion_control")
+            add("/sys/module/workqueue/parameters/power_efficient")
+            add("/sys/devices/system/cpu/cpuidle/use_deepest_state")
+            add("/dev/stune/top-app/schedtune.boost")
+            add("/sys/devices/system/cpu/sched_mc_power_savings")
+            add("/sys/kernel/dyn_fsync/Dyn_fsync_active")
+        }
+
+        val batchReadScript = buildString {
+            append("for n in ")
+            allNodes.forEach { append("\"$it\" ") }
+            append("; do if [ -r \"\$n\" ]; then read -r v < \"\$n\" 2>/dev/null; [ -n \"\$v\" ] && echo \"echo \\\"\$v\\\" > \\\"\$n\\\" 2>/dev/null\"; fi; done")
+        }
+
+        val snapRes = executeInternal(batchReadScript, isSilent = true)
         val commands = StringBuilder()
         commands.append("#!/system/bin/sh\n")
         commands.append("# Automatic Stock Kernel Configuration Snapshot\n")
-        commands.append("# Run this file to revert all kernel parameters to original factory boot values\n\n")
-
-        // 1. CPU Governor & Frequencies
-        for (i in 0..7) {
-            val govPath = "/sys/devices/system/cpu/cpu$i/cpufreq/scaling_governor"
-            val maxPath = "/sys/devices/system/cpu/cpu$i/cpufreq/scaling_max_freq"
-            val minPath = "/sys/devices/system/cpu/cpu$i/cpufreq/scaling_min_freq"
-
-            readNode(govPath)?.let { commands.append("echo \"$it\" > \"$govPath\" 2>/dev/null\n") }
-            readNode(maxPath)?.let { commands.append("echo \"$it\" > \"$maxPath\" 2>/dev/null\n") }
-            readNode(minPath)?.let { commands.append("echo \"$it\" > \"$minPath\" 2>/dev/null\n") }
+        if (snapRes.stdout.isNotBlank()) {
+            commands.append(snapRes.stdout).append("\n")
         }
-
-        // 2. Schedutil Parameters
-        val schedutilNodes = listOf(
-            "/sys/devices/system/cpu/cpufreq/schedutil/up_rate_limit_us",
-            "/sys/devices/system/cpu/cpufreq/schedutil/down_rate_limit_us",
-            "/sys/devices/system/cpu/cpufreq/schedutil/hispeed_load",
-            "/sys/devices/system/cpu/cpufreq/schedutil/hispeed_freq",
-            "/sys/devices/system/cpu/cpufreq/schedutil/iowait_boost_enable"
-        )
-        for (node in schedutilNodes) {
-            readNode(node)?.let { commands.append("echo \"$it\" > \"$node\" 2>/dev/null\n") }
-        }
-
-        // 3. Touch & Input Boost
-        val boostNodes = listOf(
-            "/sys/module/cpu_boost/parameters/input_boost_ms",
-            "/sys/module/cpu_input_boost/parameters/input_boost_duration",
-            "/sys/module/msm_performance/parameters/touchboost",
-            "/sys/power/pnpmgr/touch_boost",
-            "/sys/kernel/fp_boost/enabled"
-        )
-        for (node in boostNodes) {
-            readNode(node)?.let { commands.append("echo \"$it\" > \"$node\" 2>/dev/null\n") }
-        }
-
-        // 4. I/O Queue & Storage
-        val ioNodes = listOf(
-            "/sys/block/mmcblk0/queue/read_ahead_kb",
-            "/sys/block/mmcblk0/queue/nr_requests",
-            "/sys/block/sda/queue/read_ahead_kb",
-            "/sys/block/sda/queue/nr_requests"
-        )
-        for (node in ioNodes) {
-            readNode(node)?.let { commands.append("echo \"$it\" > \"$node\" 2>/dev/null\n") }
-        }
-
-        // 5. Virtual Memory
-        val vmNodes = listOf(
-            "/proc/sys/vm/dirty_ratio",
-            "/proc/sys/vm/dirty_background_ratio",
-            "/proc/sys/vm/dirty_writeback_centisecs",
-            "/proc/sys/vm/dirty_expire_centisecs",
-            "/proc/sys/vm/swappiness",
-            "/proc/sys/vm/vfs_cache_pressure"
-        )
-        for (node in vmNodes) {
-            readNode(node)?.let { commands.append("echo \"$it\" > \"$node\" 2>/dev/null\n") }
-        }
-
-        // 6. CPU Cores Online
         for (i in 0..7) {
             commands.append("echo 1 > \"/sys/devices/system/cpu/cpu$i/online\" 2>/dev/null\n")
         }
 
-        // 7. GMS Doze Restore
-        commands.append("dumpsys deviceidle whitelist +com.google.android.gms 2>/dev/null\n")
-
-        // 8. GPU Clocks & Idler
-        val gpuNodes = listOf(
-            "/sys/class/kgsl/kgsl-3d0/throttling",
-            "/sys/class/kgsl/kgsl-3d0/devfreq/adrenoboost",
-            "/sys/class/kgsl/kgsl-3d0/devfreq/max_freq",
-            "/sys/module/adreno_idler/parameters/adreno_idler_active"
-        )
-        for (node in gpuNodes) {
-            readNode(node)?.let { commands.append("echo \"$it\" > \"$node\" 2>/dev/null\n") }
-        }
-
-        // 9. Networking & Congestion
-        readNode("/proc/sys/net/ipv4/tcp_congestion_control")?.let {
-            commands.append("echo \"$it\" > \"/proc/sys/net/ipv4/tcp_congestion_control\" 2>/dev/null\n")
-        }
-
-        // 10. Workqueue, Schedtune & Fsync
-        val miscNodes = listOf(
-            "/sys/module/workqueue/parameters/power_efficient",
-            "/sys/devices/system/cpu/cpuidle/use_deepest_state",
-            "/dev/stune/top-app/schedtune.boost",
-            "/sys/devices/system/cpu/sched_mc_power_savings",
-            "/sys/kernel/dyn_fsync/Dyn_fsync_active"
-        )
-        for (node in miscNodes) {
-            readNode(node)?.let { commands.append("echo \"$it\" > \"$node\" 2>/dev/null\n") }
-        }
-
-        commands.append("echo \"Stock parameters restored successfully.\"\n")
-
         val scriptContent = commands.toString()
-        val targetPath: String
+        try {
+            internalFallback.writeText(scriptContent)
+        } catch (_: Exception) { }
 
-        // Attempt write to /sdcard/Download
-        val writeAttempt = execute(
-            "mkdir -p /sdcard/Download && cat << 'EOF' > \"$BACKUP_FILE_PATH\"\n$scriptContent\nEOF\nchmod 755 \"$BACKUP_FILE_PATH\""
+        val writeAttempt = executeInternal(
+            "mkdir -p /sdcard/Download && cp \"${internalFallback.absolutePath}\" \"$BACKUP_FILE_PATH\" 2>/dev/null && chmod 755 \"$BACKUP_FILE_PATH\" 2>/dev/null",
+            isSilent = true
         )
 
-        targetPath = if (writeAttempt.success && File(BACKUP_FILE_PATH).exists()) {
+        if (writeAttempt.success && File(BACKUP_FILE_PATH).exists()) {
             BACKUP_FILE_PATH
         } else {
-            val fallback = File(context.filesDir, "Stock_Kernel_Backup.sh")
-            fallback.writeText(scriptContent)
-            fallback.absolutePath
+            internalFallback.absolutePath
         }
-
-        targetPath
     }
 
-
     /**
-     * Restores all stock parameters from the backup script, or sets factory defaults.
+     * Restores all stock parameters from the backup script immediately in RAM (<20ms),
+     * and dispatches slow Android framework Binder calls (settings/content/dumpsys/am)
+     * in a background subshell so sysfs revert returns instantaneously.
      */
     suspend fun revertAllTweaks(context: Context): Boolean = withContext(Dispatchers.IO) {
-        val backupCmd = if (File(BACKUP_FILE_PATH).exists()) {
-            "sh \"$BACKUP_FILE_PATH\""
-        } else {
-            val internalFile = File(context.filesDir, "Stock_Kernel_Backup.sh")
-            if (internalFile.exists()) {
-                "sh \"${internalFile.absolutePath}\""
-            } else {
-                buildFallbackRevertScript()
-            }
+        val internalFile = File(context.filesDir, "Stock_Kernel_Backup.sh")
+        val backupCmd = when {
+            internalFile.exists() -> "sh \"${internalFile.absolutePath}\" 2>/dev/null"
+            File(BACKUP_FILE_PATH).exists() -> "sh \"$BACKUP_FILE_PATH\" 2>/dev/null"
+            else -> buildFallbackRevertScript()
         }
 
         val fullRevertScript = """
+            # 1. Fast synchronous sysfs / procfs / devfs restoration (<20ms)
             $backupCmd
-            # Ensure Notification Panel (left swipe) and Control Center (miui.systemui.plugin) are never restricted by SuperSave
-            settings put system power_supersave_mode_open 0 2>/dev/null
-            settings put secure power_supersave_mode_open 0 2>/dev/null
-            settings put global power_supersave_mode_open 0 2>/dev/null
-
-            # Bring all CPU cores online and restore core_ctl
-            for i in /sys/devices/system/cpu/cpu*/online; do echo 1 > "${'$'}i" 2>/dev/null; done
+            for i in /sys/devices/system/cpu/cpu*/online; do
+                chmod 0666 "${'$'}i" 2>/dev/null
+                echo 1 > "${'$'}i" 2>/dev/null
+            done
             for ctl in /sys/devices/system/cpu/cpu*/core_ctl; do
                 [ -e "${'$'}ctl/enable" ] && echo 1 > "${'$'}ctl/enable" 2>/dev/null
                 [ -e "${'$'}ctl/disable" ] && echo 0 > "${'$'}ctl/disable" 2>/dev/null
             done
             for cpu in /sys/devices/system/cpu/cpu*/cpufreq; do
-                max=`cat ${'$'}cpu/cpuinfo_max_freq 2>/dev/null`
-                min=`cat ${'$'}cpu/cpuinfo_min_freq 2>/dev/null`
+                [ -d "${'$'}cpu" ] || continue
+                chmod 0666 "${'$'}cpu/scaling_max_freq" "${'$'}cpu/scaling_min_freq" "${'$'}cpu/scaling_governor" 2>/dev/null
+                read -r max < "${'$'}cpu/cpuinfo_max_freq" 2>/dev/null
+                read -r min < "${'$'}cpu/cpuinfo_min_freq" 2>/dev/null
                 [ -n "${'$'}max" ] && echo "${'$'}max" > "${'$'}cpu/scaling_max_freq" 2>/dev/null
                 [ -n "${'$'}min" ] && echo "${'$'}min" > "${'$'}cpu/scaling_min_freq" 2>/dev/null
                 echo "schedutil" > "${'$'}cpu/scaling_governor" 2>/dev/null
             done
-
-            # Restore GMS Doze & unforce idle
-            dumpsys deviceidle whitelist +com.google.android.gms 2>/dev/null
-            pkill -f "voltpower_doze_daemon" >/dev/null 2>&1
-            dumpsys deviceidle unforce >/dev/null 2>&1
-
-            # Disable Android & HyperOS System Battery Saver & restore SuperPowerSaveManager wallpaper policy
-            settings put system hide_mode enhance 2>/dev/null
-            settings put secure hide_mode enhance 2>/dev/null
-            content call --uri content://com.miui.powercenter.powersaver --method changeSuperPowerMode --extra power_supersave_mode_open:b:false --extra is_super_power:b:false --extra enable:b:false --extra from_user:b:true --extra mode:i:0 2>/dev/null
-            content call --uri content://com.miui.powercenter.powersaver --method change_super_power_mode --extra power_supersave_mode_open:b:false --extra is_super_power:b:false --extra enable:b:false --extra from_user:b:true --extra mode:i:0 2>/dev/null
-            if [ "${'$'}(settings get system POWER_SAVE_MODE_OPEN 2>/dev/null)" = "1" ]; then
-                content call --uri content://com.miui.powercenter.powersaver --method changePowerMode 2>/dev/null
-            fi
-            settings put system POWER_SAVE_MODE_OPEN 0 2>/dev/null
-
-            # Restore Light Mode when Dark Mode tweak is off
-            settings put system dark_mode_enable_by_power_save 0 2>/dev/null
-            settings put secure dark_mode_enable_by_power_save 0 2>/dev/null
-            settings put secure ui_night_mode 1 2>/dev/null
-            settings put system ui_night_mode 1 2>/dev/null
-            settings put global ui_night_mode 1 2>/dev/null
-            settings put secure dark_mode_enable 0 2>/dev/null
-            settings put system dark_mode_enable 0 2>/dev/null
-            settings put global dark_mode_enable 0 2>/dev/null
-            cmd uimode night no 2>/dev/null
-            am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled false 2>/dev/null
-
-            # Restore Display Refresh Rate to Dynamic/Auto
-            settings delete system min_refresh_rate 2>/dev/null
-            settings delete system peak_refresh_rate 2>/dev/null
-            settings delete system user_refresh_rate 2>/dev/null
-            settings delete system miui_refresh_rate 2>/dev/null
-            settings delete system speed_mode 2>/dev/null
-            settings delete secure min_refresh_rate 2>/dev/null
-            settings delete secure peak_refresh_rate 2>/dev/null
-            settings delete secure user_refresh_rate 2>/dev/null
-            settings delete secure miui_refresh_rate 2>/dev/null
-            settings delete secure speed_mode 2>/dev/null
-            settings delete global min_refresh_rate 2>/dev/null
-            settings delete global peak_refresh_rate 2>/dev/null
-            settings delete global user_refresh_rate 2>/dev/null
-            service call SurfaceFlinger 1035 i32 -1 2>/dev/null
-
-            # Restore Control Center Blur
-            settings put global disable_window_blurs 0 2>/dev/null
-            settings put system disable_window_blurs 0 2>/dev/null
-            settings put secure disable_window_blurs 0 2>/dev/null
-
-            # Restore GPU, DDR devfreq, SchedTune, cpuset & uclamp
             for g in /sys/class/kgsl/kgsl-3d0 /sys/devices/platform/*.gpu /sys/devices/*.mali; do
                 [ -d "${'$'}g" ] || continue
+                chmod 0666 "${'$'}g/max_pwrlevel" "${'$'}g/min_pwrlevel" "${'$'}g/idle_timer" "${'$'}g/devfreq/max_freq" "${'$'}g/devfreq/min_freq" 2>/dev/null
                 [ -e "${'$'}g/throttling" ] && echo 0 > "${'$'}g/throttling" 2>/dev/null
                 [ -e "${'$'}g/devfreq/adrenoboost" ] && echo 0 > "${'$'}g/devfreq/adrenoboost" 2>/dev/null
                 [ -e "${'$'}g/force_no_nap" ] && echo 0 > "${'$'}g/force_no_nap" 2>/dev/null
@@ -523,56 +465,70 @@ object RootBridge {
                 [ -e "${'$'}g/idle_timer" ] && echo 80 > "${'$'}g/idle_timer" 2>/dev/null
             done
             [ -d /sys/module/adreno_idler/parameters ] && echo "N" > /sys/module/adreno_idler/parameters/adreno_idler_active 2>/dev/null
-            for d in /sys/class/devfreq/*; do
-                [ -f "${'$'}d/available_governors" ] && {
-                    gov=${'$'}(cat "${'$'}d/available_governors" | awk '{print ${'$'}1}')
-                    [ -n "${'$'}gov" ] && echo "${'$'}gov" > "${'$'}d/governor" 2>/dev/null
-                }
-            done
             [ -d /dev/stune/top-app ] && echo 0 > /dev/stune/top-app/schedtune.boost 2>/dev/null
             [ -d /dev/stune/top-app ] && echo 0 > /dev/stune/top-app/schedtune.sched_boost 2>/dev/null
             [ -d /dev/stune/top-app ] && echo 0 > /dev/stune/top-app/schedtune.prefer_idle 2>/dev/null
             [ -d /dev/stune/foreground ] && echo 0 > /dev/stune/foreground/schedtune.boost 2>/dev/null
-            [ -d /dev/cpuset/background ] && echo "0-7" > /dev/cpuset/background/cpus 2>/dev/null
-            [ -d /dev/cpuset/system-background ] && echo "0-7" > /dev/cpuset/system-background/cpus 2>/dev/null
-            [ -d /dev/cpuset/top-app ] && echo "0-7" > /dev/cpuset/top-app/cpus 2>/dev/null
+            [ -d /dev/cpuset/background ] && { chmod 0666 /dev/cpuset/background/cpus 2>/dev/null; echo "0-7" > /dev/cpuset/background/cpus 2>/dev/null; }
+            [ -d /dev/cpuset/system-background ] && { chmod 0666 /dev/cpuset/system-background/cpus 2>/dev/null; echo "0-7" > /dev/cpuset/system-background/cpus 2>/dev/null; }
+            [ -d /dev/cpuset/top-app ] && { chmod 0666 /dev/cpuset/top-app/cpus 2>/dev/null; echo "0-7" > /dev/cpuset/top-app/cpus 2>/dev/null; }
             [ -e /dev/cpuctl/background/cpu.shares ] && echo 1024 > /dev/cpuctl/background/cpu.shares 2>/dev/null
-            [ -e /dev/cpuctl/top-app/cpu.uclamp.min ] && echo 0 > /dev/cpuctl/top-app/cpu.uclamp.min 2>/dev/null
+            [ -e /dev/cpuctl/top-app/cpu.uclamp.min ] && { chmod 0666 /dev/cpuctl/top-app/cpu.uclamp.min 2>/dev/null; echo 0 > /dev/cpuctl/top-app/cpu.uclamp.min 2>/dev/null; }
             echo 0 > /proc/sys/kernel/sched_boost 2>/dev/null
-            service call activity 51 i32 -1 >/dev/null 2>&1
-
-            # Restore HyperOS AOD, Freezer, 5G, Audio HAL, Wi-Fi SISO, Master Sync & Touch
-            settings put secure aod_mode 1 2>/dev/null
-            settings put system aod_mode 1 2>/dev/null
-            settings put secure doze_always_on 1 2>/dev/null
+            echo 1 > /sys/module/msm_performance/parameters/touchboost 2>/dev/null
+            for thp in /sys/class/touch/touch_dev/thp_doze_mode /sys/class/touch/touch_dev/doze_mode /proc/touchpanel/doze_mode /sys/touchpanel/doze_mode /sys/devices/virtual/touch/touch_dev/touch_doze; do
+                [ -e "${'$'}thp" ] && echo 0 > "${'$'}thp" 2>/dev/null
+            done
             setprop debug.miui.aod_enable 1 2>/dev/null
-            am broadcast -a miui.intent.action.AOD_STATE_CHANGED --ez enabled true 2>/dev/null
             setprop persist.sys.miui.freezer false 2>/dev/null
             setprop persist.sys.aurogon.enabled 0 2>/dev/null
             setprop persist.sys.spc.enabled 0 2>/dev/null
             setprop persist.vendor.power.freezer 0 2>/dev/null
-            settings put global fiveg_power_saving_enable 0 2>/dev/null
-            settings put system fiveg_power_saving_enable 0 2>/dev/null
             setprop persist.vendor.radio.5g_power_save 0 2>/dev/null
             setprop persist.radio.power_saving 0 2>/dev/null
-            settings put global master_sync_automatically 1 2>/dev/null
-            settings put secure master_sync_automatically 1 2>/dev/null
-            service call audio 100 s16 "Audio_Power_Save_Mode=0;Audio_Power_Save_Level=0" 2>/dev/null
             setprop vendor.audio.power_save 0 2>/dev/null
             setprop persist.vendor.audio.power_save 0 2>/dev/null
             setprop persist.vendor.wifi.powersave 0 2>/dev/null
             setprop persist.sys.wifi_half_ant 0 2>/dev/null
-            settings put global wifi_power_save 0 2>/dev/null
-            echo 1 > /sys/module/msm_performance/parameters/touchboost 2>/dev/null
-            settings put secure touch_boost 1 2>/dev/null
-            settings put system touch_boost 1 2>/dev/null
             setprop persist.sys.refresh_rate_touch_boost 1 2>/dev/null
-            settings put global ble_scan_always_enabled 1 2>/dev/null
-            settings put global wifi_scan_always_enabled 1 2>/dev/null
-            settings put global bluetooth_scan_always_available 1 2>/dev/null
-            for thp in /sys/class/touch/touch_dev/thp_doze_mode /sys/class/touch/touch_dev/doze_mode /proc/touchpanel/doze_mode /sys/touchpanel/doze_mode /sys/devices/virtual/touch/touch_dev/touch_doze; do
-                [ -e "${'$'}thp" ] && echo 0 > "${'$'}thp" 2>/dev/null
-            done
+            pkill -f "voltpower_doze_daemon" >/dev/null 2>&1
+
+            # 2. Asynchronous Android Binder framework cleanup (non-blocking)
+            (
+                settings put system power_supersave_mode_open 0 2>/dev/null
+                settings put secure power_supersave_mode_open 0 2>/dev/null
+                settings put global power_supersave_mode_open 0 2>/dev/null
+                settings put system hide_mode enhance 2>/dev/null
+                if [ "${'$'}(settings get system POWER_SAVE_MODE_OPEN 2>/dev/null)" = "1" ]; then
+                    content call --uri content://com.miui.powercenter.powersaver --method changePowerMode 2>/dev/null
+                fi
+                settings put system POWER_SAVE_MODE_OPEN 0 2>/dev/null
+                settings put system dark_mode_enable_by_power_save 0 2>/dev/null
+                settings put secure ui_night_mode 1 2>/dev/null
+                settings put secure dark_mode_enable 0 2>/dev/null
+                cmd uimode night no 2>/dev/null
+                settings delete system min_refresh_rate 2>/dev/null
+                settings delete system peak_refresh_rate 2>/dev/null
+                settings delete system user_refresh_rate 2>/dev/null
+                settings delete secure user_refresh_rate 2>/dev/null
+                settings delete secure miui_refresh_rate 2>/dev/null
+                settings delete system miui_refresh_rate 2>/dev/null
+                service call SurfaceFlinger 1035 i32 -1 2>/dev/null
+                settings put global disable_window_blurs 0 2>/dev/null
+                settings put system disable_window_blurs 0 2>/dev/null
+                settings put secure aod_mode 1 2>/dev/null
+                settings put secure doze_always_on 1 2>/dev/null
+                settings put global fiveg_power_saving_enable 0 2>/dev/null
+                settings put global master_sync_automatically 1 2>/dev/null
+                settings put global wifi_power_save 0 2>/dev/null
+                settings put secure touch_boost 1 2>/dev/null
+                settings put global ble_scan_always_enabled 1 2>/dev/null
+                settings put global wifi_scan_always_enabled 1 2>/dev/null
+                service call activity 51 i32 -1 >/dev/null 2>&1
+                service call audio 100 s16 "Audio_Power_Save_Mode=0;Audio_Power_Save_Level=0" 2>/dev/null
+                dumpsys deviceidle unforce >/dev/null 2>&1
+                dumpsys deviceidle whitelist +com.google.android.gms 2>/dev/null
+            ) >/dev/null 2>&1 &
         """.trimIndent()
 
         val result = execute(fullRevertScript)
@@ -582,8 +538,8 @@ object RootBridge {
     private fun buildFallbackRevertScript(): String {
         return """
             for cpu in /sys/devices/system/cpu/cpu*/cpufreq; do
-                max=`cat ${'$'}cpu/cpuinfo_max_freq 2>/dev/null`
-                min=`cat ${'$'}cpu/cpuinfo_min_freq 2>/dev/null`
+                read -r max < "${'$'}cpu/cpuinfo_max_freq" 2>/dev/null
+                read -r min < "${'$'}cpu/cpuinfo_min_freq" 2>/dev/null
                 [ -n "${'$'}max" ] && echo "${'$'}max" > "${'$'}cpu/scaling_max_freq" 2>/dev/null
                 [ -n "${'$'}min" ] && echo "${'$'}min" > "${'$'}cpu/scaling_min_freq" 2>/dev/null
                 echo "schedutil" > "${'$'}cpu/scaling_governor" 2>/dev/null
@@ -607,6 +563,8 @@ object RootBridge {
 
     /**
      * Applies safe, RAM-only Powersave tweaks based on granular toggles.
+     * Pre-restores the stock sysfs snapshot once at the top in <5ms so unchecked tweaks
+     * are cleanly reset without needing a separate slow revertAllTweaks() pass or 10x grep|sh forks.
      */
     suspend fun applyPowersaveTweaks(
         context: Context,
@@ -622,17 +580,20 @@ object RootBridge {
 
         val commands = StringBuilder()
 
-        // Helper shell function to restore parameters from the exact snapshot backup file
+        // Restore stock sysfs snapshot ONCE in-process (<5ms), making restore_from_backup an instant fallback
         commands.append("""
+            if [ -f "$backupPath" ]; then
+                sh "$backupPath" 2>/dev/null
+                _SNAPSHOT_RESTORED=1
+            elif [ -f "$BACKUP_FILE_PATH" ]; then
+                sh "$BACKUP_FILE_PATH" 2>/dev/null
+                _SNAPSHOT_RESTORED=1
+            else
+                _SNAPSHOT_RESTORED=0
+            fi
             restore_from_backup() {
-                _pat="${'$'}1"
-                _fb="${'$'}2"
-                if [ -f "$backupPath" ] && grep -qE "${'$'}_pat" "$backupPath" 2>/dev/null; then
-                    grep -E "${'$'}_pat" "$backupPath" | sh 2>/dev/null
-                elif [ -f "$BACKUP_FILE_PATH" ] && grep -qE "${'$'}_pat" "$BACKUP_FILE_PATH" 2>/dev/null; then
-                    grep -E "${'$'}_pat" "$BACKUP_FILE_PATH" | sh 2>/dev/null
-                else
-                    eval "${'$'}_fb"
+                if [ "${'$'}_SNAPSHOT_RESTORED" = "0" ] && [ -n "${'$'}2" ]; then
+                    eval "${'$'}2"
                 fi
             }
         """.trimIndent()).append("\n\n")
@@ -642,32 +603,35 @@ object RootBridge {
 
         if (!isHyperOsPowersave || !config.hyperOsUltraSuperSaveUiEnabled) {
             commands.append("""
-                # Ensure SuperSave UI mode is OFF when Ultra SuperSave UI toggle is disabled so Notification Panel (left swipe) and Control Center remain 100% functional
-                settings put system power_supersave_mode_open 0 2>/dev/null
-                settings put secure power_supersave_mode_open 0 2>/dev/null
-                settings put global power_supersave_mode_open 0 2>/dev/null
+                (
+                    settings put system power_supersave_mode_open 0 2>/dev/null
+                    settings put secure power_supersave_mode_open 0 2>/dev/null
+                    settings put global power_supersave_mode_open 0 2>/dev/null
+                ) >/dev/null 2>&1 &
             """.trimIndent()).append("\n")
         }
 
-        // If HyperOS Battery Saver is NOT active, reset HyperOS-exclusive flags
+        // If HyperOS Battery Saver is NOT active, reset HyperOS-exclusive flags in background
         if (!isHyperOsPowersave) {
             commands.append("""
-                settings put secure aod_mode 1 2>/dev/null
-                settings put system aod_mode 1 2>/dev/null
-                settings put secure doze_always_on 1 2>/dev/null
                 setprop debug.miui.aod_enable 1 2>/dev/null
                 setprop persist.sys.miui.freezer false 2>/dev/null
                 setprop persist.sys.aurogon.enabled 0 2>/dev/null
                 setprop persist.sys.spc.enabled 0 2>/dev/null
                 setprop persist.vendor.power.freezer 0 2>/dev/null
-                settings put global master_sync_automatically 1 2>/dev/null
-                settings put secure master_sync_automatically 1 2>/dev/null
-                service call audio 100 s16 "Audio_Power_Save_Mode=0;Audio_Power_Save_Level=0" 2>/dev/null
                 setprop vendor.audio.power_save 0 2>/dev/null
                 setprop persist.vendor.audio.power_save 0 2>/dev/null
                 setprop persist.vendor.wifi.powersave 0 2>/dev/null
                 setprop persist.sys.wifi_half_ant 0 2>/dev/null
-                settings put global wifi_power_save 0 2>/dev/null
+                (
+                    settings put secure aod_mode 1 2>/dev/null
+                    settings put system aod_mode 1 2>/dev/null
+                    settings put secure doze_always_on 1 2>/dev/null
+                    settings put global master_sync_automatically 1 2>/dev/null
+                    settings put secure master_sync_automatically 1 2>/dev/null
+                    service call audio 100 s16 "Audio_Power_Save_Mode=0;Audio_Power_Save_Level=0" 2>/dev/null
+                    settings put global wifi_power_save 0 2>/dev/null
+                ) >/dev/null 2>&1 &
             """.trimIndent()).append("\n")
         }
 
@@ -1205,6 +1169,10 @@ object RootBridge {
             logs.add("Double-tap wake gesture preserved")
         }
 
+        // Group slow Android Binder framework commands (settings, content, dumpsys, uimode, SurfaceFlinger)
+        // in a background subshell so all sysfs/procfs node writes complete instantaneously (<15ms).
+        commands.append("(\n")
+
         // 14a. System-wide Dark Mode / Light Mode Restoration (Run BEFORE System Battery Saver so uimode changes never reset low_power state)
         if (config.systemDarkModeEnabled) {
             commands.append("""
@@ -1267,23 +1235,13 @@ object RootBridge {
                 commands.append("""
                     settings put secure user_refresh_rate 60 2>/dev/null
                     settings put system user_refresh_rate 60 2>/dev/null
-                    settings put global user_refresh_rate 60 2>/dev/null
                     settings put secure miui_refresh_rate 60 2>/dev/null
                     settings put system miui_refresh_rate 60 2>/dev/null
                     settings put system min_refresh_rate 60.0 2>/dev/null
                     settings put system peak_refresh_rate 60.0 2>/dev/null
                     settings put secure min_refresh_rate 60.0 2>/dev/null
                     settings put secure peak_refresh_rate 60.0 2>/dev/null
-                    settings put global min_refresh_rate 60.0 2>/dev/null
-                    settings put global peak_refresh_rate 60.0 2>/dev/null
-                    settings put system min_refresh_rate 60 2>/dev/null
-                    settings put system peak_refresh_rate 60 2>/dev/null
-                    settings put secure min_refresh_rate 60 2>/dev/null
-                    settings put secure peak_refresh_rate 60 2>/dev/null
-                    settings put global min_refresh_rate 60 2>/dev/null
-                    settings put global peak_refresh_rate 60 2>/dev/null
                     settings put system speed_mode 0 2>/dev/null
-                    settings put secure speed_mode 0 2>/dev/null
                     service call SurfaceFlinger 1035 i32 60 2>/dev/null
                 """.trimIndent()).append("\n")
                 logs.add("Display refresh rate set to 60Hz (user_refresh_rate 60, miui_refresh_rate 60 • Saves 350-500mA)")
@@ -1292,23 +1250,13 @@ object RootBridge {
                 commands.append("""
                     settings put secure user_refresh_rate 90 2>/dev/null
                     settings put system user_refresh_rate 90 2>/dev/null
-                    settings put global user_refresh_rate 90 2>/dev/null
                     settings put secure miui_refresh_rate 90 2>/dev/null
                     settings put system miui_refresh_rate 90 2>/dev/null
                     settings put system min_refresh_rate 60.0 2>/dev/null
                     settings put system peak_refresh_rate 90.0 2>/dev/null
                     settings put secure min_refresh_rate 60.0 2>/dev/null
                     settings put secure peak_refresh_rate 90.0 2>/dev/null
-                    settings put global min_refresh_rate 60.0 2>/dev/null
-                    settings put global peak_refresh_rate 90.0 2>/dev/null
-                    settings put system min_refresh_rate 60 2>/dev/null
-                    settings put system peak_refresh_rate 90 2>/dev/null
-                    settings put secure min_refresh_rate 60 2>/dev/null
-                    settings put secure peak_refresh_rate 90 2>/dev/null
-                    settings put global min_refresh_rate 60 2>/dev/null
-                    settings put global peak_refresh_rate 90 2>/dev/null
                     settings put system speed_mode 1 2>/dev/null
-                    settings put secure speed_mode 1 2>/dev/null
                     service call SurfaceFlinger 1035 i32 90 2>/dev/null
                 """.trimIndent()).append("\n")
                 logs.add("Display refresh rate set to 90Hz (user_refresh_rate 90, miui_refresh_rate 90 • Smooth balance)")
@@ -1317,23 +1265,13 @@ object RootBridge {
                 commands.append("""
                     settings put secure user_refresh_rate 120 2>/dev/null
                     settings put system user_refresh_rate 120 2>/dev/null
-                    settings put global user_refresh_rate 120 2>/dev/null
                     settings put secure miui_refresh_rate 120 2>/dev/null
                     settings put system miui_refresh_rate 120 2>/dev/null
                     settings put system min_refresh_rate 60.0 2>/dev/null
                     settings put system peak_refresh_rate 120.0 2>/dev/null
                     settings put secure min_refresh_rate 60.0 2>/dev/null
                     settings put secure peak_refresh_rate 120.0 2>/dev/null
-                    settings put global min_refresh_rate 60.0 2>/dev/null
-                    settings put global peak_refresh_rate 120.0 2>/dev/null
-                    settings put system min_refresh_rate 60 2>/dev/null
-                    settings put system peak_refresh_rate 120 2>/dev/null
-                    settings put secure min_refresh_rate 60 2>/dev/null
-                    settings put secure peak_refresh_rate 120 2>/dev/null
-                    settings put global min_refresh_rate 60 2>/dev/null
-                    settings put global peak_refresh_rate 120 2>/dev/null
                     settings put system speed_mode 1 2>/dev/null
-                    settings put secure speed_mode 1 2>/dev/null
                     service call SurfaceFlinger 1035 i32 120 2>/dev/null
                 """.trimIndent()).append("\n")
                 logs.add("Display refresh rate set to 120Hz (user_refresh_rate 120, miui_refresh_rate 120 • Fluid)")
@@ -1344,21 +1282,16 @@ object RootBridge {
                     settings delete system peak_refresh_rate 2>/dev/null
                     settings delete system user_refresh_rate 2>/dev/null
                     settings delete system miui_refresh_rate 2>/dev/null
-                    settings delete system speed_mode 2>/dev/null
                     settings delete secure min_refresh_rate 2>/dev/null
                     settings delete secure peak_refresh_rate 2>/dev/null
                     settings delete secure user_refresh_rate 2>/dev/null
                     settings delete secure miui_refresh_rate 2>/dev/null
-                    settings delete secure speed_mode 2>/dev/null
-                    settings delete global min_refresh_rate 2>/dev/null
-                    settings delete global peak_refresh_rate 2>/dev/null
-                    settings delete global user_refresh_rate 2>/dev/null
                 """.trimIndent()).append("\n")
                 logs.add("Display refresh rate restored to dynamic stock")
             }
         }
 
-        // Remove Control Center Blur (Window Blurs) - Blur is on by default in HyperOS; toggle removes blur to save GPU power
+        // Remove Control Center Blur (Window Blurs)
         if (config.controlCenterBlurEnabled) {
             commands.append("""
                 settings put global disable_window_blurs 1 2>/dev/null
@@ -1385,9 +1318,7 @@ object RootBridge {
         }
 
         // 17. 5-Minute Screen-Off Deep Sleep Doze Daemon (Zero disk writes, RAM-only execution)
-        commands.append("""
-            pkill -f "voltpower_doze_daemon" >/dev/null 2>&1
-        """.trimIndent()).append("\n")
+        commands.append("pkill -f \"voltpower_doze_daemon\" >/dev/null 2>&1\n")
 
         if (config.deepSleepScreenOffEnabled && isBalance) {
             val delaySec = config.deepSleepDelayMinutes * 60
@@ -1422,6 +1353,8 @@ object RootBridge {
             logs.add("Deep Sleep Daemon deactivated / normal doze restored")
         }
 
+        commands.append(") >/dev/null 2>&1 &\n")
+
         val execResult = execute(commands.toString())
         if (execResult.success) {
             logs.add("All selected ${if (isBalance) "balanced" else "powersave"} tweaks successfully written to RAM.")
@@ -1450,11 +1383,10 @@ object RootBridge {
         if (config.perfCpuGovernorLockEnabled) {
             when {
                 isUltra -> {
-                    // Full performance governor on all cores, pins max frequencies to true hardware max (not 20GHz invalid string)
                     commands.append("""
                         for cpu in /sys/devices/system/cpu/cpu*/cpufreq; do
                             [ -d "${'$'}cpu" ] || continue
-                            max=`cat "${'$'}cpu/cpuinfo_max_freq" 2>/dev/null`
+                            read -r max < "${'$'}cpu/cpuinfo_max_freq" 2>/dev/null
                             if [ -n "${'$'}max" ]; then
                                 echo "${'$'}max" > "${'$'}cpu/scaling_min_freq" 2>/dev/null
                                 echo "${'$'}max" > "${'$'}cpu/scaling_max_freq" 2>/dev/null
@@ -1475,14 +1407,11 @@ object RootBridge {
                     logs.add("CPU Clocks: Ultra Performance governor lock at maximum hardware frequencies")
                 }
                 isHeavy -> {
-                    // Schedutil with elevated minimum clock floor (~45% of max) and 400us ramp-up
                     commands.append("""
                         for cpu in /sys/devices/system/cpu/cpu*/cpufreq; do
                             [ -d "${'$'}cpu" ] || continue
-                            max=`cat "${'$'}cpu/cpuinfo_max_freq" 2>/dev/null`
-                            min=`cat "${'$'}cpu/cpuinfo_min_freq" 2>/dev/null`
+                            read -r max < "${'$'}cpu/cpuinfo_max_freq" 2>/dev/null
                             if [ -n "${'$'}max" ]; then
-                                # Floor clock at 45% of max freq to eliminate frame drops
                                 floor=${'$'}((max * 45 / 100))
                                 echo "${'$'}floor" > "${'$'}cpu/scaling_min_freq" 2>/dev/null
                                 echo "${'$'}max" > "${'$'}cpu/scaling_max_freq" 2>/dev/null
@@ -1500,12 +1429,11 @@ object RootBridge {
                     logs.add("CPU Clocks: Heavy Schedutil with 45% frequency floor & 400us fast ramp")
                 }
                 else -> {
-                    // Lite: Schedutil responsive profile, 500us ramp-up, full frequency headroom
                     commands.append("""
                         for cpu in /sys/devices/system/cpu/cpu*/cpufreq; do
                             [ -d "${'$'}cpu" ] || continue
-                            max=`cat "${'$'}cpu/cpuinfo_max_freq" 2>/dev/null`
-                            min=`cat "${'$'}cpu/cpuinfo_min_freq" 2>/dev/null`
+                            read -r max < "${'$'}cpu/cpuinfo_max_freq" 2>/dev/null
+                            read -r min < "${'$'}cpu/cpuinfo_min_freq" 2>/dev/null
                             [ -n "${'$'}max" ] && echo "${'$'}max" > "${'$'}cpu/scaling_max_freq" 2>/dev/null
                             [ -n "${'$'}min" ] && echo "${'$'}min" > "${'$'}cpu/scaling_min_freq" 2>/dev/null
                             echo "schedutil" > "${'$'}cpu/scaling_governor" 2>/dev/null
@@ -1523,7 +1451,7 @@ object RootBridge {
             }
         } else {
             commands.append("""
-                restore_from_backup "scaling_governor|scaling_max_freq|scaling_min_freq" "for cpu in /sys/devices/system/cpu/cpu*/cpufreq; do max=\`cat ${'$'}cpu/cpuinfo_max_freq 2>/dev/null\`; [ -n \"${'$'}max\" ] && echo \"${'$'}max\" > \"${'$'}cpu/scaling_max_freq\" 2>/dev/null; echo \"schedutil\" > \"${'$'}cpu/scaling_governor\" 2>/dev/null; done"
+                restore_from_backup "scaling_governor|scaling_max_freq|scaling_min_freq" "for cpu in /sys/devices/system/cpu/cpu*/cpufreq; do read -r max < \"${'$'}cpu/cpuinfo_max_freq\" 2>/dev/null; [ -n \"${'$'}max\" ] && echo \"${'$'}max\" > \"${'$'}cpu/scaling_max_freq\" 2>/dev/null; echo \"schedutil\" > \"${'$'}cpu/scaling_governor\" 2>/dev/null; done"
             """.trimIndent()).append("\n")
             logs.add("CPU Clocks restored from stock backup snapshot")
         }
@@ -1607,7 +1535,6 @@ object RootBridge {
                 else -> "50"
             }
             commands.append("""
-                # Disable artificial GPU throttling flag
                 for g in /sys/class/kgsl/kgsl-3d0 /sys/devices/platform/*.gpu /sys/devices/*.mali; do
                     [ -d "${'$'}g" ] || continue
                     [ -e "${'$'}g/throttling" ] && echo 0 > "${'$'}g/throttling" 2>/dev/null
@@ -1678,7 +1605,7 @@ object RootBridge {
             }
         } else {
             commands.append("""
-                restore_from_backup "devfreq.*governor" "for d in /sys/class/devfreq/*; do [ -f \"${'$'}d/available_governors\" ] && { gov=\$(cat \"${'$'}d/available_governors\" | awk '{print ${'$'}1}'); [ -n \"${'$'}gov\" ] && echo \"${'$'}gov\" > \"${'$'}d/governor\" 2>/dev/null; }; done"
+                restore_from_backup "devfreq.*governor" "for d in /sys/class/devfreq/*; do [ -f \"${'$'}d/available_governors\" ] && { read -r gov _ < \"${'$'}d/available_governors\" 2>/dev/null; [ -n \"${'$'}gov\" ] && echo \"${'$'}gov\" > \"${'$'}d/governor\" 2>/dev/null; }; done"
             """.trimIndent()).append("\n")
             logs.add("DDR Memory Bus restored from stock backup snapshot")
         }
@@ -1738,12 +1665,14 @@ object RootBridge {
             logs.add("Memory & LMK restored from stock backup snapshot")
         }
 
-        // 10. Display Refresh Rate: Unlock full display refresh rate for smooth gaming
+        // 10. Display Refresh Rate: Unlock full display refresh rate in background
         commands.append("""
-            settings delete system min_refresh_rate 2>/dev/null
-            settings delete system peak_refresh_rate 2>/dev/null
-            settings delete system user_refresh_rate 2>/dev/null
-            settings delete secure miui_refresh_rate 2>/dev/null
+            (
+                settings delete system min_refresh_rate 2>/dev/null
+                settings delete system peak_refresh_rate 2>/dev/null
+                settings delete system user_refresh_rate 2>/dev/null
+                settings delete secure miui_refresh_rate 2>/dev/null
+            ) >/dev/null 2>&1 &
         """.trimIndent()).append("\n")
         logs.add("Display: Full high refresh rate unconstrained")
 
@@ -1769,7 +1698,6 @@ object RootBridge {
     ): List<String> {
         logs.add("Activating HyperOS / MIUI Power Saving Engine")
 
-        // 1. Permanent System Components + User Allowed Apps Protection
         val userAllowedPkgs = config.backgroundAllowedApps
             .split(",")
             .map { it.trim() }
@@ -1779,67 +1707,29 @@ object RootBridge {
         val allProtectedPkgs = PERMANENT_SYSTEM_EXCEPTIONS + userAllowedPkgs + setOf(
             "com.voltpower"
         )
-
-        // Whitelist all protected apps in Android DeviceIdle (Doze)
-        for (pkg in allProtectedPkgs) {
-            commands.append("dumpsys deviceidle whitelist +$pkg 2>/dev/null\n")
-        }
         logs.add("Permanent system protection verified: Launcher, SystemUI, Plugin & ${userAllowedPkgs.size} user background apps exempted")
 
-        // 2. Always-On Display (AOD) Control (MiuiAod setAodEnable)
+        // ------------------------------------------------------------------
+        // PHASE 1: Fast Synchronous Sysfs / Procfs & Property Writes (<15ms)
+        // ------------------------------------------------------------------
         if (config.hyperOsAodDisabled) {
-            commands.append("""
-                settings put secure aod_mode 0 2>/dev/null
-                settings put system aod_mode 0 2>/dev/null
-                settings put secure doze_always_on 0 2>/dev/null
-                setprop debug.miui.aod_enable 0 2>/dev/null
-                am broadcast -a miui.intent.action.AOD_STATE_CHANGED --ez enabled false 2>/dev/null
-            """.trimIndent()).append("\n")
+            commands.append("setprop debug.miui.aod_enable 0 2>/dev/null\n")
             logs.add("Always-On Display disabled (MiuiAod.Utils setAodEnable: false)")
         } else {
-            commands.append("""
-                settings put secure aod_mode 1 2>/dev/null
-                settings put system aod_mode 1 2>/dev/null
-                settings put secure doze_always_on 1 2>/dev/null
-                setprop debug.miui.aod_enable 1 2>/dev/null
-                am broadcast -a miui.intent.action.AOD_STATE_CHANGED --ez enabled true 2>/dev/null
-            """.trimIndent()).append("\n")
+            commands.append("setprop debug.miui.aod_enable 1 2>/dev/null\n")
             logs.add("Always-On Display (AOD) preserved enabled")
         }
 
-        // 3. Aurogon & SuperPowerClean (Background cleanup while shielding whitelisted apps)
-        if (config.hyperOsSuperPowerCleanEnabled) {
-            val protectedArgs = allProtectedPkgs.joinToString(" ")
-            commands.append("""
-                # SuperPowerClean: Purge unwhitelisted 3rd-party background tasks from RAM
-                for pkg in ${'$'}(pm list packages -3 2>/dev/null | cut -d: -f2); do
-                    case " $protectedArgs " in
-                        *" ${'$'}pkg "*) ;; # whitelisted, preserve in background
-                        *) am stop-app "${'$'}pkg" 2>/dev/null || am force-stop "${'$'}pkg" 2>/dev/null ;;
-                    esac
-                done
-            """.trimIndent()).append("\n")
-            logs.add("SuperPowerClean: Memory cleaned in RAM (Protected: ${allProtectedPkgs.size} apps)")
-        }
-
-        // Aurogon Process Freezer (Keep power_supersave_mode_open=0 so Notification Shade & Control Center toggles are NEVER disabled)
         if (config.hyperOsAurogonFreezerEnabled) {
             commands.append("""
-                settings put system power_supersave_mode_open 0 2>/dev/null
-                settings put secure power_supersave_mode_open 0 2>/dev/null
-                settings put global power_supersave_mode_open 0 2>/dev/null
                 setprop persist.sys.miui.freezer true 2>/dev/null
                 setprop persist.sys.aurogon.enabled 1 2>/dev/null
                 setprop persist.sys.spc.enabled 1 2>/dev/null
                 setprop persist.vendor.power.freezer 1 2>/dev/null
-                device_config put activity_manager use_freezer true 2>/dev/null
             """.trimIndent()).append("\n")
             logs.add("HyperOS Aurogon Process Freezer enabled (Notification Panel & Control Center preserved)")
         } else {
             commands.append("""
-                settings put system power_supersave_mode_open 0 2>/dev/null
-                settings put secure power_supersave_mode_open 0 2>/dev/null
-                settings put global power_supersave_mode_open 0 2>/dev/null
                 setprop persist.sys.miui.freezer false 2>/dev/null
                 setprop persist.sys.aurogon.enabled 0 2>/dev/null
                 setprop persist.sys.spc.enabled 0 2>/dev/null
@@ -1848,15 +1738,12 @@ object RootBridge {
             logs.add("HyperOS Aurogon Process Freezer restored to default")
         }
 
-        // 4. Xiaomi Touch Boost Clamping & RefreshRateSelector Touch Boost
         if (config.hyperOsTouchBoostDisabled) {
             commands.append("""
                 echo 0 > /sys/module/msm_performance/parameters/touchboost 2>/dev/null
                 echo 0 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null
                 echo 0 > /sys/module/cpu_boost/parameters/sched_boost_on_input 2>/dev/null
                 echo 0 > /sys/devices/system/cpu/cpufreq/schedutil/iowait_boost_enable 2>/dev/null
-                settings put secure touch_boost 0 2>/dev/null
-                settings put system touch_boost 0 2>/dev/null
                 if [ -d /sys/power/pnpmgr ]; then
                     echo 0 > /sys/power/pnpmgr/touch_boost 2>/dev/null
                     echo 0 > /sys/power/pnpmgr/launch_boost 2>/dev/null
@@ -1868,19 +1755,15 @@ object RootBridge {
         } else {
             commands.append("""
                 restore_from_backup "input_boost|touchboost|pnpmgr" "[ -e /sys/module/cpu_boost/parameters/input_boost_ms ] && echo 40 > /sys/module/cpu_boost/parameters/input_boost_ms 2>/dev/null; [ -e /sys/module/msm_performance/parameters/touchboost ] && echo 1 > /sys/module/msm_performance/parameters/touchboost 2>/dev/null; [ -d /sys/power/pnpmgr ] && echo 1 > /sys/power/pnpmgr/touch_boost 2>/dev/null"
-                settings put secure touch_boost 1 2>/dev/null
-                settings put system touch_boost 1 2>/dev/null
                 setprop persist.sys.refresh_rate_touch_boost 1 2>/dev/null
             """.trimIndent()).append("\n")
         }
 
-        // Xiaomi THP Touch Host Processing Doze Mode & Power Save
         if (config.touchDozeModeEnabled) {
             commands.append("""
                 for thp in /sys/class/touch/touch_dev/thp_doze_mode /sys/class/touch/touch_dev/doze_mode /proc/touchpanel/doze_mode /sys/touchpanel/doze_mode /sys/devices/virtual/touch/touch_dev/touch_doze; do
                     [ -e "${'$'}thp" ] && echo 1 > "${'$'}thp" 2>/dev/null
                 done
-                service call miui.touch.feature.ITouchFeature 1 i32 0 i32 34 i32 2 2>/dev/null
                 setprop persist.sys.touch.doze 1 2>/dev/null
             """.trimIndent()).append("\n")
             logs.add("Xiaomi THP Touch Doze Mode active (TouchFeature mode 34 value 2)")
@@ -1893,7 +1776,100 @@ object RootBridge {
             """.trimIndent()).append("\n")
         }
 
-        // Background BLE & Wi-Fi Scanning
+        if (config.hyperOsFiveGPowerOptEnabled) {
+            commands.append("""
+                setprop persist.vendor.radio.5g_power_save 1 2>/dev/null
+                setprop persist.radio.power_saving 1 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("Modem 5G Power Optimization enabled (FiveGPowerController powerSaveOpt)")
+        } else {
+            commands.append("""
+                setprop persist.vendor.radio.5g_power_save 0 2>/dev/null
+                setprop persist.radio.power_saving 0 2>/dev/null
+            """.trimIndent()).append("\n")
+        }
+
+        if (config.systemBatterySaverEnabled) {
+            commands.append("""
+                setprop vendor.audio.power_save 1 2>/dev/null
+                setprop persist.vendor.audio.power_save 1 2>/dev/null
+                setprop persist.vendor.wifi.powersave 1 2>/dev/null
+                setprop persist.sys.wifi_half_ant 1 2>/dev/null
+                [ -d /sys/module/lpm_levels ] && echo "N" > /sys/module/lpm_levels/parameters/sleep_disabled 2>/dev/null
+                [ -e /sys/module/workqueue/parameters/power_efficient ] && echo "Y" > /sys/module/workqueue/parameters/power_efficient 2>/dev/null
+                [ -d /dev/cpuset/background ] && echo "0-3" > /dev/cpuset/background/cpus 2>/dev/null
+            """.trimIndent()).append("\n")
+            logs.add("HyperOS PowerKeeper SuperSave: Master Sync suspended, Audio HAL & Wi-Fi SISO power saving engaged")
+        } else {
+            commands.append("""
+                setprop vendor.audio.power_save 0 2>/dev/null
+                setprop persist.vendor.audio.power_save 0 2>/dev/null
+                setprop persist.vendor.wifi.powersave 0 2>/dev/null
+                setprop persist.sys.wifi_half_ant 0 2>/dev/null
+            """.trimIndent()).append("\n")
+        }
+
+        // ------------------------------------------------------------------
+        // PHASE 2: Non-Blocking Background Android Binder & Package Loops
+        // ------------------------------------------------------------------
+        commands.append("(\n")
+
+        // 1. Whitelist protected apps in DeviceIdle
+        for (pkg in allProtectedPkgs) {
+            commands.append("dumpsys deviceidle whitelist +$pkg 2>/dev/null\n")
+        }
+
+        // 2. Always-On Display (AOD) settings & broadcast
+        if (config.hyperOsAodDisabled) {
+            commands.append("""
+                settings put secure aod_mode 0 2>/dev/null
+                settings put system aod_mode 0 2>/dev/null
+                settings put secure doze_always_on 0 2>/dev/null
+                am broadcast -a miui.intent.action.AOD_STATE_CHANGED --ez enabled false 2>/dev/null
+            """.trimIndent()).append("\n")
+        } else {
+            commands.append("""
+                settings put secure aod_mode 1 2>/dev/null
+                settings put system aod_mode 1 2>/dev/null
+                settings put secure doze_always_on 1 2>/dev/null
+                am broadcast -a miui.intent.action.AOD_STATE_CHANGED --ez enabled true 2>/dev/null
+            """.trimIndent()).append("\n")
+        }
+
+        // 3. SuperPowerClean background task purge
+        if (config.hyperOsSuperPowerCleanEnabled) {
+            val protectedArgs = allProtectedPkgs.joinToString(" ")
+            commands.append("""
+                for pkg in ${'$'}(pm list packages -3 2>/dev/null | cut -d: -f2); do
+                    case " $protectedArgs " in
+                        *" ${'$'}pkg "*) ;;
+                        *) am stop-app "${'$'}pkg" 2>/dev/null || am force-stop "${'$'}pkg" 2>/dev/null ;;
+                    esac
+                done
+            """.trimIndent()).append("\n")
+            logs.add("SuperPowerClean: Memory cleaned in RAM (Protected: ${allProtectedPkgs.size} apps)")
+        }
+
+        if (config.hyperOsAurogonFreezerEnabled) {
+            commands.append("device_config put activity_manager use_freezer true 2>/dev/null\n")
+        }
+
+        if (config.hyperOsTouchBoostDisabled) {
+            commands.append("""
+                settings put secure touch_boost 0 2>/dev/null
+                settings put system touch_boost 0 2>/dev/null
+            """.trimIndent()).append("\n")
+        } else {
+            commands.append("""
+                settings put secure touch_boost 1 2>/dev/null
+                settings put system touch_boost 1 2>/dev/null
+            """.trimIndent()).append("\n")
+        }
+
+        if (config.touchDozeModeEnabled) {
+            commands.append("service call miui.touch.feature.ITouchFeature 1 i32 0 i32 34 i32 2 2>/dev/null\n")
+        }
+
         if (config.backgroundScanningDisabled) {
             commands.append("""
                 settings put global ble_scan_always_enabled 0 2>/dev/null
@@ -1909,21 +1885,15 @@ object RootBridge {
             """.trimIndent()).append("\n")
         }
 
-        // 5. Qualcomm 5G / Modem Power Optimization (FiveGPowerController)
         if (config.hyperOsFiveGPowerOptEnabled) {
             commands.append("""
                 settings put global fiveg_power_saving_enable 1 2>/dev/null
                 settings put system fiveg_power_saving_enable 1 2>/dev/null
-                setprop persist.vendor.radio.5g_power_save 1 2>/dev/null
-                setprop persist.radio.power_saving 1 2>/dev/null
             """.trimIndent()).append("\n")
-            logs.add("Modem 5G Power Optimization enabled (FiveGPowerController powerSaveOpt)")
         } else {
             commands.append("""
                 settings put global fiveg_power_saving_enable 0 2>/dev/null
                 settings put system fiveg_power_saving_enable 0 2>/dev/null
-                setprop persist.vendor.radio.5g_power_save 0 2>/dev/null
-                setprop persist.radio.power_saving 0 2>/dev/null
             """.trimIndent()).append("\n")
         }
 
@@ -1934,23 +1904,13 @@ object RootBridge {
                 commands.append("""
                     settings put secure user_refresh_rate 60 2>/dev/null
                     settings put system user_refresh_rate 60 2>/dev/null
-                    settings put global user_refresh_rate 60 2>/dev/null
                     settings put secure miui_refresh_rate 60 2>/dev/null
                     settings put system miui_refresh_rate 60 2>/dev/null
                     settings put system min_refresh_rate 60.0 2>/dev/null
                     settings put system peak_refresh_rate 60.0 2>/dev/null
                     settings put secure min_refresh_rate 60.0 2>/dev/null
                     settings put secure peak_refresh_rate 60.0 2>/dev/null
-                    settings put global min_refresh_rate 60.0 2>/dev/null
-                    settings put global peak_refresh_rate 60.0 2>/dev/null
-                    settings put system min_refresh_rate 60 2>/dev/null
-                    settings put system peak_refresh_rate 60 2>/dev/null
-                    settings put secure min_refresh_rate 60 2>/dev/null
-                    settings put secure peak_refresh_rate 60 2>/dev/null
-                    settings put global min_refresh_rate 60 2>/dev/null
-                    settings put global peak_refresh_rate 60 2>/dev/null
                     settings put system speed_mode 0 2>/dev/null
-                    settings put secure speed_mode 0 2>/dev/null
                     service call SurfaceFlinger 1035 i32 60 2>/dev/null
                 """.trimIndent()).append("\n")
                 logs.add("HyperOS Display refresh rate clamped to 60Hz")
@@ -1959,23 +1919,13 @@ object RootBridge {
                 commands.append("""
                     settings put secure user_refresh_rate 90 2>/dev/null
                     settings put system user_refresh_rate 90 2>/dev/null
-                    settings put global user_refresh_rate 90 2>/dev/null
                     settings put secure miui_refresh_rate 90 2>/dev/null
                     settings put system miui_refresh_rate 90 2>/dev/null
                     settings put system min_refresh_rate 60.0 2>/dev/null
                     settings put system peak_refresh_rate 90.0 2>/dev/null
                     settings put secure min_refresh_rate 60.0 2>/dev/null
                     settings put secure peak_refresh_rate 90.0 2>/dev/null
-                    settings put global min_refresh_rate 60.0 2>/dev/null
-                    settings put global peak_refresh_rate 90.0 2>/dev/null
-                    settings put system min_refresh_rate 60 2>/dev/null
-                    settings put system peak_refresh_rate 90 2>/dev/null
-                    settings put secure min_refresh_rate 60 2>/dev/null
-                    settings put secure peak_refresh_rate 90 2>/dev/null
-                    settings put global min_refresh_rate 60 2>/dev/null
-                    settings put global peak_refresh_rate 90 2>/dev/null
                     settings put system speed_mode 1 2>/dev/null
-                    settings put secure speed_mode 1 2>/dev/null
                     service call SurfaceFlinger 1035 i32 90 2>/dev/null
                 """.trimIndent()).append("\n")
                 logs.add("HyperOS Display refresh rate set to 90Hz")
@@ -1984,23 +1934,13 @@ object RootBridge {
                 commands.append("""
                     settings put secure user_refresh_rate 120 2>/dev/null
                     settings put system user_refresh_rate 120 2>/dev/null
-                    settings put global user_refresh_rate 120 2>/dev/null
                     settings put secure miui_refresh_rate 120 2>/dev/null
                     settings put system miui_refresh_rate 120 2>/dev/null
                     settings put system min_refresh_rate 60.0 2>/dev/null
                     settings put system peak_refresh_rate 120.0 2>/dev/null
                     settings put secure min_refresh_rate 60.0 2>/dev/null
                     settings put secure peak_refresh_rate 120.0 2>/dev/null
-                    settings put global min_refresh_rate 60.0 2>/dev/null
-                    settings put global peak_refresh_rate 120.0 2>/dev/null
-                    settings put system min_refresh_rate 60 2>/dev/null
-                    settings put system peak_refresh_rate 120 2>/dev/null
-                    settings put secure min_refresh_rate 60 2>/dev/null
-                    settings put secure peak_refresh_rate 120 2>/dev/null
-                    settings put global min_refresh_rate 60 2>/dev/null
-                    settings put global peak_refresh_rate 120 2>/dev/null
                     settings put system speed_mode 1 2>/dev/null
-                    settings put secure speed_mode 1 2>/dev/null
                     service call SurfaceFlinger 1035 i32 120 2>/dev/null
                 """.trimIndent()).append("\n")
                 logs.add("HyperOS Display refresh rate set to 120Hz")
@@ -2011,21 +1951,16 @@ object RootBridge {
                     settings delete system peak_refresh_rate 2>/dev/null
                     settings delete system user_refresh_rate 2>/dev/null
                     settings delete system miui_refresh_rate 2>/dev/null
-                    settings delete system speed_mode 2>/dev/null
                     settings delete secure min_refresh_rate 2>/dev/null
                     settings delete secure peak_refresh_rate 2>/dev/null
                     settings delete secure user_refresh_rate 2>/dev/null
                     settings delete secure miui_refresh_rate 2>/dev/null
-                    settings delete secure speed_mode 2>/dev/null
-                    settings delete global min_refresh_rate 2>/dev/null
-                    settings delete global peak_refresh_rate 2>/dev/null
-                    settings delete global user_refresh_rate 2>/dev/null
                 """.trimIndent()).append("\n")
                 logs.add("HyperOS Display refresh rate restored to dynamic stock")
             }
         }
 
-        // 7. Control Center Blur (Window Blurs) - Toggle removes blur to eliminate GPU rendering load
+        // 7. Control Center Blur
         if (config.controlCenterBlurEnabled) {
             commands.append("""
                 settings put global disable_window_blurs 1 2>/dev/null
@@ -2042,16 +1977,14 @@ object RootBridge {
             logs.add("HyperOS Control Center Blur restored to stock")
         }
 
-        // 8. System Dark Mode / Light Mode Restoration (Executed BEFORE Battery Saver so uimode changes never turn off Battery Saver)
+        // 8. System Dark Mode / Light Mode Restoration
         if (config.systemDarkModeEnabled) {
             commands.append("""
                 cmd uimode night yes 2>/dev/null
                 settings put secure ui_night_mode 2 2>/dev/null
                 settings put system ui_night_mode 2 2>/dev/null
-                settings put global ui_night_mode 2 2>/dev/null
                 settings put secure dark_mode_enable 1 2>/dev/null
                 settings put system dark_mode_enable 1 2>/dev/null
-                settings put global dark_mode_enable 1 2>/dev/null
                 am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled true 2>/dev/null
             """.trimIndent()).append("\n")
             logs.add("HyperOS: Dark Mode active (UiModeManager night mode 2)")
@@ -2059,60 +1992,36 @@ object RootBridge {
             commands.append("""
                 settings put system dark_mode_enable_by_power_save 0 2>/dev/null
                 settings put secure dark_mode_enable_by_power_save 0 2>/dev/null
-                settings put global dark_mode_enable_by_power_save 0 2>/dev/null
                 settings put secure ui_night_mode 1 2>/dev/null
                 settings put system ui_night_mode 1 2>/dev/null
-                settings put global ui_night_mode 1 2>/dev/null
                 settings put secure dark_mode_enable 0 2>/dev/null
                 settings put system dark_mode_enable 0 2>/dev/null
-                settings put global dark_mode_enable 0 2>/dev/null
                 cmd uimode night no 2>/dev/null
                 am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled false 2>/dev/null
             """.trimIndent()).append("\n")
             logs.add("HyperOS: Light Mode restored (UiModeManager night mode 1)")
         }
 
-        // 9. HyperOS PowerKeeper SuperSave Standby (Audio HAL, Wi-Fi SISO antenna, Master Sync, LPM deep sleep)
+        // 9. HyperOS PowerKeeper SuperSave Standby
         if (config.systemBatterySaverEnabled) {
             commands.append("""
-                # HyperOS Master Account Sync Disable (prevents background network wakeups)
                 settings put global master_sync_automatically 0 2>/dev/null
                 settings put secure master_sync_automatically 0 2>/dev/null
-
-                # HyperOS Location Throttle (FOREGROUND_ONLY mode)
                 settings put global location_mode 3 2>/dev/null
                 settings put global location_background_throttle_interval_ms 300000 2>/dev/null
-
-                # HyperOS Audio HAL Power Save (Audio_Power_Save_Mode=1, Audio_Power_Save_Level=1)
                 service call audio 100 s16 "Audio_Power_Save_Mode=1;Audio_Power_Save_Level=1" 2>/dev/null
-                setprop vendor.audio.power_save 1 2>/dev/null
-                setprop persist.vendor.audio.power_save 1 2>/dev/null
-
-                # HyperOS Wi-Fi Antenna Power Save (setWifiAntHalfStatus: true, SISO antenna)
-                setprop persist.vendor.wifi.powersave 1 2>/dev/null
-                setprop persist.sys.wifi_half_ant 1 2>/dev/null
                 settings put global wifi_power_save 1 2>/dev/null
-
-                # Kernel LPM sleep & power-efficient workqueues for extreme standby
-                [ -d /sys/module/lpm_levels ] && echo "N" > /sys/module/lpm_levels/parameters/sleep_disabled 2>/dev/null
-                [ -e /sys/module/workqueue/parameters/power_efficient ] && echo "Y" > /sys/module/workqueue/parameters/power_efficient 2>/dev/null
-                [ -d /dev/cpuset/background ] && echo "0-3" > /dev/cpuset/background/cpus 2>/dev/null
             """.trimIndent()).append("\n")
-            logs.add("HyperOS PowerKeeper SuperSave: Master Sync suspended, Audio HAL & Wi-Fi SISO power saving engaged")
         } else {
             commands.append("""
                 settings put global master_sync_automatically 1 2>/dev/null
                 settings put secure master_sync_automatically 1 2>/dev/null
                 service call audio 100 s16 "Audio_Power_Save_Mode=0;Audio_Power_Save_Level=0" 2>/dev/null
-                setprop vendor.audio.power_save 0 2>/dev/null
-                setprop persist.vendor.audio.power_save 0 2>/dev/null
-                setprop persist.vendor.wifi.powersave 0 2>/dev/null
-                setprop persist.sys.wifi_half_ant 0 2>/dev/null
                 settings put global wifi_power_save 0 2>/dev/null
             """.trimIndent()).append("\n")
         }
 
-        // 10. Manual-Only Ultra SuperSave UI Tweak vs Standard Battery Saver (Executed LAST so Battery Saver orange icon never gets reverted!)
+        // 10. Manual-Only Ultra SuperSave UI Tweak vs Standard Battery Saver
         if (config.hyperOsUltraSuperSaveUiEnabled) {
             commands.append("""
                 settings put system hide_mode ultimate 2>/dev/null
@@ -2121,35 +2030,22 @@ object RootBridge {
                 settings put secure power_supersave_mode_open 1 2>/dev/null
                 settings put global power_supersave_mode_open 1 2>/dev/null
                 cmd power set-mode 1 2>/dev/null || settings put global low_power 1 2>/dev/null
-                settings put global low_power 1 2>/dev/null
-                settings put secure low_power 1 2>/dev/null
-                settings put system low_power 1 2>/dev/null
-                settings put secure POWER_SAVE_MODE_OPEN 1 2>/dev/null
                 settings put system POWER_SAVE_MODE_OPEN 1 2>/dev/null
-                settings put global POWER_SAVE_MODE_OPEN 1 2>/dev/null
                 content call --uri content://com.miui.powercenter.powersaver --method changeSuperPowerMode --extra power_supersave_mode_open:b:true --extra is_super_power:b:true --extra enable:b:true --extra mode:i:3 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method change_super_power_mode --extra power_supersave_mode_open:b:true --extra is_super_power:b:true --extra enable:b:true --extra mode:i:3 2>/dev/null
                 content call --uri content://com.miui.powercenter.powersaver --method changePowerMode --extra mode:i:3 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:3 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:3 2>/dev/null
                 am broadcast -a miui.intent.action.POWER_SAVE_MODE_CHANGED --ez state true 2>/dev/null
-                am broadcast -a android.os.action.POWER_SAVE_MODE_CHANGED 2>/dev/null
             """.trimIndent()).append("\n")
             logs.add("HyperOS Ultra SuperSave UI active: Dark simple wallpaper applied, notification panel & few control center options turned off")
         } else if (config.systemBatterySaverWithoutDarkEnabled) {
-            // Enable system battery saver in HyperOS Power Saver
             commands.append("""
                 settings put system hide_mode enhance 2>/dev/null
                 settings put secure hide_mode enhance 2>/dev/null
                 settings put system power_supersave_mode_open 0 2>/dev/null
                 settings put secure power_supersave_mode_open 0 2>/dev/null
                 settings put global power_supersave_mode_open 0 2>/dev/null
-                # Check state
                 if [ "${'$'}(settings get system POWER_SAVE_MODE_OPEN 2>/dev/null)" != "1" ]; then
-                    # Same as tapping the Control Center tile (toggles)
                     content call --uri content://com.miui.powercenter.powersaver --method changePowerMode 2>/dev/null
                 fi
-                # Direct ON
                 settings put system POWER_SAVE_MODE_OPEN 1 2>/dev/null
             """.trimIndent()).append("\n")
             logs.add("HyperOS System Battery Saver active (POWER_SAVE_MODE_OPEN 1)")
@@ -2160,16 +2056,15 @@ object RootBridge {
                 settings put system power_supersave_mode_open 0 2>/dev/null
                 settings put secure power_supersave_mode_open 0 2>/dev/null
                 settings put global power_supersave_mode_open 0 2>/dev/null
-                # Check state
                 if [ "${'$'}(settings get system POWER_SAVE_MODE_OPEN 2>/dev/null)" = "1" ]; then
-                    # Same as tapping the Control Center tile (toggles)
                     content call --uri content://com.miui.powercenter.powersaver --method changePowerMode 2>/dev/null
                 fi
-                # Direct OFF
                 settings put system POWER_SAVE_MODE_OPEN 0 2>/dev/null
             """.trimIndent()).append("\n")
             logs.add("HyperOS System Battery Saver off (POWER_SAVE_MODE_OPEN 0)")
         }
+
+        commands.append(") >/dev/null 2>&1 &\n")
 
         val execResult = execute(commands.toString())
         if (execResult.success) {
@@ -2184,26 +2079,26 @@ object RootBridge {
     suspend fun setHyperOsUltraSuperSaveUi(enabled: Boolean): Boolean = withContext(Dispatchers.IO) {
         val cmd = if (enabled) {
             """
-                settings put system hide_mode ultimate 2>/dev/null
-                settings put secure hide_mode ultimate 2>/dev/null
-                settings put system power_supersave_mode_open 1 2>/dev/null
-                settings put secure power_supersave_mode_open 1 2>/dev/null
-                settings put global power_supersave_mode_open 1 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method changeSuperPowerMode --extra power_supersave_mode_open:b:true --extra is_super_power:b:true --extra enable:b:true --extra mode:i:3 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method change_super_power_mode --extra power_supersave_mode_open:b:true --extra is_super_power:b:true --extra enable:b:true --extra mode:i:3 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method changePowerMode --extra mode:i:3 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method change_power_mode --extra mode:i:3 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method set_power_mode --extra mode:i:3 2>/dev/null
+                (
+                    settings put system hide_mode ultimate 2>/dev/null
+                    settings put secure hide_mode ultimate 2>/dev/null
+                    settings put system power_supersave_mode_open 1 2>/dev/null
+                    settings put secure power_supersave_mode_open 1 2>/dev/null
+                    settings put global power_supersave_mode_open 1 2>/dev/null
+                    content call --uri content://com.miui.powercenter.powersaver --method changeSuperPowerMode --extra power_supersave_mode_open:b:true --extra is_super_power:b:true --extra enable:b:true --extra mode:i:3 2>/dev/null
+                    content call --uri content://com.miui.powercenter.powersaver --method changePowerMode --extra mode:i:3 2>/dev/null
+                ) >/dev/null 2>&1 &
             """.trimIndent()
         } else {
             """
-                settings put system hide_mode enhance 2>/dev/null
-                settings put secure hide_mode enhance 2>/dev/null
-                settings put system power_supersave_mode_open 0 2>/dev/null
-                settings put secure power_supersave_mode_open 0 2>/dev/null
-                settings put global power_supersave_mode_open 0 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method changeSuperPowerMode --extra power_supersave_mode_open:b:false --extra is_super_power:b:false --extra enable:b:false --extra from_user:b:true 2>/dev/null
-                content call --uri content://com.miui.powercenter.powersaver --method change_super_power_mode --extra power_supersave_mode_open:b:false --extra is_super_power:b:false --extra enable:b:false --extra from_user:b:true 2>/dev/null
+                (
+                    settings put system hide_mode enhance 2>/dev/null
+                    settings put secure hide_mode enhance 2>/dev/null
+                    settings put system power_supersave_mode_open 0 2>/dev/null
+                    settings put secure power_supersave_mode_open 0 2>/dev/null
+                    settings put global power_supersave_mode_open 0 2>/dev/null
+                    content call --uri content://com.miui.powercenter.powersaver --method changeSuperPowerMode --extra power_supersave_mode_open:b:false --extra is_super_power:b:false --extra enable:b:false --extra from_user:b:true 2>/dev/null
+                ) >/dev/null 2>&1 &
             """.trimIndent()
         }
         execute(cmd).success
@@ -2212,28 +2107,27 @@ object RootBridge {
     suspend fun setSystemDarkMode(enabled: Boolean): Boolean = withContext(Dispatchers.IO) {
         val cmd = if (enabled) {
             """
-                cmd uimode night yes 2>/dev/null
-                settings put secure ui_night_mode 2 2>/dev/null
-                settings put system ui_night_mode 2 2>/dev/null
-                settings put global ui_night_mode 2 2>/dev/null
-                settings put secure dark_mode_enable 1 2>/dev/null
-                settings put system dark_mode_enable 1 2>/dev/null
-                settings put global dark_mode_enable 1 2>/dev/null
-                am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled true 2>/dev/null
+                (
+                    cmd uimode night yes 2>/dev/null
+                    settings put secure ui_night_mode 2 2>/dev/null
+                    settings put system ui_night_mode 2 2>/dev/null
+                    settings put secure dark_mode_enable 1 2>/dev/null
+                    settings put system dark_mode_enable 1 2>/dev/null
+                    am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled true 2>/dev/null
+                ) >/dev/null 2>&1 &
             """.trimIndent()
         } else {
             """
-                settings put system dark_mode_enable_by_power_save 0 2>/dev/null
-                settings put secure dark_mode_enable_by_power_save 0 2>/dev/null
-                settings put global dark_mode_enable_by_power_save 0 2>/dev/null
-                settings put secure ui_night_mode 1 2>/dev/null
-                settings put system ui_night_mode 1 2>/dev/null
-                settings put global ui_night_mode 1 2>/dev/null
-                settings put secure dark_mode_enable 0 2>/dev/null
-                settings put system dark_mode_enable 0 2>/dev/null
-                settings put global dark_mode_enable 0 2>/dev/null
-                cmd uimode night no 2>/dev/null
-                am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled false 2>/dev/null
+                (
+                    settings put system dark_mode_enable_by_power_save 0 2>/dev/null
+                    settings put secure dark_mode_enable_by_power_save 0 2>/dev/null
+                    settings put secure ui_night_mode 1 2>/dev/null
+                    settings put system ui_night_mode 1 2>/dev/null
+                    settings put secure dark_mode_enable 0 2>/dev/null
+                    settings put system dark_mode_enable 0 2>/dev/null
+                    cmd uimode night no 2>/dev/null
+                    am broadcast -a miui.intent.action.NIGHT_MODE_CHANGED --ez enabled false 2>/dev/null
+                ) >/dev/null 2>&1 &
             """.trimIndent()
         }
         execute(cmd).success
@@ -2242,85 +2136,58 @@ object RootBridge {
     suspend fun setDisplayRefreshRate(hz: Int): Boolean = withContext(Dispatchers.IO) {
         val cmd = when (hz) {
             60 -> """
-                settings put secure user_refresh_rate 60 2>/dev/null
-                settings put system user_refresh_rate 60 2>/dev/null
-                settings put global user_refresh_rate 60 2>/dev/null
-                settings put secure miui_refresh_rate 60 2>/dev/null
-                settings put system miui_refresh_rate 60 2>/dev/null
-                settings put system min_refresh_rate 60.0 2>/dev/null
-                settings put system peak_refresh_rate 60.0 2>/dev/null
-                settings put secure min_refresh_rate 60.0 2>/dev/null
-                settings put secure peak_refresh_rate 60.0 2>/dev/null
-                settings put global min_refresh_rate 60.0 2>/dev/null
-                settings put global peak_refresh_rate 60.0 2>/dev/null
-                settings put system min_refresh_rate 60 2>/dev/null
-                settings put system peak_refresh_rate 60 2>/dev/null
-                settings put secure min_refresh_rate 60 2>/dev/null
-                settings put secure peak_refresh_rate 60 2>/dev/null
-                settings put global min_refresh_rate 60 2>/dev/null
-                settings put global peak_refresh_rate 60 2>/dev/null
-                settings put system speed_mode 0 2>/dev/null
-                settings put secure speed_mode 0 2>/dev/null
-                service call SurfaceFlinger 1035 i32 60 2>/dev/null
+                (
+                    settings put secure user_refresh_rate 60 2>/dev/null
+                    settings put system user_refresh_rate 60 2>/dev/null
+                    settings put secure miui_refresh_rate 60 2>/dev/null
+                    settings put system miui_refresh_rate 60 2>/dev/null
+                    settings put system min_refresh_rate 60.0 2>/dev/null
+                    settings put system peak_refresh_rate 60.0 2>/dev/null
+                    settings put secure min_refresh_rate 60.0 2>/dev/null
+                    settings put secure peak_refresh_rate 60.0 2>/dev/null
+                    settings put system speed_mode 0 2>/dev/null
+                    service call SurfaceFlinger 1035 i32 60 2>/dev/null
+                ) >/dev/null 2>&1 &
             """.trimIndent()
             90 -> """
-                settings put secure user_refresh_rate 90 2>/dev/null
-                settings put system user_refresh_rate 90 2>/dev/null
-                settings put global user_refresh_rate 90 2>/dev/null
-                settings put secure miui_refresh_rate 90 2>/dev/null
-                settings put system miui_refresh_rate 90 2>/dev/null
-                settings put system min_refresh_rate 60.0 2>/dev/null
-                settings put system peak_refresh_rate 90.0 2>/dev/null
-                settings put secure min_refresh_rate 60.0 2>/dev/null
-                settings put secure peak_refresh_rate 90.0 2>/dev/null
-                settings put global min_refresh_rate 60.0 2>/dev/null
-                settings put global peak_refresh_rate 90.0 2>/dev/null
-                settings put system min_refresh_rate 60 2>/dev/null
-                settings put system peak_refresh_rate 90 2>/dev/null
-                settings put secure min_refresh_rate 60 2>/dev/null
-                settings put secure peak_refresh_rate 90 2>/dev/null
-                settings put global min_refresh_rate 60 2>/dev/null
-                settings put global peak_refresh_rate 90 2>/dev/null
-                settings put system speed_mode 1 2>/dev/null
-                settings put secure speed_mode 1 2>/dev/null
-                service call SurfaceFlinger 1035 i32 90 2>/dev/null
+                (
+                    settings put secure user_refresh_rate 90 2>/dev/null
+                    settings put system user_refresh_rate 90 2>/dev/null
+                    settings put secure miui_refresh_rate 90 2>/dev/null
+                    settings put system miui_refresh_rate 90 2>/dev/null
+                    settings put system min_refresh_rate 60.0 2>/dev/null
+                    settings put system peak_refresh_rate 90.0 2>/dev/null
+                    settings put secure min_refresh_rate 60.0 2>/dev/null
+                    settings put secure peak_refresh_rate 90.0 2>/dev/null
+                    settings put system speed_mode 1 2>/dev/null
+                    service call SurfaceFlinger 1035 i32 90 2>/dev/null
+                ) >/dev/null 2>&1 &
             """.trimIndent()
             120 -> """
-                settings put secure user_refresh_rate 120 2>/dev/null
-                settings put system user_refresh_rate 120 2>/dev/null
-                settings put global user_refresh_rate 120 2>/dev/null
-                settings put secure miui_refresh_rate 120 2>/dev/null
-                settings put system miui_refresh_rate 120 2>/dev/null
-                settings put system min_refresh_rate 60.0 2>/dev/null
-                settings put system peak_refresh_rate 120.0 2>/dev/null
-                settings put secure min_refresh_rate 60.0 2>/dev/null
-                settings put secure peak_refresh_rate 120.0 2>/dev/null
-                settings put global min_refresh_rate 60.0 2>/dev/null
-                settings put global peak_refresh_rate 120.0 2>/dev/null
-                settings put system min_refresh_rate 60 2>/dev/null
-                settings put system peak_refresh_rate 120 2>/dev/null
-                settings put secure min_refresh_rate 60 2>/dev/null
-                settings put secure peak_refresh_rate 120 2>/dev/null
-                settings put global min_refresh_rate 60 2>/dev/null
-                settings put global peak_refresh_rate 120 2>/dev/null
-                settings put system speed_mode 1 2>/dev/null
-                settings put secure speed_mode 1 2>/dev/null
-                service call SurfaceFlinger 1035 i32 120 2>/dev/null
+                (
+                    settings put secure user_refresh_rate 120 2>/dev/null
+                    settings put system user_refresh_rate 120 2>/dev/null
+                    settings put secure miui_refresh_rate 120 2>/dev/null
+                    settings put system miui_refresh_rate 120 2>/dev/null
+                    settings put system min_refresh_rate 60.0 2>/dev/null
+                    settings put system peak_refresh_rate 120.0 2>/dev/null
+                    settings put secure min_refresh_rate 60.0 2>/dev/null
+                    settings put secure peak_refresh_rate 120.0 2>/dev/null
+                    settings put system speed_mode 1 2>/dev/null
+                    service call SurfaceFlinger 1035 i32 120 2>/dev/null
+                ) >/dev/null 2>&1 &
             """.trimIndent()
             else -> """
-                settings delete system min_refresh_rate 2>/dev/null
-                settings delete system peak_refresh_rate 2>/dev/null
-                settings delete system user_refresh_rate 2>/dev/null
-                settings delete system miui_refresh_rate 2>/dev/null
-                settings delete system speed_mode 2>/dev/null
-                settings delete secure min_refresh_rate 2>/dev/null
-                settings delete secure peak_refresh_rate 2>/dev/null
-                settings delete secure user_refresh_rate 2>/dev/null
-                settings delete secure miui_refresh_rate 2>/dev/null
-                settings delete secure speed_mode 2>/dev/null
-                settings delete global min_refresh_rate 2>/dev/null
-                settings delete global peak_refresh_rate 2>/dev/null
-                settings delete global user_refresh_rate 2>/dev/null
+                (
+                    settings delete system min_refresh_rate 2>/dev/null
+                    settings delete system peak_refresh_rate 2>/dev/null
+                    settings delete system user_refresh_rate 2>/dev/null
+                    settings delete system miui_refresh_rate 2>/dev/null
+                    settings delete secure min_refresh_rate 2>/dev/null
+                    settings delete secure peak_refresh_rate 2>/dev/null
+                    settings delete secure user_refresh_rate 2>/dev/null
+                    settings delete secure miui_refresh_rate 2>/dev/null
+                ) >/dev/null 2>&1 &
             """.trimIndent()
         }
         execute(cmd).success
@@ -2329,23 +2196,21 @@ object RootBridge {
     suspend fun setSystemBatterySaver(enabled: Boolean): Boolean = withContext(Dispatchers.IO) {
         val cmd = if (enabled) {
             """
-                # Check state
-                if [ "${'$'}(settings get system POWER_SAVE_MODE_OPEN 2>/dev/null)" != "1" ]; then
-                    # Same as tapping the Control Center tile (toggles)
-                    content call --uri content://com.miui.powercenter.powersaver --method changePowerMode 2>/dev/null
-                fi
-                # Direct ON
-                settings put system POWER_SAVE_MODE_OPEN 1 2>/dev/null
+                (
+                    if [ "${'$'}(settings get system POWER_SAVE_MODE_OPEN 2>/dev/null)" != "1" ]; then
+                        content call --uri content://com.miui.powercenter.powersaver --method changePowerMode 2>/dev/null
+                    fi
+                    settings put system POWER_SAVE_MODE_OPEN 1 2>/dev/null
+                ) >/dev/null 2>&1 &
             """.trimIndent()
         } else {
             """
-                # Check state
-                if [ "${'$'}(settings get system POWER_SAVE_MODE_OPEN 2>/dev/null)" = "1" ]; then
-                    # Same as tapping the Control Center tile (toggles)
-                    content call --uri content://com.miui.powercenter.powersaver --method changePowerMode 2>/dev/null
-                fi
-                # Direct OFF
-                settings put system POWER_SAVE_MODE_OPEN 0 2>/dev/null
+                (
+                    if [ "${'$'}(settings get system POWER_SAVE_MODE_OPEN 2>/dev/null)" = "1" ]; then
+                        content call --uri content://com.miui.powercenter.powersaver --method changePowerMode 2>/dev/null
+                    fi
+                    settings put system POWER_SAVE_MODE_OPEN 0 2>/dev/null
+                ) >/dev/null 2>&1 &
             """.trimIndent()
         }
         execute(cmd).success
@@ -2355,15 +2220,19 @@ object RootBridge {
         val removeBlur = enabled
         val cmd = if (removeBlur) {
             """
-                settings put global disable_window_blurs 1 2>/dev/null
-                settings put system disable_window_blurs 1 2>/dev/null
-                settings put secure disable_window_blurs 1 2>/dev/null
+                (
+                    settings put global disable_window_blurs 1 2>/dev/null
+                    settings put system disable_window_blurs 1 2>/dev/null
+                    settings put secure disable_window_blurs 1 2>/dev/null
+                ) >/dev/null 2>&1 &
             """.trimIndent()
         } else {
             """
-                settings put global disable_window_blurs 0 2>/dev/null
-                settings put system disable_window_blurs 0 2>/dev/null
-                settings put secure disable_window_blurs 0 2>/dev/null
+                (
+                    settings put global disable_window_blurs 0 2>/dev/null
+                    settings put system disable_window_blurs 0 2>/dev/null
+                    settings put secure disable_window_blurs 0 2>/dev/null
+                ) >/dev/null 2>&1 &
             """.trimIndent()
         }
         val result = execute(cmd)

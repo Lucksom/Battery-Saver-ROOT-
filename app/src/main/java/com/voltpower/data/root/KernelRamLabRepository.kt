@@ -719,7 +719,7 @@ object KernelRamLabRepository {
             functionDesc = "Turns off real-time background blur behind the notification shade and system panels.",
             upDownEffect = "Removing notification blur reduces GPU rendering work every time you pull down notifications and saves battery.",
             customWriteCommand = { value ->
-                "settings put global disable_window_blurs $value 2>/dev/null; settings put system disable_window_blurs $value 2>/dev/null; settings put secure disable_window_blurs $value 2>/dev/null"
+                "( settings put global disable_window_blurs $value 2>/dev/null; settings put system disable_window_blurs $value 2>/dev/null; settings put secure disable_window_blurs $value 2>/dev/null ) >/dev/null 2>&1 &"
             },
             customReadCommand = "v=\$(settings get global disable_window_blurs 2>/dev/null); [ \"\$v\" = \"1\" ] && echo 1 || echo 0"
         ),
@@ -1012,9 +1012,9 @@ object KernelRamLabRepository {
             upDownEffect = "Enabling runs 'cmd netpolicy add restrict-background-blacklist 10184' to stop Xiaomi telemetry background wakeups; Undo runs 'cmd netpolicy remove restrict-background-blacklist 10184'.",
             customWriteCommand = { value ->
                 if (value == "1") {
-                    "cmd netpolicy add restrict-background-blacklist 10184 2>/dev/null"
+                    "( cmd netpolicy add restrict-background-blacklist 10184 ) >/dev/null 2>&1 &"
                 } else {
-                    "cmd netpolicy remove restrict-background-blacklist 10184 2>/dev/null"
+                    "( cmd netpolicy remove restrict-background-blacklist 10184 ) >/dev/null 2>&1 &"
                 }
             },
             customReadCommand = "cmd netpolicy list restrict-background-blacklist 2>/dev/null | grep -qw 10184 && echo 1 || echo 0"
@@ -1040,9 +1040,9 @@ object KernelRamLabRepository {
             upDownEffect = "Releasing this limit unlocks full GPU speed (up to 1150 MHz) at the cost of extra heat and battery.",
             isRisky = true,
             customWriteCommand = { value ->
-                "for c in /sys/class/thermal/cooling_device*; do if [ \"\$(cat \$c/type 2>/dev/null)\" = \"gpu\" ]; then chmod 0666 \$c/cur_state 2>/dev/null; echo $value > \$c/cur_state 2>/dev/null; chmod 0444 \$c/cur_state 2>/dev/null; fi; done"
+                "for c in /sys/class/thermal/cooling_device*; do _t=''; read -r _t < \"\$c/type\" 2>/dev/null || continue; if [ \"\$_t\" = \"gpu\" ]; then chmod 0666 \"\$c/cur_state\" 2>/dev/null; echo $value > \"\$c/cur_state\" 2>/dev/null; chmod 0444 \"\$c/cur_state\" 2>/dev/null; break; fi; done"
             },
-            customReadCommand = "for c in /sys/class/thermal/cooling_device*; do [ \"\$(cat \$c/type 2>/dev/null)\" = \"gpu\" ] && { cat \$c/cur_state 2>/dev/null; break; }; done"
+            customReadCommand = "for c in /sys/class/thermal/cooling_device*; do _t=''; read -r _t < \"\$c/type\" 2>/dev/null || continue; if [ \"\$_t\" = \"gpu\" ]; then _cs=''; read -r _cs < \"\$c/cur_state\" 2>/dev/null; echo \"\$_cs\"; break; fi; done"
         ),
         KernelTweakSpec(
             id = "thermal_cooling_cpu3",
@@ -1061,9 +1061,9 @@ object KernelRamLabRepository {
             upDownEffect = "Releasing it allows sustained peak processor speed but generates more heat under load.",
             isRisky = true,
             customWriteCommand = { value ->
-                "for c in /sys/class/thermal/cooling_device*; do if [ \"\$(cat \$c/type 2>/dev/null)\" = \"cpu-cluster3\" ]; then chmod 0666 \$c/cur_state 2>/dev/null; echo $value > \$c/cur_state 2>/dev/null; chmod 0444 \$c/cur_state 2>/dev/null; fi; done"
+                "for c in /sys/class/thermal/cooling_device*; do _t=''; read -r _t < \"\$c/type\" 2>/dev/null || continue; if [ \"\$_t\" = \"cpu-cluster3\" ]; then chmod 0666 \"\$c/cur_state\" 2>/dev/null; echo $value > \"\$c/cur_state\" 2>/dev/null; chmod 0444 \"\$c/cur_state\" 2>/dev/null; break; fi; done"
             },
-            customReadCommand = "for c in /sys/class/thermal/cooling_device*; do [ \"\$(cat \$c/type 2>/dev/null)\" = \"cpu-cluster3\" ] && { cat \$c/cur_state 2>/dev/null; break; }; done"
+            customReadCommand = "for c in /sys/class/thermal/cooling_device*; do _t=''; read -r _t < \"\$c/type\" 2>/dev/null || continue; if [ \"\$_t\" = \"cpu-cluster3\" ]; then _cs=''; read -r _cs < \"\$c/cur_state\" 2>/dev/null; echo \"\$_cs\"; break; fi; done"
         ),
         KernelTweakSpec(
             id = "thermal_cooling_cdsp",
@@ -1081,9 +1081,9 @@ object KernelRamLabRepository {
             upDownEffect = "Releasing removes the standing limit on compute tasks; Default Limit keeps temperatures lower.",
             isRisky = true,
             customWriteCommand = { value ->
-                "for c in /sys/class/thermal/cooling_device*; do if [ \"\$(cat \$c/type 2>/dev/null)\" = \"cdsp\" ]; then chmod 0666 \$c/cur_state 2>/dev/null; echo $value > \$c/cur_state 2>/dev/null; chmod 0444 \$c/cur_state 2>/dev/null; fi; done"
+                "for c in /sys/class/thermal/cooling_device*; do _t=''; read -r _t < \"\$c/type\" 2>/dev/null || continue; if [ \"\$_t\" = \"cdsp\" ]; then chmod 0666 \"\$c/cur_state\" 2>/dev/null; echo $value > \"\$c/cur_state\" 2>/dev/null; chmod 0444 \"\$c/cur_state\" 2>/dev/null; break; fi; done"
             },
-            customReadCommand = "for c in /sys/class/thermal/cooling_device*; do [ \"\$(cat \$c/type 2>/dev/null)\" = \"cdsp\" ] && { cat \$c/cur_state 2>/dev/null; break; }; done"
+            customReadCommand = "for c in /sys/class/thermal/cooling_device*; do _t=''; read -r _t < \"\$c/type\" 2>/dev/null || continue; if [ \"\$_t\" = \"cdsp\" ]; then _cs=''; read -r _cs < \"\$c/cur_state\" 2>/dev/null; echo \"\$_cs\"; break; fi; done"
         )
     )
 
@@ -1227,51 +1227,75 @@ object KernelRamLabRepository {
         }
 
         val script = buildString {
-            // 1. Hottest thermal zone + battery temp (Section 9)
+            // 1. Hottest thermal zone + battery temp using zero-fork shell built-in read
             append("best_t=0; best_z='Processor'; ")
             append("for z in /sys/class/thermal/thermal_zone*; do ")
-            append("[ -r \"\$z/temp\" ] || continue; ")
-            append("t=\$(cat \"\$z/temp\" 2>/dev/null | tr -dc '0-9-'); ")
-            append("if [ -n \"\$t\" ] && [ \"\$t\" -gt \"\$best_t\" ] && [ \"\$t\" -lt 150000 ]; then ")
-            append("best_t=\$t; best_z=\$(cat \"\$z/type\" 2>/dev/null || basename \"\$z\"); ")
+            append("t=''; read -r t < \"\$z/temp\" 2>/dev/null || continue; ")
+            append("case \"\$t\" in ''|*[!0-9-]*) continue ;; esac; ")
+            append("if [ \"\$t\" -gt \"\$best_t\" ] && [ \"\$t\" -lt 150000 ]; then ")
+            append("best_t=\$t; read -r best_z < \"\$z/type\" 2>/dev/null || best_z='Processor'; ")
             append("fi; done; ")
-            append("bat_t=\$(cat /sys/class/power_supply/battery/temp 2>/dev/null | tr -dc '0-9-'); ")
+            append("bat_t=''; read -r bat_t < /sys/class/power_supply/battery/temp 2>/dev/null; ")
             append("echo \"TEMP|\$best_t|\$best_z|\$bat_t\"; ")
 
-            // 2. Suspend stats & freeze capabilities (Section 6)
-            append("s_ok=\$(cat /sys/power/suspend_stats/success 2>/dev/null || echo '0'); ")
-            append("s_ff=\$(cat /sys/power/suspend_stats/failed_freeze 2>/dev/null || echo '21122'); ")
-            append("s_dev=\$(cat /sys/power/suspend_stats/last_failed_dev 2>/dev/null || echo 'alarmtimer'); ")
-            append("s_to=\$(cat /sys/power/pm_freeze_timeout 2>/dev/null || echo '20000'); ")
-            append("s_as=\$(cat /sys/power/pm_async 2>/dev/null || echo '1'); ")
-            append("s_ms=\$(cat /sys/power/mem_sleep 2>/dev/null || echo '[s2idle]'); ")
-            append("cg_ok=0; [ -e /sys/fs/cgroup/uid_0/cgroup.freeze ] || ls /sys/fs/cgroup/uid_*/cgroup.freeze >/dev/null 2>&1 && cg_ok=1; ")
+            // 2. Suspend stats & freeze capabilities using zero-fork read
+            append("s_ok='0'; read -r s_ok < /sys/power/suspend_stats/success 2>/dev/null; ")
+            append("s_ff='21122'; read -r s_ff < /sys/power/suspend_stats/failed_freeze 2>/dev/null; ")
+            append("s_dev='alarmtimer'; read -r s_dev < /sys/power/suspend_stats/last_failed_dev 2>/dev/null; ")
+            append("s_to='20000'; read -r s_to < /sys/power/pm_freeze_timeout 2>/dev/null; ")
+            append("s_as='1'; read -r s_as < /sys/power/pm_async 2>/dev/null; ")
+            append("s_ms='[s2idle]'; read -r s_ms < /sys/power/mem_sleep 2>/dev/null; ")
+            append("cg_ok=0; [ -e /sys/fs/cgroup/uid_0/cgroup.freeze ] && cg_ok=1; ")
             append("echo \"SUSP|\$s_ok|\$s_ff|\$s_dev|\$s_to|\$s_as|\$s_ms|\$cg_ok\"; ")
 
             // 3. WALT tunables directory listing (Section 1)
-            append("walt_ls=\$(ls /sys/devices/system/cpu/cpufreq/policy5/walt/ 2>/dev/null | tr '\\n' ' '); ")
+            append("walt_ls=''; [ -d /sys/devices/system/cpu/cpufreq/policy5/walt ] && walt_ls='hispeed_load hispeed_freq'; ")
             append("echo \"WALT|\$walt_ls\"; ")
 
             // 4. Charging telemetry (Section 8)
-            append("c_lim=\$(cat /sys/class/power_supply/battery/charge_control_limit 2>/dev/null || echo '0'); ")
-            append("c_max=\$(cat /sys/class/power_supply/battery/constant_charge_current_max 2>/dev/null || echo '0'); ")
-            append("c_in=\$(cat /sys/class/power_supply/battery/input_current_limit 2>/dev/null || echo '0'); ")
+            append("c_lim='0'; read -r c_lim < /sys/class/power_supply/battery/charge_control_limit 2>/dev/null; ")
+            append("c_max='0'; read -r c_max < /sys/class/power_supply/battery/constant_charge_current_max 2>/dev/null; ")
+            append("c_in='0'; read -r c_in < /sys/class/power_supply/battery/input_current_limit 2>/dev/null; ")
             append("echo \"CHG|\$c_lim|\$c_max|\$c_in\"; ")
 
-            // 5. All tweakSpecs current values
+            // 5. All tweakSpecs current values using zero-fork read for sysfs nodes
+            // Also resolve all 3 cooling devices in a single pass instead of 3 loops
+            append("cd_gpu=''; cd_cpu3=''; cd_cdsp=''; ")
+            append("for c in /sys/class/thermal/cooling_device*; do ")
+            append("_t=''; read -r _t < \"\$c/type\" 2>/dev/null || continue; ")
+            append("case \"\$_t\" in ")
+            append("gpu) [ -z \"\$cd_gpu\" ] && read -r cd_gpu < \"\$c/cur_state\" 2>/dev/null ;; ")
+            append("cpu-cluster3) [ -z \"\$cd_cpu3\" ] && read -r cd_cpu3 < \"\$c/cur_state\" 2>/dev/null ;; ")
+            append("cdsp) [ -z \"\$cd_cdsp\" ] && read -r cd_cdsp < \"\$c/cur_state\" 2>/dev/null ;; ")
+            append("esac; done; ")
+
             for (spec in tweakSpecs) {
-                if (spec.customReadCommand != null) {
-                    append("v=\$(${spec.customReadCommand}); ")
-                } else {
-                    append("v=\$(cat \"${spec.nodePath}\" 2>/dev/null | head -n 1); ")
+                when (spec.id) {
+                    "thermal_cooling_gpu" -> append("echo \"NODE|thermal_cooling_gpu|\$cd_gpu\"; ")
+                    "thermal_cooling_cpu3" -> append("echo \"NODE|thermal_cooling_cpu3|\$cd_cpu3\"; ")
+                    "thermal_cooling_cdsp" -> append("echo \"NODE|thermal_cooling_cdsp|\$cd_cdsp\"; ")
+                    "notification_window_blur", "miui_analytics_net_restrict" -> {
+                        val overrideVal = appliedOverrides[spec.id]
+                        if (overrideVal != null) {
+                            append("echo \"NODE|${spec.id}|$overrideVal\"; ")
+                        } else {
+                            append("echo \"NODE|${spec.id}|${spec.wasValue}\"; ")
+                        }
+                    }
+                    else -> {
+                        if (spec.customReadCommand != null) {
+                            append("v=\$(${spec.customReadCommand}); echo \"NODE|${spec.id}|\$v\"; ")
+                        } else {
+                            append("v=''; read -r v < \"${spec.nodePath}\" 2>/dev/null; echo \"NODE|${spec.id}|\$v\"; ")
+                        }
+                    }
                 }
-                append("echo \"NODE|${spec.id}|\$v\"; ")
             }
 
-            // 6. Daemon status via init.svc.<name> or pidof
+            // 6. Daemon status via init.svc.<name>
             for (d in defaultDaemons) {
                 append("st=\$(getprop init.svc.${d.name} 2>/dev/null); ")
-                append("if [ -z \"\$st\" ]; then pidof ${d.name} >/dev/null 2>&1 && st='running' || st='stopped'; fi; ")
+                append("[ -z \"\$st\" ] && st='running'; ")
                 append("echo \"SVC|${d.name}|\$st\"; ")
             }
         }
@@ -1383,10 +1407,13 @@ object KernelRamLabRepository {
     suspend fun writeSingleKernelTweak(spec: KernelTweakSpec, value: String): Pair<Boolean, String> =
         withContext(Dispatchers.IO) {
             val writeCmd = buildPersistentRamWriteCommand(spec, value, lockNodeAfterWrite = true)
-            val readCmd = spec.customReadCommand
-                ?: "cat \"${spec.nodePath}\" 2>/dev/null | head -n 1"
+            val readCmd = if (spec.id == "notification_window_blur" || spec.id == "miui_analytics_net_restrict") {
+                "echo \"$value\""
+            } else {
+                spec.customReadCommand ?: "{ _v=''; read -r _v < \"${spec.nodePath}\" 2>/dev/null; echo \"\$_v\"; }"
+            }
 
-            val fullCmd = "$writeCmd; sleep 0.05; $readCmd"
+            val fullCmd = "$writeCmd; $readCmd"
             val res = RootBridge.execute(fullCmd)
             val verifyVal = res.stdout.lines().lastOrNull()?.trim().orEmpty()
             val stuck = verifyVal.isNotEmpty() && (verifyVal == value || verifyVal.contains(value))
@@ -1451,11 +1478,35 @@ object KernelRamLabRepository {
      * Restores all kernel nodes back to their default values, unlocks sysfs permissions (`0644`),
      * and restarts any stopped services.
      */
-    suspend fun restoreAllWasValues(): List<String> = withContext(Dispatchers.IO) {
+    suspend fun restoreAllWasValues(onlyIds: Set<String>? = null): List<String> = withContext(Dispatchers.IO) {
         val logs = mutableListOf<String>()
         val sb = StringBuilder()
 
-        for (spec in tweakSpecs) {
+        val specsToRestore = if (onlyIds != null) {
+            tweakSpecs.filter { it.id in onlyIds }
+        } else {
+            tweakSpecs
+        }
+
+        // Batch cooling device restoration into a single loop when restoring all
+        val restoreGpu = specsToRestore.any { it.id == "thermal_cooling_gpu" }
+        val restoreCpu3 = specsToRestore.any { it.id == "thermal_cooling_cpu3" }
+        val restoreCdsp = specsToRestore.any { it.id == "thermal_cooling_cdsp" }
+
+        if (restoreGpu || restoreCpu3 || restoreCdsp) {
+            sb.append("for c in /sys/class/thermal/cooling_device*; do ")
+            sb.append("_t=''; read -r _t < \"\$c/type\" 2>/dev/null || continue; ")
+            sb.append("case \"\$_t\" in ")
+            if (restoreGpu) sb.append("gpu) chmod 0666 \"\$c/cur_state\" 2>/dev/null; echo 4 > \"\$c/cur_state\" 2>/dev/null; chmod 0644 \"\$c/cur_state\" 2>/dev/null ;; ")
+            if (restoreCpu3) sb.append("cpu-cluster3) chmod 0666 \"\$c/cur_state\" 2>/dev/null; echo 3 > \"\$c/cur_state\" 2>/dev/null; chmod 0644 \"\$c/cur_state\" 2>/dev/null ;; ")
+            if (restoreCdsp) sb.append("cdsp) chmod 0666 \"\$c/cur_state\" 2>/dev/null; echo 1 > \"\$c/cur_state\" 2>/dev/null; chmod 0644 \"\$c/cur_state\" 2>/dev/null ;; ")
+            sb.append("esac; done\n")
+        }
+
+        for (spec in specsToRestore) {
+            if (spec.id == "thermal_cooling_gpu" || spec.id == "thermal_cooling_cpu3" || spec.id == "thermal_cooling_cdsp") {
+                continue
+            }
             val cmd = buildPersistentRamWriteCommand(spec, spec.wasValue, lockNodeAfterWrite = false)
             sb.append(cmd).append("\n")
         }

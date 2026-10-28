@@ -257,10 +257,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * HyperOS tweaks are only allowed to coexist alongside HyperOS Power Saver in Tweaks.
      */
     private suspend fun flushHyperOsRamTweaksForProfileSwitch(reasonLabel: String) {
-        val hadHyperOsState = _appliedKernelTweaks.value.isNotEmpty() ||
+        val previouslyAppliedIds = _appliedKernelTweaks.value.keys.toSet()
+        val hadHyperOsState = previouslyAppliedIds.isNotEmpty() ||
             _stagedKernelTweaks.value.isNotEmpty() ||
             _selectedHyperOsTemplate.value != null ||
             _isBalanceScreenOffSaverActive.value
+
+        if (!hadHyperOsState) return
 
         _stagedKernelTweaks.value = emptyMap()
         _appliedKernelTweaks.value = emptyMap()
@@ -269,20 +272,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         persistHyperOsKernelState()
 
         val hasRoot = _telemetry.value.isRootGranted || RootBridge.isRootAvailable()
-        if (hasRoot) {
-            KernelRamLabRepository.restoreAllWasValues()
+        if (hasRoot && previouslyAppliedIds.isNotEmpty()) {
+            KernelRamLabRepository.restoreAllWasValues(onlyIds = previouslyAppliedIds)
             refreshKernelSnapshot()
         }
 
-        if (hadHyperOsState) {
-            val flushMsg = "HyperOS RAM tweaks flushed & reverted to original state ($reasonLabel)"
-            _lastKernelActionBanner.value = flushMsg
-            LogRepository.addLog(
-                category = LogCategory.TWEAK,
-                message = flushMsg,
-                isSuccess = true
-            )
-        }
+        val flushMsg = "HyperOS RAM tweaks flushed & reverted to original state ($reasonLabel)"
+        _lastKernelActionBanner.value = flushMsg
+        LogRepository.addLog(
+            category = LogCategory.TWEAK,
+            message = flushMsg,
+            isSuccess = true
+        )
     }
 
     fun refreshTelemetry() {
@@ -528,12 +529,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (!isCoexistingHyperOsSaver) {
                     flushHyperOsRamTweaksForProfileSwitch("${toApply.activeProfile.lowercase()} profile")
                 }
-                RootBridge.revertAllTweaks(getApplication())
                 RootBridge.applyPowersaveTweaks(getApplication(), toApply)
                 if (isCoexistingHyperOsSaver && _appliedKernelTweaks.value.isNotEmpty()) {
                     KernelRamLabRepository.applyBatchKernelTweaks(_appliedKernelTweaks.value)
                     refreshKernelSnapshot()
                 }
+                _isBusy.value = false
                 dao.updateBackupStatus(true, RootBridge.BACKUP_FILE_PATH)
                 _statusMessage.value = "Tweaks active in RAM!"
                 val profileName = when (toApply.activeProfile) {
@@ -553,6 +554,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _statusMessage.value = "Restoring factory kernel parameters..."
                 flushHyperOsRamTweaksForProfileSwitch("engine turned off")
                 RootBridge.revertAllTweaks(getApplication())
+                _isBusy.value = false
                 val allOff = resetAllTogglesToOff(current).copy(
                     isMasterApplied = false,
                     lastAppliedTimestamp = System.currentTimeMillis()
@@ -566,7 +568,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
             refreshTelemetry()
-            _isBusy.value = false
         }
     }
 
@@ -578,6 +579,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (_telemetry.value.isRootGranted || RootBridge.isRootAvailable()) {
                 RootBridge.revertAllTweaks(getApplication())
             }
+            _isBusy.value = false
             val current = configState.value
             val allOff = resetAllTogglesToOff(current).copy(
                 isMasterApplied = false,
@@ -592,7 +594,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 isSuccess = true
             )
             refreshTelemetry()
-            _isBusy.value = false
         }
     }
 
@@ -638,12 +639,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             flushHyperOsRamTweaksForProfileSwitch(profileLogLabel)
 
             if (hasRoot) {
-                _statusMessage.value = "Reverting previous profile & applying $profileLogLabel..."
-                // First revert previous profile tweaks to system default, then apply the selected profile
-                RootBridge.revertAllTweaks(getApplication())
+                _statusMessage.value = "Applying $profileLogLabel..."
+                // applyPowersaveTweaks restores stock snapshot in-batch before writing active profile nodes
                 RootBridge.applyPowersaveTweaks(getApplication(), updated)
+                _isBusy.value = false
                 dao.updateBackupStatus(true, RootBridge.BACKUP_FILE_PATH)
                 refreshTelemetry()
+            } else {
+                _isBusy.value = false
             }
 
             _statusMessage.value = "$profileLogLabel applied"
@@ -652,7 +655,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 message = "$profileLogLabel enabled (HyperOS RAM tweaks flushed & previous profile reverted)",
                 isSuccess = true
             )
-            _isBusy.value = false
         }
     }
 
@@ -861,17 +863,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             if (hasRoot) {
                 _statusMessage.value = "Applying selected tweaks..."
-                // 1. Revert previous state first so any unchecked tweaks return to system default
-                RootBridge.revertAllTweaks(getApplication())
-
-                // 2. Apply all selected kernel, system UI, display, and profile tweaks atomically in order
+                // 1. Apply all selected kernel, system UI, display, and profile tweaks atomically in a single batch
                 RootBridge.applyPowersaveTweaks(getApplication(), updated)
 
-                // 3. If HyperOS Power Saver is active, keep HyperOS RAM tweaks applied alongside it
+                // 2. If HyperOS Power Saver is active, keep HyperOS RAM tweaks applied alongside it
                 if (isCoexistingHyperOsSaver && _appliedKernelTweaks.value.isNotEmpty()) {
                     KernelRamLabRepository.applyBatchKernelTweaks(_appliedKernelTweaks.value)
                     refreshKernelSnapshot()
                 }
+                _isBusy.value = false
 
                 dao.updateBackupStatus(true, RootBridge.BACKUP_FILE_PATH)
                 refreshTelemetry()
@@ -890,6 +890,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     isSuccess = true
                 )
             } else {
+                _isBusy.value = false
                 _statusMessage.value = "Tweaks saved (Root permission required to write to kernel)"
                 LogRepository.addLog(
                     category = LogCategory.TWEAK,
@@ -897,7 +898,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     isSuccess = false
                 )
             }
-            _isBusy.value = false
         }
     }
 
@@ -1217,12 +1217,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 isSuccess = true
             )
             if (hasRoot) {
-                RootBridge.revertAllTweaks(getApplication())
                 RootBridge.applyPowersaveTweaks(getApplication(), updated)
+                _isBusy.value = false
                 dao.updateBackupStatus(true, RootBridge.BACKUP_FILE_PATH)
                 refreshTelemetry()
+            } else {
+                _isBusy.value = false
             }
-            _isBusy.value = false
         }
     }
 
@@ -1400,6 +1401,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 dao.update(updatedCfg)
             }
             val (ok, msg) = KernelRamLabRepository.writeSingleKernelTweak(spec, value)
+            _isBusy.value = false
             if (ok) {
                 val appliedMap = _appliedKernelTweaks.value.toMutableMap()
                 appliedMap[spec.id] = value
@@ -1414,7 +1416,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 isSuccess = ok
             )
             refreshKernelSnapshot()
-            _isBusy.value = false
         }
     }
 
@@ -1422,6 +1423,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isBusy.value = true
             val (ok, msg) = KernelRamLabRepository.writeSingleKernelTweak(spec, spec.wasValue)
+            _isBusy.value = false
             val currentMap = _stagedKernelTweaks.value.toMutableMap()
             currentMap.remove(spec.id)
             _stagedKernelTweaks.value = currentMap
@@ -1438,7 +1440,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 isSuccess = ok
             )
             refreshKernelSnapshot()
-            _isBusy.value = false
         }
     }
 
@@ -1459,7 +1460,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     isMasterApplied = true,
                     lastAppliedTimestamp = System.currentTimeMillis()
                 )
-                RootBridge.revertAllTweaks(getApplication())
                 RootBridge.applyPowersaveTweaks(getApplication(), updatedForSaver)
                 dao.updateBackupStatus(true, RootBridge.BACKUP_FILE_PATH)
             }
@@ -1471,6 +1471,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 emptyList()
             }
+            _isBusy.value = false
 
             val mergedApplied = _appliedKernelTweaks.value.toMutableMap().apply {
                 putAll(staged)
@@ -1522,7 +1523,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             refreshKernelSnapshot()
             refreshTelemetry()
-            _isBusy.value = false
         }
     }
 
@@ -1556,13 +1556,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             val logs = KernelRamLabRepository.restoreAllWasValues()
+            _isBusy.value = false
             val summary = logs.firstOrNull() ?: "Restored all HyperOS settings to default values"
             _lastKernelActionBanner.value = summary
             _statusMessage.value = summary
             LogRepository.addLog(category = LogCategory.TWEAK, message = summary, isSuccess = true)
             refreshKernelSnapshot()
             refreshTelemetry()
-            _isBusy.value = false
         }
     }
 
