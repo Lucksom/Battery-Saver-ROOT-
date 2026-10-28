@@ -5,7 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [TweakConfigEntity::class], version = 13, exportSchema = false)
+@Database(entities = [TweakConfigEntity::class], version = 14, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun tweakConfigDao(): TweakConfigDao
 

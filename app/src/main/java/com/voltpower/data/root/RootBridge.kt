@@ -1777,11 +1777,6 @@ object RootBridge {
             .toSet()
 
         val allProtectedPkgs = PERMANENT_SYSTEM_EXCEPTIONS + userAllowedPkgs + setOf(
-            "com.whatsapp",
-            "com.twitter.android",
-            "com.android.vending",
-            "com.android.mms",
-            "org.barebrowser",
             "com.voltpower"
         )
 

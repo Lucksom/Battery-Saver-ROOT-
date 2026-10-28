@@ -388,7 +388,6 @@ private enum class ExpressiveTab(
 ) {
     OVERVIEW("Overview", Icons.Outlined.Dashboard, Icons.Outlined.Dashboard),
     TWEAKS("Tweaks", Icons.Outlined.Tune, Icons.Filled.Tune),
-    HYPEROS("HyperOS", Icons.Filled.DeveloperBoard, Icons.Filled.Memory),
     CONSOLE("Console", Icons.Outlined.Terminal, Icons.Filled.Terminal)
 }
 
@@ -506,11 +505,11 @@ fun MainScreen(
     var selectedSeed by rememberSaveable { mutableStateOf(MonetSeedPreset.MINT) }
     var showMonetPicker by rememberSaveable { mutableStateOf(false) }
 
-    // Section 9: Live 2-second Temperature Watch polling while HyperOS Kernel tab is open
-    LaunchedEffect(currentTab) {
-        if (currentTab == ExpressiveTab.HYPEROS) {
+    // Section 9: Live 2-second Temperature Watch polling while HyperOS Tweaks tab is open
+    LaunchedEffect(currentTab, config.enableHyperOsTweaksTab) {
+        if (currentTab == ExpressiveTab.TWEAKS && config.enableHyperOsTweaksTab) {
             viewModel.refreshKernelSnapshot()
-            while (currentTab == ExpressiveTab.HYPEROS) {
+            while (currentTab == ExpressiveTab.TWEAKS && config.enableHyperOsTweaksTab) {
                 kotlinx.coroutines.delay(2000)
                 viewModel.refreshKernelSnapshot()
             }
@@ -640,100 +639,115 @@ fun MainScreen(
                                         },
                                         onSelectProfile = { viewModel.onSelectProfile(it) },
                                         onSelectPerformanceSubMode = { viewModel.onSelectPerformanceSubMode(it) },
+                                        onToggleEnableHyperOsTweaksTab = { viewModel.onToggleEnableHyperOsTweaksTab(it) },
                                         onOpenConsole = { currentTab = ExpressiveTab.CONSOLE }
                                     )
                                 }
 
                                 ExpressiveTab.TWEAKS -> {
-                                    ExpressiveTweaksPage(
-                                        config = config,
-                                        hasUnappliedChanges = hasUnappliedChanges,
-                                        installedApps = installedApps,
-                                        onSelectProfile = { viewModel.onExploreProfileInTweaks(it) },
-                                        onSelectPerformanceSubMode = { viewModel.onExplorePerformanceSubModeInTweaks(it) },
-                                        onSetAllCurrentProfileTweaks = { viewModel.onSetAllCurrentProfileTweaks(it) },
-                                        onUpdateTweak = { key, enabled -> viewModel.onUpdateTweak(key, enabled) },
-                                        onToggleHyperOs = { viewModel.onToggleHyperOsPowerSaver(it) },
-                                        onSelectRefreshRate = { viewModel.onSelectRefreshRate(it) },
-                                        onUpdateCoreTopology = { cores, threshold ->
-                                            viewModel.onUpdateCoreTopology(cores, threshold)
-                                        },
-                                        onUpdateBalanceCpuCap = { percent ->
-                                            viewModel.onUpdateBalanceCpuCap(percent)
-                                        },
-                                        onUpdateBackgroundAllowedApps = { csv ->
-                                            val set = csv.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
-                                            viewModel.onUpdateBackgroundAllowedApps(set)
-                                        },
-                                        onUpdateDeepSleepWhitelist = { csv ->
-                                            viewModel.onUpdateDeepSleepWhitelist(csv)
-                                        }
-                                    )
-                                }
-
-                                ExpressiveTab.HYPEROS -> {
-                                    val resolvedTemplate = selectedHyperOsTemplate
-                                        ?: com.voltpower.data.root.HyperOsProfileTemplate.entries.find {
-                                            it.id == config.hyperOsActiveTemplate
-                                        }
-                                    HyperOsKernelTabScreen(
-                                        snapshot = kernelSnapshot,
-                                        stagedTweaks = stagedKernelTweaks,
-                                        selectedTemplate = resolvedTemplate,
-                                        isBalanceScreenOffSaverActive = isBalanceScreenOffSaverActive || config.hyperOsBalanceScreenOffArmed,
-                                        isPocoF7Enabled = config.hyperOsPocoF7Enabled,
-                                        lastActionBanner = lastKernelActionBanner,
-                                        installedApps = installedApps,
-                                        freezeCheckedAppsRaw = config.hyperOsFreezeCheckedApps,
-                                        backgroundAllowedAppsCsv = config.backgroundAllowedApps,
-                                        onSelectTemplate = { template ->
-                                            viewModel.onSelectHyperOsTemplate(template)
-                                        },
-                                        onTogglePocoF7Mode = { enabled ->
-                                            viewModel.onToggleHyperOsPocoF7Mode(enabled)
-                                        },
-                                        onStageTweakValue = { id, value ->
-                                            viewModel.onStageKernelTweak(id, value)
-                                        },
-                                        onRunSingleLineNow = { spec, value ->
-                                            viewModel.onRunSingleKernelLine(spec, value)
-                                        },
-                                        onUndoSingleLineToWas = { spec ->
-                                            viewModel.onUndoSingleKernelLine(spec)
-                                        },
-                                        onSwipeApplyStaged = {
-                                            viewModel.onSwipeApplyStagedKernelTweaks()
-                                        },
-                                        onRestoreAllWasValues = {
-                                            viewModel.onRestoreAllWasKernelValues()
-                                        },
-                                        onRefreshSnapshot = {
-                                            viewModel.refreshKernelSnapshot()
-                                        },
-                                        onRunOneShotVmAction = { dropCaches ->
-                                            viewModel.onRunOneShotVmAction(dropCaches)
-                                        },
-                                        onToggleDaemon = { name, start ->
-                                            viewModel.onToggleXiaomiDaemon(name, start)
-                                        },
-                                        onUpdateFreezeCheckedApps = { checkedSet, selectAllUserEnabled ->
-                                            viewModel.onUpdateHyperOsFreezeCheckedApps(
-                                                checkedApps = checkedSet,
-                                                selectAllUserEnabled = selectAllUserEnabled
-                                            )
-                                        },
-                                        onUpdateBackgroundAllowedApps = { csv ->
-                                            val set = csv
-                                                .split(",")
-                                                .map { it.trim() }
-                                                .filter { it.isNotEmpty() }
-                                                .toSet()
-                                            viewModel.onUpdateBackgroundAllowedApps(set)
-                                        },
-                                        onExecuteProcessAction = { pkg, action ->
-                                            viewModel.onExecuteProcessKernelAction(pkg, action)
-                                        }
-                                    )
+                                    if (config.enableHyperOsTweaksTab) {
+                                        val resolvedTemplate = selectedHyperOsTemplate
+                                            ?: com.voltpower.data.root.HyperOsProfileTemplate.entries.find {
+                                                it.id == config.hyperOsActiveTemplate
+                                            }
+                                        HyperOsKernelTabScreen(
+                                            config = config,
+                                            hasUnappliedSaverChanges = hasUnappliedChanges,
+                                            snapshot = kernelSnapshot,
+                                            stagedTweaks = stagedKernelTweaks,
+                                            selectedTemplate = resolvedTemplate,
+                                            isBalanceScreenOffSaverActive = isBalanceScreenOffSaverActive || config.hyperOsBalanceScreenOffArmed,
+                                            isPocoF7Enabled = config.hyperOsPocoF7Enabled,
+                                            lastActionBanner = lastKernelActionBanner,
+                                            installedApps = installedApps,
+                                            freezeCheckedAppsRaw = config.hyperOsFreezeCheckedApps,
+                                            backgroundAllowedAppsCsv = config.backgroundAllowedApps,
+                                            onToggleHyperOsPowerSaver = { enabled ->
+                                                viewModel.onToggleHyperOsPowerSaver(enabled)
+                                            },
+                                            onUpdateHyperOsTweak = { key, enabled ->
+                                                viewModel.onUpdateTweak(key, enabled)
+                                            },
+                                            onSelectRefreshRate = { hz ->
+                                                viewModel.onSelectRefreshRate(hz)
+                                            },
+                                            onSetAllHyperOsBatterySaverTweaks = { selectAll ->
+                                                viewModel.onSetAllHyperOsBatterySaverTweaks(selectAll)
+                                            },
+                                            onSelectTemplate = { template ->
+                                                viewModel.onSelectHyperOsTemplate(template)
+                                            },
+                                            onTogglePocoF7Mode = { enabled ->
+                                                viewModel.onToggleHyperOsPocoF7Mode(enabled)
+                                            },
+                                            onStageTweakValue = { id, value ->
+                                                viewModel.onStageKernelTweak(id, value)
+                                            },
+                                            onRunSingleLineNow = { spec, value ->
+                                                viewModel.onRunSingleKernelLine(spec, value)
+                                            },
+                                            onUndoSingleLineToWas = { spec ->
+                                                viewModel.onUndoSingleKernelLine(spec)
+                                            },
+                                            onSwipeApplyStaged = {
+                                                viewModel.onSwipeApplyStagedKernelTweaks()
+                                            },
+                                            onRestoreAllWasValues = {
+                                                viewModel.onRestoreAllWasKernelValues()
+                                            },
+                                            onRefreshSnapshot = {
+                                                viewModel.refreshKernelSnapshot()
+                                            },
+                                            onRunOneShotVmAction = { dropCaches ->
+                                                viewModel.onRunOneShotVmAction(dropCaches)
+                                            },
+                                            onToggleDaemon = { name, start ->
+                                                viewModel.onToggleXiaomiDaemon(name, start)
+                                            },
+                                            onUpdateFreezeCheckedApps = { checkedSet, selectAllUserEnabled ->
+                                                viewModel.onUpdateHyperOsFreezeCheckedApps(
+                                                    checkedApps = checkedSet,
+                                                    selectAllUserEnabled = selectAllUserEnabled
+                                                )
+                                            },
+                                            onUpdateBackgroundAllowedApps = { csv ->
+                                                val set = csv
+                                                    .split(",")
+                                                    .map { it.trim() }
+                                                    .filter { it.isNotEmpty() }
+                                                    .toSet()
+                                                viewModel.onUpdateBackgroundAllowedApps(set)
+                                            },
+                                            onExecuteProcessAction = { pkg, action ->
+                                                viewModel.onExecuteProcessKernelAction(pkg, action)
+                                            }
+                                        )
+                                    } else {
+                                        ExpressiveTweaksPage(
+                                            config = config,
+                                            hasUnappliedChanges = hasUnappliedChanges,
+                                            installedApps = installedApps,
+                                            onSelectProfile = { viewModel.onExploreProfileInTweaks(it) },
+                                            onSelectPerformanceSubMode = { viewModel.onExplorePerformanceSubModeInTweaks(it) },
+                                            onSetAllCurrentProfileTweaks = { viewModel.onSetAllCurrentProfileTweaks(it) },
+                                            onUpdateTweak = { key, enabled -> viewModel.onUpdateTweak(key, enabled) },
+                                            onToggleHyperOs = { viewModel.onToggleHyperOsPowerSaver(it) },
+                                            onSelectRefreshRate = { viewModel.onSelectRefreshRate(it) },
+                                            onUpdateCoreTopology = { cores, threshold ->
+                                                viewModel.onUpdateCoreTopology(cores, threshold)
+                                            },
+                                            onUpdateBalanceCpuCap = { percent ->
+                                                viewModel.onUpdateBalanceCpuCap(percent)
+                                            },
+                                            onUpdateBackgroundAllowedApps = { csv ->
+                                                val set = csv.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+                                                viewModel.onUpdateBackgroundAllowedApps(set)
+                                            },
+                                            onUpdateDeepSleepWhitelist = { csv ->
+                                                viewModel.onUpdateDeepSleepWhitelist(csv)
+                                            }
+                                        )
+                                    }
                                 }
 
                                 ExpressiveTab.CONSOLE -> {
@@ -748,9 +762,9 @@ fun MainScreen(
                     }
                 }
 
-                // Floating "Swipe to Apply" + "Revert stock" Dock on Tweaks Tab
+                // Floating "Swipe to Apply" + "Revert stock" Dock on default Tweaks Tab
                 AnimatedVisibility(
-                    visible = currentTab == ExpressiveTab.TWEAKS,
+                    visible = currentTab == ExpressiveTab.TWEAKS && !config.enableHyperOsTweaksTab,
                     enter = fadeIn() + expandVertically(),
                     exit = fadeOut() + shrinkVertically(),
                     modifier = Modifier
@@ -767,9 +781,10 @@ fun MainScreen(
                     )
                 }
 
-                // Floating Glassmorphic Pill Bottom Navigation (nav .in from HTML lines 227-234)
+                // Floating Glassmorphic Pill Bottom Navigation (3 tabs: Overview, Tweaks or HyperOS Tweaks, Console)
                 ExpressiveFloatingBottomNav(
                     currentTab = currentTab,
+                    isHyperOsTweaksEnabled = config.enableHyperOsTweaksTab,
                     logCount = logs.size,
                     onTabSelected = { currentTab = it },
                     modifier = Modifier
@@ -1229,8 +1244,10 @@ private fun ExpressiveOverviewPage(
     onToggleMaster: () -> Unit,
     onSelectProfile: (String) -> Unit,
     onSelectPerformanceSubMode: (String) -> Unit,
+    onToggleEnableHyperOsTweaksTab: (Boolean) -> Unit,
     onOpenConsole: () -> Unit
 ) {
+    val roles = LocalMonetRoles.current
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
@@ -1259,6 +1276,75 @@ private fun ExpressiveOverviewPage(
                 onSelectProfile = onSelectProfile,
                 onSelectPerformanceSubMode = onSelectPerformanceSubMode
             )
+        }
+
+        // 2B. Enable HyperOS Tweaks Toggle Card (Replaces default 'Tweaks' tab with 'HyperOS Tweaks')
+        item {
+            Surface(
+                onClick = { onToggleEnableHyperOsTweaksTab(!config.enableHyperOsTweaksTab) },
+                shape = RoundedCornerShape(30.dp),
+                color = if (config.enableHyperOsTweaksTab) roles.pc else roles.s2,
+                contentColor = if (config.enableHyperOsTweaksTab) roles.onPc else roles.onS,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("enable_hyperos_tweaks_toggle")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(if (config.enableHyperOsTweaksTab) 23.dp else 16.dp),
+                        color = if (config.enableHyperOsTweaksTab) roles.primary else roles.sc,
+                        contentColor = if (config.enableHyperOsTweaksTab) roles.onPrimary else roles.onSc,
+                        modifier = Modifier.size(46.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = if (config.enableHyperOsTweaksTab) {
+                                    Icons.Filled.Memory
+                                } else {
+                                    Icons.Filled.DeveloperBoard
+                                },
+                                contentDescription = null,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Enable HyperOS Tweaks",
+                            fontFamily = SpaceGroteskFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.5.sp
+                        )
+                        Text(
+                            text = if (config.enableHyperOsTweaksTab) {
+                                "Active · Bottom tab replaced with HyperOS Tweaks"
+                            } else {
+                                "Replace default Tweaks tab with HyperOS Tweaks"
+                            },
+                            fontFamily = PlusJakartaSansFontFamily,
+                            fontSize = 12.sp,
+                            color = if (config.enableHyperOsTweaksTab) {
+                                roles.onPc.copy(alpha = 0.82f)
+                            } else {
+                                roles.onSv
+                            },
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+
+                    ExpressiveHtmlSwitch(
+                        checked = config.enableHyperOsTweaksTab,
+                        onCheckedChange = { onToggleEnableHyperOsTweaksTab(it) }
+                    )
+                }
+            }
         }
 
         // 3. Bento Telemetry Grid (.bento: Octa-core Equalizer + GPU + ZRAM + Thermal + Capacity)
@@ -3326,225 +3412,117 @@ private fun ExpressiveTweaksPage(
         }
 
         // ====================================================================
-        // PROFILE 1: POWERSAVE TWEAKS + HYPEROS BATTERY SAVER
+        // PROFILE 1: DEFAULT POWERSAVE TWEAKS (HyperOS Battery Saver shifted to HyperOS Tweaks tab)
         // ====================================================================
         if (activeProfile == "POWERSAVE") {
-            // Master Toggle Card for HyperOS Battery Saver
-            item {
-                ExpressiveTweakGroupHeader(
-                    title = "HyperOS battery saver",
-                    countLabel = if (config.hyperOsPowerSaverEnabled) "enabled" else "disabled"
-                )
-                Surface(
-                    onClick = { onToggleHyperOs(!config.hyperOsPowerSaverEnabled) },
-                    shape = RoundedCornerShape(30.dp),
-                    color = if (config.hyperOsPowerSaverEnabled) roles.pc else roles.s2,
-                    contentColor = if (config.hyperOsPowerSaverEnabled) roles.onPc else roles.onS,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("hyperos_unified_card")
-                ) {
-                    Row(
+            val psCpuFiltered = powersaveCpuTweaks.filterByQuery()
+            if (psCpuFiltered.isNotEmpty()) {
+                item {
+                    ExpressiveTweakGroupHeader(
+                        title = "Powersave · CPU & Adreno",
+                        countLabel = "${psCpuFiltered.size + 1} tweaks"
+                    )
+                    ExpressiveGroupedTweakList(
+                        items = psCpuFiltered,
+                        config = config,
+                        onToggle = { spec, checked -> onUpdateTweak(spec.key, checked) }
+                    )
+
+                    // Park big cores on low battery slider card
+                    Surface(
+                        shape = RoundedCornerShape(30.dp),
+                        color = roles.s2,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            .padding(top = 3.dp)
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(if (config.hyperOsPowerSaverEnabled) 23.dp else 16.dp),
-                            color = if (config.hyperOsPowerSaverEnabled) roles.primary else roles.sc,
-                            contentColor = if (config.hyperOsPowerSaverEnabled) roles.onPrimary else roles.onSc,
-                            modifier = Modifier.size(46.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Filled.Bolt,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(22.dp)
+                        Column(modifier = Modifier.padding(18.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Park big cores on low battery",
+                                        fontFamily = SpaceGroteskFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.5.sp,
+                                        color = roles.onS
+                                    )
+                                    Text(
+                                        text = "Park ${config.offlineCoreCount} cores below ${sliderThreshold.roundToInt()}%",
+                                        fontFamily = PlusJakartaSansFontFamily,
+                                        fontSize = 12.sp,
+                                        color = roles.onSv,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    )
+                                }
+                                ExpressiveHtmlSwitch(
+                                    checked = config.twoCoresOfflineBelow20Enabled,
+                                    onCheckedChange = { onUpdateTweak("twoCoresOffline", it) }
                                 )
                             }
-                        }
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "HyperOS Battery saver",
-                                fontFamily = SpaceGroteskFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp
-                            )
-                            Text(
-                                text = "Switch to Xiaomi / HyperOS power saving tweaks & toggles",
-                                fontFamily = PlusJakartaSansFontFamily,
-                                fontSize = 12.sp,
-                                color = if (config.hyperOsPowerSaverEnabled) {
-                                    roles.onPc.copy(alpha = 0.82f)
-                                } else {
-                                    roles.onSv
+                            Slider(
+                                value = sliderThreshold,
+                                onValueChange = { sliderThreshold = it },
+                                onValueChangeFinished = {
+                                    onUpdateCoreTopology(config.offlineCoreCount, sliderThreshold.roundToInt())
                                 },
-                                modifier = Modifier.padding(top = 2.dp)
+                                valueRange = 5f..60f,
+                                steps = 10,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = roles.primary,
+                                    activeTrackColor = roles.primary,
+                                    inactiveTrackColor = roles.s4
+                                ),
+                                modifier = Modifier.padding(top = 6.dp)
                             )
                         }
-
-                        ExpressiveHtmlSwitch(
-                            checked = config.hyperOsPowerSaverEnabled,
-                            onCheckedChange = { onToggleHyperOs(it) }
-                        )
                     }
                 }
             }
 
-            if (config.hyperOsPowerSaverEnabled) {
-                // When HyperOS Battery saver is enabled, show ONLY HyperOS powersave tweak options and toggles
-                val hyperOsFiltered = hyperOsTweaks.filterByQuery()
-                if (hyperOsFiltered.isNotEmpty()) {
-                    item {
-                        ExpressiveTweakGroupHeader(
-                            title = "HyperOS powersave tweaks",
-                            countLabel = "${hyperOsFiltered.size} tweaks"
-                        )
-                        ExpressiveGroupedTweakList(
-                            items = hyperOsFiltered,
-                            config = config,
-                            onToggle = { spec, checked -> onUpdateTweak(spec.key, checked) }
-                        )
-                    }
-                }
-
+            val psDozeFiltered = powersaveDozeTweaks.filterByQuery()
+            if (psDozeFiltered.isNotEmpty()) {
                 item {
                     ExpressiveTweakGroupHeader(
-                        title = "HyperOS display refresh rate",
-                        countLabel = "1 tweak"
+                        title = "Powersave · Doze & standby",
+                        countLabel = "${psDozeFiltered.size} tweaks"
+                    )
+                    ExpressiveGroupedTweakList(
+                        items = psDozeFiltered,
+                        config = config,
+                        onToggle = { spec, checked -> onUpdateTweak(spec.key, checked) }
+                    )
+                }
+            }
+
+            val psIoFiltered = powersaveIoTweaks.filterByQuery()
+            if (psIoFiltered.isNotEmpty()) {
+                item {
+                    ExpressiveTweakGroupHeader(
+                        title = "Powersave · Display & I/O",
+                        countLabel = "${psIoFiltered.size + 1} tweaks"
                     )
                     ExpressiveRefreshRateAndIoSection(
                         refreshRateHz = config.refreshRateHz,
-                        ioItems = emptyList(),
+                        ioItems = psIoFiltered,
                         config = config,
                         onSelectRefreshRate = onSelectRefreshRate,
                         onUpdateTweak = onUpdateTweak
                     )
                 }
+            }
 
-                item {
-                    ExpressiveBackgroundExceptionListSection(
-                        title = "Background exception list",
-                        subtitle = "Choose system & user apps exempt from HyperOS freezer & background kill (selected pinned at top)",
-                        installedApps = installedApps,
-                        selectedAppsCsv = config.backgroundAllowedApps,
-                        onUpdateSelectedAppsCsv = onUpdateBackgroundAllowedApps
-                    )
-                }
-            } else {
-                // Default Powersave Tweaks (Shown when HyperOS Battery saver is disabled)
-                val psCpuFiltered = powersaveCpuTweaks.filterByQuery()
-                if (psCpuFiltered.isNotEmpty()) {
-                    item {
-                        ExpressiveTweakGroupHeader(
-                            title = "Powersave · CPU & Adreno",
-                            countLabel = "${psCpuFiltered.size + 1} tweaks"
-                        )
-                        ExpressiveGroupedTweakList(
-                            items = psCpuFiltered,
-                            config = config,
-                            onToggle = { spec, checked -> onUpdateTweak(spec.key, checked) }
-                        )
-
-                        // Park big cores on low battery slider card
-                        Surface(
-                            shape = RoundedCornerShape(30.dp),
-                            color = roles.s2,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 3.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(18.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = "Park big cores on low battery",
-                                            fontFamily = SpaceGroteskFontFamily,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.5.sp,
-                                            color = roles.onS
-                                        )
-                                        Text(
-                                            text = "Park ${config.offlineCoreCount} cores below ${sliderThreshold.roundToInt()}%",
-                                            fontFamily = PlusJakartaSansFontFamily,
-                                            fontSize = 12.sp,
-                                            color = roles.onSv,
-                                            modifier = Modifier.padding(top = 2.dp)
-                                        )
-                                    }
-                                    ExpressiveHtmlSwitch(
-                                        checked = config.twoCoresOfflineBelow20Enabled,
-                                        onCheckedChange = { onUpdateTweak("twoCoresOffline", it) }
-                                    )
-                                }
-                                Slider(
-                                    value = sliderThreshold,
-                                    onValueChange = { sliderThreshold = it },
-                                    onValueChangeFinished = {
-                                        onUpdateCoreTopology(config.offlineCoreCount, sliderThreshold.roundToInt())
-                                    },
-                                    valueRange = 5f..60f,
-                                    steps = 10,
-                                    colors = SliderDefaults.colors(
-                                        thumbColor = roles.primary,
-                                        activeTrackColor = roles.primary,
-                                        inactiveTrackColor = roles.s4
-                                    ),
-                                    modifier = Modifier.padding(top = 6.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-
-                val psDozeFiltered = powersaveDozeTweaks.filterByQuery()
-                if (psDozeFiltered.isNotEmpty()) {
-                    item {
-                        ExpressiveTweakGroupHeader(
-                            title = "Powersave · Doze & standby",
-                            countLabel = "${psDozeFiltered.size} tweaks"
-                        )
-                        ExpressiveGroupedTweakList(
-                            items = psDozeFiltered,
-                            config = config,
-                            onToggle = { spec, checked -> onUpdateTweak(spec.key, checked) }
-                        )
-                    }
-                }
-
-                val psIoFiltered = powersaveIoTweaks.filterByQuery()
-                if (psIoFiltered.isNotEmpty()) {
-                    item {
-                        ExpressiveTweakGroupHeader(
-                            title = "Powersave · Display & I/O",
-                            countLabel = "${psIoFiltered.size + 1} tweaks"
-                        )
-                        ExpressiveRefreshRateAndIoSection(
-                            refreshRateHz = config.refreshRateHz,
-                            ioItems = psIoFiltered,
-                            config = config,
-                            onSelectRefreshRate = onSelectRefreshRate,
-                            onUpdateTweak = onUpdateTweak
-                        )
-                    }
-                }
-
-                item {
-                    ExpressiveBackgroundExceptionListSection(
-                        title = "Background exception list",
-                        subtitle = "Choose system & user apps allowed to run in background during Powersave (selected pinned at top)",
-                        installedApps = installedApps,
-                        selectedAppsCsv = config.backgroundAllowedApps,
-                        onUpdateSelectedAppsCsv = onUpdateBackgroundAllowedApps
-                    )
-                }
+            item {
+                ExpressiveBackgroundExceptionListSection(
+                    title = "Background exception list",
+                    subtitle = "Choose system & user apps allowed to run in background during Powersave (selected pinned at top)",
+                    installedApps = installedApps,
+                    selectedAppsCsv = config.backgroundAllowedApps,
+                    onUpdateSelectedAppsCsv = onUpdateBackgroundAllowedApps
+                )
             }
         }
 
@@ -4723,6 +4701,7 @@ private fun TerminalStreamLine(
 @Composable
 private fun ExpressiveFloatingBottomNav(
     currentTab: ExpressiveTab,
+    isHyperOsTweaksEnabled: Boolean,
     logCount: Int,
     onTabSelected: (ExpressiveTab) -> Unit,
     modifier: Modifier = Modifier
@@ -4750,6 +4729,16 @@ private fun ExpressiveFloatingBottomNav(
         ) {
             ExpressiveTab.entries.forEach { tab ->
                 val selected = currentTab == tab
+                val tabLabel = if (tab == ExpressiveTab.TWEAKS && isHyperOsTweaksEnabled) {
+                    "HyperOS Tweaks"
+                } else {
+                    tab.label
+                }
+                val tabIcon = if (tab == ExpressiveTab.TWEAKS && isHyperOsTweaksEnabled) {
+                    if (selected) Icons.Filled.Memory else Icons.Filled.DeveloperBoard
+                } else {
+                    if (selected) tab.selectedIcon else tab.icon
+                }
                 val pillWidth by animateDpAsState(
                     targetValue = if (selected) 78.dp else 66.dp,
                     animationSpec = spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMediumLow),
@@ -4779,8 +4768,8 @@ private fun ExpressiveFloatingBottomNav(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = if (selected) tab.selectedIcon else tab.icon,
-                                    contentDescription = tab.label,
+                                    imageVector = tabIcon,
+                                    contentDescription = tabLabel,
                                     tint = if (selected) roles.onPrimary else roles.onSv,
                                     modifier = Modifier.size(22.dp)
                                 )
@@ -4805,11 +4794,13 @@ private fun ExpressiveFloatingBottomNav(
                         }
 
                         Text(
-                            text = tab.label,
+                            text = tabLabel,
                             fontFamily = SpaceGroteskFontFamily,
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.5.sp,
-                            color = if (selected) roles.onS else roles.onSv
+                            color = if (selected) roles.onS else roles.onSv,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -4844,43 +4835,24 @@ private fun countSelectedTweaks(config: TweakConfigEntity): Int {
             config.refreshRateHz > 0
         ).count { it }
 
-        else -> {
-            if (config.hyperOsPowerSaverEnabled) {
-                listOf(
-                    config.systemBatterySaverEnabled,
-                    config.hyperOsAurogonFreezerEnabled,
-                    config.hyperOsSuperPowerCleanEnabled,
-                    config.hyperOsAodDisabled,
-                    config.hyperOsTouchBoostDisabled,
-                    config.touchDozeModeEnabled,
-                    config.hyperOsFiveGPowerOptEnabled,
-                    config.backgroundScanningDisabled,
-                    config.hyperOsLock60HzEnabled,
-                    config.systemBatterySaverWithoutDarkEnabled,
-                    config.systemDarkModeEnabled,
-                    config.hyperOsUltraSuperSaveUiEnabled
-                ).count { it }
-            } else {
-                listOf(
-                    config.cpuFreqCapEnabled,
-                    config.schedutilGovernorEnabled,
-                    config.schedutilRateLimitsEnabled,
-                    config.twoCoresOfflineBelow20Enabled,
-                    config.inputTouchBoostDisabled,
-                    config.gpuPowerLimitEnabled,
-                    config.adrenoIdlerEnabled,
-                    config.gmsDozeEnabled,
-                    config.lpmSleepEnabled,
-                    config.powerEfficientWorkqueueEnabled,
-                    config.schedtuneTopAppEnabled,
-                    config.backgroundScanningDisabled,
-                    config.storageIoQueueEnabled,
-                    config.dynamicFsyncEnabled,
-                    config.vmDirtyWritebackEnabled,
-                    config.refreshRateHz > 0
-                ).count { it }
-            }
-        }
+        else -> listOf(
+            config.cpuFreqCapEnabled,
+            config.schedutilGovernorEnabled,
+            config.schedutilRateLimitsEnabled,
+            config.twoCoresOfflineBelow20Enabled,
+            config.inputTouchBoostDisabled,
+            config.gpuPowerLimitEnabled,
+            config.adrenoIdlerEnabled,
+            config.gmsDozeEnabled,
+            config.lpmSleepEnabled,
+            config.powerEfficientWorkqueueEnabled,
+            config.schedtuneTopAppEnabled,
+            config.backgroundScanningDisabled,
+            config.storageIoQueueEnabled,
+            config.dynamicFsyncEnabled,
+            config.vmDirtyWritebackEnabled,
+            config.refreshRateHz > 0
+        ).count { it }
     }
 }
 

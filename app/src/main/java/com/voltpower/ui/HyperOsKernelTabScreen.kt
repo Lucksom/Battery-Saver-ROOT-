@@ -49,7 +49,10 @@ import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Contrast
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeveloperBoard
+import androidx.compose.material.icons.filled.Eco
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Memory
@@ -62,7 +65,9 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
@@ -95,6 +100,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.voltpower.data.apps.InstalledAppItem
+import com.voltpower.data.db.TweakConfigEntity
 import com.voltpower.data.root.HyperOsProfileTemplate
 import com.voltpower.data.root.KernelRamLabRepository
 import com.voltpower.data.root.KernelRamLiveSnapshot
@@ -107,8 +113,18 @@ import com.voltpower.ui.theme.SpaceGroteskFontFamily
 import java.util.Locale
 import kotlin.math.roundToInt
 
+private data class ShiftedHyperOsTweakSpec(
+    val key: String,
+    val title: String,
+    val subtitle: String,
+    val icon: ImageVector,
+    val isChecked: (TweakConfigEntity) -> Boolean
+)
+
 @Composable
 fun HyperOsKernelTabScreen(
+    config: TweakConfigEntity,
+    hasUnappliedSaverChanges: Boolean,
     snapshot: KernelRamLiveSnapshot,
     stagedTweaks: Map<String, String>,
     selectedTemplate: HyperOsProfileTemplate?,
@@ -118,6 +134,10 @@ fun HyperOsKernelTabScreen(
     installedApps: List<InstalledAppItem>,
     freezeCheckedAppsRaw: String,
     backgroundAllowedAppsCsv: String,
+    onToggleHyperOsPowerSaver: (Boolean) -> Unit,
+    onUpdateHyperOsTweak: (String, Boolean) -> Unit,
+    onSelectRefreshRate: (Int) -> Unit,
+    onSetAllHyperOsBatterySaverTweaks: (Boolean) -> Unit,
     onSelectTemplate: (HyperOsProfileTemplate?) -> Unit,
     onTogglePocoF7Mode: (Boolean) -> Unit,
     onStageTweakValue: (String, String?) -> Unit,
@@ -137,6 +157,124 @@ fun HyperOsKernelTabScreen(
     var selectedSection by rememberSaveable { mutableStateOf(KernelSection.ALL) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var showAppPickerSheet by rememberSaveable { mutableStateOf(true) }
+
+    val shiftedHyperOsTweaks = remember {
+        listOf(
+            ShiftedHyperOsTweakSpec(
+                key = "systemBatterySaver",
+                title = "HyperOS PowerKeeper SuperSave",
+                subtitle = "Extreme standby mode, Audio HAL & Wi-Fi SISO antenna save",
+                icon = Icons.Filled.Bolt,
+                isChecked = { it.systemBatterySaverEnabled }
+            ),
+            ShiftedHyperOsTweakSpec(
+                key = "hyperOsAurogonFreezer",
+                title = "Aurogon process freezer",
+                subtitle = "Freeze background cached processes in standby",
+                icon = Icons.Filled.AcUnit,
+                isChecked = { it.hyperOsAurogonFreezerEnabled }
+            ),
+            ShiftedHyperOsTweakSpec(
+                key = "hyperOsSuperPowerClean",
+                title = "SuperPowerClean RAM purge",
+                subtitle = "Stop unwhitelisted 3rd-party background tasks",
+                icon = Icons.Filled.Memory,
+                isChecked = { it.hyperOsSuperPowerCleanEnabled }
+            ),
+            ShiftedHyperOsTweakSpec(
+                key = "hyperOsAodDisabled",
+                title = "Disable Always-On Display (AOD)",
+                subtitle = "Turn off ambient display during power saving",
+                icon = Icons.Filled.DarkMode,
+                isChecked = { it.hyperOsAodDisabled }
+            ),
+            ShiftedHyperOsTweakSpec(
+                key = "hyperOsTouchBoostDisabled",
+                title = "Clamp Xiaomi touch & launch boost",
+                subtitle = "Eliminate app-launch & scroll frequency spikes",
+                icon = Icons.Filled.Speed,
+                isChecked = { it.hyperOsTouchBoostDisabled }
+            ),
+            ShiftedHyperOsTweakSpec(
+                key = "touchDozeMode",
+                title = "Xiaomi THP touch doze mode",
+                subtitle = "Low-power touch panel scanning when idle",
+                icon = Icons.Filled.Eco,
+                isChecked = { it.touchDozeModeEnabled }
+            ),
+            ShiftedHyperOsTweakSpec(
+                key = "hyperOsFiveGPowerOpt",
+                title = "5G smart modem power saving",
+                subtitle = "Optimize 5G cellular radio power consumption",
+                icon = Icons.Filled.Wifi,
+                isChecked = { it.hyperOsFiveGPowerOptEnabled }
+            ),
+            ShiftedHyperOsTweakSpec(
+                key = "backgroundScanning",
+                title = "Disable Wi-Fi & BLE background scan",
+                subtitle = "Stop hidden beacon scans when idle",
+                icon = Icons.Filled.Wifi,
+                isChecked = { it.backgroundScanningDisabled }
+            ),
+            ShiftedHyperOsTweakSpec(
+                key = "hyperOsLock60Hz",
+                title = "Lock 60Hz MIUI refresh rate",
+                subtitle = "Clamp display refresh rate to 60Hz",
+                icon = Icons.Filled.Tune,
+                isChecked = { it.hyperOsLock60HzEnabled }
+            ),
+            ShiftedHyperOsTweakSpec(
+                key = "controlCenterBlur",
+                title = "Remove notification blur",
+                subtitle = "Disable real-time GPU window blur on notification shade to save battery",
+                icon = Icons.Filled.Contrast,
+                isChecked = { it.controlCenterBlurEnabled }
+            ),
+            ShiftedHyperOsTweakSpec(
+                key = "batterySaverNoDark",
+                title = "Enable system battery saver",
+                subtitle = "Activate Android & HyperOS low power mode",
+                icon = Icons.Filled.Eco,
+                isChecked = { it.systemBatterySaverWithoutDarkEnabled }
+            ),
+            ShiftedHyperOsTweakSpec(
+                key = "systemDarkMode",
+                title = "Force AMOLED dark mode",
+                subtitle = "Enable system-wide dark theme for OLED power saving",
+                icon = Icons.Filled.DarkMode,
+                isChecked = { it.systemDarkModeEnabled }
+            ),
+            ShiftedHyperOsTweakSpec(
+                key = "hyperOsUltraSuperSaveUi",
+                title = "Ultra SuperSave dark wallpaper & panel off",
+                subtitle = "Dark simple wallpaper+ turn off notification panel & few control center options.",
+                icon = Icons.Filled.Visibility,
+                isChecked = { it.hyperOsUltraSuperSaveUiEnabled }
+            )
+        )
+    }
+
+    val filteredShiftedTweaks = remember(searchQuery, shiftedHyperOsTweaks) {
+        val q = searchQuery.trim().lowercase(Locale.US)
+        if (q.isEmpty()) {
+            shiftedHyperOsTweaks
+        } else {
+            shiftedHyperOsTweaks.filter {
+                it.title.lowercase(Locale.US).contains(q) ||
+                    it.subtitle.lowercase(Locale.US).contains(q)
+            }
+        }
+    }
+
+    val selectedSaverTweaksCount = remember(config) {
+        if (!config.hyperOsPowerSaverEnabled) {
+            0
+        } else {
+            shiftedHyperOsTweaks.count { it.isChecked(config) }
+        }
+    }
+    val totalPendingOrSelectedCount = stagedTweaks.size +
+        (if (config.hyperOsPowerSaverEnabled || hasUnappliedSaverChanges) selectedSaverTweaksCount else 0)
 
     val effectiveSelectedSection = if (!isPocoF7Enabled && selectedSection == KernelSection.MEM_BUS) {
         KernelSection.ALL
@@ -201,11 +339,23 @@ fun HyperOsKernelTabScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // 0. SHIFTED AT TOP: HYPEROS BATTERY SAVER TOGGLE & ALL SHIFTED HYPEROS POWERSAVE TWEAKS
+            item(key = "shifted_hyperos_battery_saver_top") {
+                ShiftedHyperOsBatterySaverTopSection(
+                    config = config,
+                    shiftedTweaks = filteredShiftedTweaks,
+                    onToggleHyperOsPowerSaver = onToggleHyperOsPowerSaver,
+                    onUpdateHyperOsTweak = onUpdateHyperOsTweak,
+                    onSelectRefreshRate = onSelectRefreshRate,
+                    onSetAllHyperOsBatterySaverTweaks = onSetAllHyperOsBatterySaverTweaks
+                )
+            }
+
             // 1. EXPRESSIVE HERO CARD (Processor temperature removed per user request)
             item(key = "temp_watch_header") {
                 ExpressiveKernelHeroCard(
                     snapshot = snapshot,
-                    stagedCount = stagedTweaks.size,
+                    stagedCount = totalPendingOrSelectedCount,
                     selectedTemplate = selectedTemplate,
                     isBalanceScreenOffSaverActive = isBalanceScreenOffSaverActive,
                     lastActionBanner = lastActionBanner,
@@ -387,7 +537,7 @@ fun HyperOsKernelTabScreen(
 
         // Floating Swipe-to-Apply + Revert Dock at bottom of HyperOS tab
         HyperOsKernelSwipeDock(
-            stagedCount = stagedTweaks.size,
+            stagedCount = totalPendingOrSelectedCount,
             onSwipeApply = onSwipeApplyStaged,
             onRestoreAllWas = onRestoreAllWasValues,
             modifier = Modifier
@@ -395,6 +545,298 @@ fun HyperOsKernelTabScreen(
                 .navigationBarsPadding()
                 .padding(start = 16.dp, end = 16.dp, bottom = 104.dp)
         )
+    }
+}
+
+@Composable
+private fun ShiftedHyperOsBatterySaverTopSection(
+    config: TweakConfigEntity,
+    shiftedTweaks: List<ShiftedHyperOsTweakSpec>,
+    onToggleHyperOsPowerSaver: (Boolean) -> Unit,
+    onUpdateHyperOsTweak: (String, Boolean) -> Unit,
+    onSelectRefreshRate: (Int) -> Unit,
+    onSetAllHyperOsBatterySaverTweaks: (Boolean) -> Unit
+) {
+    val roles = LocalMonetRoles.current
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        ExpressiveKernelGroupHeader(
+            title = "HyperOS battery saver",
+            countLabel = if (config.hyperOsPowerSaverEnabled) "enabled" else "disabled"
+        )
+
+        Surface(
+            onClick = { onToggleHyperOsPowerSaver(!config.hyperOsPowerSaverEnabled) },
+            shape = RoundedCornerShape(30.dp),
+            color = if (config.hyperOsPowerSaverEnabled) roles.pc else roles.s2,
+            contentColor = if (config.hyperOsPowerSaverEnabled) roles.onPc else roles.onS,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("hyperos_unified_card")
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(if (config.hyperOsPowerSaverEnabled) 23.dp else 16.dp),
+                    color = if (config.hyperOsPowerSaverEnabled) roles.primary else roles.sc,
+                    contentColor = if (config.hyperOsPowerSaverEnabled) roles.onPrimary else roles.onSc,
+                    modifier = Modifier.size(46.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Filled.Bolt,
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "HyperOS Battery saver",
+                        fontFamily = SpaceGroteskFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
+                    Text(
+                        text = "Xiaomi / HyperOS power saving tweaks & toggles (shifted at top)",
+                        fontFamily = PlusJakartaSansFontFamily,
+                        fontSize = 12.sp,
+                        color = if (config.hyperOsPowerSaverEnabled) {
+                            roles.onPc.copy(alpha = 0.82f)
+                        } else {
+                            roles.onSv
+                        },
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+
+                KernelExpressiveSwitch(
+                    checked = config.hyperOsPowerSaverEnabled,
+                    onCheckedChange = { onToggleHyperOsPowerSaver(it) }
+                )
+            }
+        }
+
+        AnimatedVisibility(
+            visible = config.hyperOsPowerSaverEnabled,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if (shiftedTweaks.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "HyperOS powersave tweaks (${shiftedTweaks.size})",
+                            fontFamily = SpaceGroteskFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = roles.onS
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Surface(
+                                onClick = { onSetAllHyperOsBatterySaverTweaks(true) },
+                                shape = CircleShape,
+                                color = roles.s4,
+                                contentColor = roles.onS
+                            ) {
+                                Text(
+                                    text = "Select all",
+                                    fontFamily = SpaceGroteskFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                )
+                            }
+                            Surface(
+                                onClick = { onSetAllHyperOsBatterySaverTweaks(false) },
+                                shape = CircleShape,
+                                color = roles.s4,
+                                contentColor = roles.onSv
+                            ) {
+                                Text(
+                                    text = "Uncheck all",
+                                    fontFamily = SpaceGroteskFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        val total = shiftedTweaks.size
+                        shiftedTweaks.forEachIndexed { index, spec ->
+                            val isOn = spec.isChecked(config)
+                            val topRadius = if (index == 0) 30.dp else 10.dp
+                            val bottomRadius = if (index == total - 1) 30.dp else 10.dp
+                            val shape = RoundedCornerShape(
+                                topStart = topRadius,
+                                topEnd = topRadius,
+                                bottomStart = bottomRadius,
+                                bottomEnd = bottomRadius
+                            )
+                            val rowBg by animateColorAsState(
+                                targetValue = if (isOn) roles.pc else roles.s2,
+                                label = "ShiftedTweakBg_${spec.key}"
+                            )
+                            val rowFg by animateColorAsState(
+                                targetValue = if (isOn) roles.onPc else roles.onS,
+                                label = "ShiftedTweakFg_${spec.key}"
+                            )
+                            Surface(
+                                onClick = { onUpdateHyperOsTweak(spec.key, !isOn) },
+                                shape = shape,
+                                color = rowBg,
+                                contentColor = rowFg,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("tweak_row_${spec.key}")
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(if (isOn) 23.dp else 16.dp),
+                                        color = if (isOn) roles.primary else roles.sc,
+                                        contentColor = if (isOn) roles.onPrimary else roles.onSc,
+                                        modifier = Modifier.size(44.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = spec.icon,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(21.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = spec.title,
+                                            fontFamily = SpaceGroteskFontFamily,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.5.sp,
+                                            color = rowFg
+                                        )
+                                        Text(
+                                            text = spec.subtitle,
+                                            fontFamily = PlusJakartaSansFontFamily,
+                                            fontSize = 11.5.sp,
+                                            color = if (isOn) rowFg.copy(alpha = 0.82f) else roles.onSv,
+                                            modifier = Modifier.padding(top = 2.dp)
+                                        )
+                                    }
+
+                                    KernelExpressiveSwitch(
+                                        checked = isOn,
+                                        onCheckedChange = { onUpdateHyperOsTweak(spec.key, it) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Shifted HyperOS Display Refresh Rate selector card
+                Surface(
+                    shape = RoundedCornerShape(30.dp),
+                    color = roles.s2,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "HyperOS display refresh rate",
+                                    fontFamily = SpaceGroteskFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.5.sp,
+                                    color = roles.onS
+                                )
+                                Text(
+                                    text = "Clamp MIUI/HyperOS peak & min refresh rate",
+                                    fontFamily = PlusJakartaSansFontFamily,
+                                    fontSize = 11.5.sp,
+                                    color = roles.onSv,
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
+                            }
+                            Surface(
+                                shape = CircleShape,
+                                color = roles.pc,
+                                contentColor = roles.onPc
+                            ) {
+                                Text(
+                                    text = if (config.refreshRateHz == 0) "DYNAMIC" else "${config.refreshRateHz} HZ",
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.sp,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 12.dp)
+                                .clip(CircleShape)
+                                .background(roles.s4)
+                                .padding(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            val rates = listOf(0 to "Auto", 60 to "60 Hz", 90 to "90 Hz", 120 to "120 Hz")
+                            rates.forEach { (hz, label) ->
+                                val selected = config.refreshRateHz == hz
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(CircleShape)
+                                        .background(if (selected) roles.primary else Color.Transparent)
+                                        .clickable { onSelectRefreshRate(hz) }
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontFamily = SpaceGroteskFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = if (selected) roles.onPrimary else roles.onSv
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

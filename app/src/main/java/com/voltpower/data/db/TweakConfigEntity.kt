@@ -51,7 +51,7 @@ data class TweakConfigEntity(
     val balanceNetworkBbrEnabled: Boolean = false,
     val deepSleepScreenOffEnabled: Boolean = false,
     val deepSleepDelayMinutes: Int = 5,
-    val deepSleepWhitelist: String = "com.whatsapp,org.telegram.messenger,com.spotify.music",
+    val deepSleepWhitelist: String = "",
     val developerProcessLimitEnabled: Boolean = false,
     val developerProcessLimit: Int = 4,
     val balanceCpuCapPercent: Int = 70,
@@ -77,7 +77,7 @@ data class TweakConfigEntity(
     val hyperOsTouchBoostDisabled: Boolean = false,
     val hyperOsLock60HzEnabled: Boolean = false,
     val hyperOsUltraSuperSaveUiEnabled: Boolean = false, // Manual-only: Ultra SuperSave UI (black wallpaper + notification panel off)
-    val backgroundAllowedApps: String = "org.barebrowser,com.f0x1d.logfox,com.whatsapp",
+    val backgroundAllowedApps: String = "",
 
     // HyperOS Hardware Tuning Persistent State (Survives removing app from Recents)
     val hyperOsActiveTemplate: String = "",
@@ -85,5 +85,6 @@ data class TweakConfigEntity(
     val hyperOsStagedTweaks: String = "",
     val hyperOsBalanceScreenOffArmed: Boolean = false,
     val hyperOsPocoF7Enabled: Boolean = false,
+    val enableHyperOsTweaksTab: Boolean = false,
     val hyperOsFreezeCheckedApps: String = "__ALL_USER_ENABLED__"
 )

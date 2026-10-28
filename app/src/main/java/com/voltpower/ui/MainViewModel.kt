@@ -152,6 +152,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (existingCfg == null) {
                 existingCfg = TweakConfigEntity()
                 dao.insertOrUpdate(existingCfg)
+            } else {
+                val legacyPreExceptions = setOf(
+                    "org.barebrowser",
+                    "com.f0x1d.logfox",
+                    "com.whatsapp",
+                    "org.telegram.messenger",
+                    "com.spotify.music"
+                )
+                val cleanedBg = existingCfg.backgroundAllowedApps
+                    .split(",")
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() && it !in legacyPreExceptions }
+                    .joinToString(",")
+                val cleanedDeepSleep = existingCfg.deepSleepWhitelist
+                    .split(",")
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() && it !in legacyPreExceptions }
+                    .joinToString(",")
+                if (cleanedBg != existingCfg.backgroundAllowedApps ||
+                    cleanedDeepSleep != existingCfg.deepSleepWhitelist
+                ) {
+                    existingCfg = existingCfg.copy(
+                        backgroundAllowedApps = cleanedBg,
+                        deepSleepWhitelist = cleanedDeepSleep
+                    )
+                    dao.update(existingCfg)
+                }
             }
 
             // Restore persisted HyperOS template & applied/staged tweaks so closing app from Recents preserves state
@@ -720,57 +747,83 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 else -> {
-                    if (current.hyperOsPowerSaverEnabled) {
-                        current.copy(
-                            hyperOsAodDisabled = selectAll,
-                            hyperOsAurogonFreezerEnabled = selectAll,
-                            hyperOsSuperPowerCleanEnabled = selectAll,
-                            hyperOsTouchBoostDisabled = selectAll,
-                            touchDozeModeEnabled = selectAll,
-                            backgroundScanningDisabled = selectAll,
-                            hyperOsFiveGPowerOptEnabled = selectAll,
-                            hyperOsLock60HzEnabled = selectAll,
-                            lock60HzRefreshRateEnabled = selectAll,
-                            refreshRateHz = if (selectAll) 60 else 0,
-                            controlCenterBlurEnabled = selectAll,
-                            systemBatterySaverEnabled = selectAll,
-                            systemBatterySaverWithoutDarkEnabled = selectAll,
-                            systemDarkModeEnabled = false,
-                            hyperOsUltraSuperSaveUiEnabled = false
+                    if (selectAll) {
+                        applyPowersavePreset(current).copy(
+                            isMasterApplied = current.isMasterApplied,
+                            hyperOsPowerSaverEnabled = current.hyperOsPowerSaverEnabled
                         )
                     } else {
-                        if (selectAll) {
-                            applyPowersavePreset(current).copy(
-                                isMasterApplied = current.isMasterApplied
-                            )
-                        } else {
-                            current.copy(
-                                cpuFreqCapEnabled = false,
-                                schedutilGovernorEnabled = false,
-                                schedutilRateLimitsEnabled = false,
-                                twoCoresOfflineBelow20Enabled = false,
-                                inputTouchBoostDisabled = false,
-                                gpuPowerLimitEnabled = false,
-                                adrenoIdlerEnabled = false,
-                                storageIoQueueEnabled = false,
-                                dynamicFsyncEnabled = false,
-                                vmDirtyWritebackEnabled = false,
-                                tcpBbrCongestionEnabled = false,
-                                gmsDozeEnabled = false,
-                                lpmSleepEnabled = false,
-                                doubleTapWakePreserved = false,
-                                schedtuneTopAppEnabled = false,
-                                powerEfficientWorkqueueEnabled = false,
-                                backgroundScanningDisabled = false,
-                                touchDozeModeEnabled = false,
-                                systemBatterySaverWithoutDarkEnabled = false,
-                                lock60HzRefreshRateEnabled = false,
-                                refreshRateHz = 0
-                            )
-                        }
+                        current.copy(
+                            cpuFreqCapEnabled = false,
+                            schedutilGovernorEnabled = false,
+                            schedutilRateLimitsEnabled = false,
+                            twoCoresOfflineBelow20Enabled = false,
+                            inputTouchBoostDisabled = false,
+                            gpuPowerLimitEnabled = false,
+                            adrenoIdlerEnabled = false,
+                            storageIoQueueEnabled = false,
+                            dynamicFsyncEnabled = false,
+                            vmDirtyWritebackEnabled = false,
+                            tcpBbrCongestionEnabled = false,
+                            gmsDozeEnabled = false,
+                            lpmSleepEnabled = false,
+                            doubleTapWakePreserved = false,
+                            schedtuneTopAppEnabled = false,
+                            powerEfficientWorkqueueEnabled = false,
+                            backgroundScanningDisabled = false,
+                            touchDozeModeEnabled = false,
+                            systemBatterySaverWithoutDarkEnabled = false,
+                            lock60HzRefreshRateEnabled = false,
+                            refreshRateHz = 0
+                        )
                     }
                 }
             }
+            dao.update(updated)
+            _hasUnappliedChanges.value = true
+        }
+    }
+
+    fun onToggleEnableHyperOsTweaksTab(enabled: Boolean) {
+        viewModelScope.launch {
+            val current = dao.getConfigDirect() ?: configState.value
+            val updated = current.copy(enableHyperOsTweaksTab = enabled)
+            dao.update(updated)
+            val msg = if (enabled) {
+                "HyperOS Tweaks enabled · Replaced default Tweaks tab with HyperOS Tweaks"
+            } else {
+                "HyperOS Tweaks disabled · Restored default Tweaks tab"
+            }
+            _statusMessage.value = msg
+            LogRepository.addLog(
+                category = LogCategory.PROFILE,
+                message = msg,
+                isSuccess = true
+            )
+        }
+    }
+
+    fun onSetAllHyperOsBatterySaverTweaks(selectAll: Boolean) {
+        viewModelScope.launch {
+            val current = dao.getConfigDirect() ?: configState.value
+            val updated = current.copy(
+                hyperOsPowerSaverEnabled = true,
+                hyperOsAodDisabled = selectAll,
+                hyperOsAurogonFreezerEnabled = selectAll,
+                hyperOsSuperPowerCleanEnabled = selectAll,
+                hyperOsTouchBoostDisabled = selectAll,
+                touchDozeModeEnabled = selectAll,
+                backgroundScanningDisabled = selectAll,
+                hyperOsFiveGPowerOptEnabled = selectAll,
+                hyperOsLock60HzEnabled = selectAll,
+                lock60HzRefreshRateEnabled = selectAll,
+                refreshRateHz = if (selectAll) 60 else 0,
+                controlCenterBlurEnabled = selectAll,
+                systemBatterySaverEnabled = selectAll,
+                systemBatterySaverWithoutDarkEnabled = selectAll,
+                systemDarkModeEnabled = false,
+                hyperOsUltraSuperSaveUiEnabled = false
+            )
             dao.update(updated)
             _hasUnappliedChanges.value = true
         }
@@ -1391,30 +1444,52 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onSwipeApplyStagedKernelTweaks() {
         viewModelScope.launch {
+            val currentCfg = dao.getConfigDirect() ?: configState.value
             val staged = _stagedKernelTweaks.value
-            if (staged.isEmpty()) {
-                _statusMessage.value = "Select a HyperOS template or tweak options above first"
+            if (staged.isEmpty() && !currentCfg.hyperOsPowerSaverEnabled && !_hasUnappliedChanges.value) {
+                _statusMessage.value = "Enable HyperOS Battery Saver or select HyperOS tweaks above first"
                 return@launch
             }
             _isBusy.value = true
+            val hasRoot = _telemetry.value.isRootGranted || RootBridge.isRootAvailable(forceCheck = true)
 
-            val logs = KernelRamLabRepository.applyBatchKernelTweaks(staged)
+            if (hasRoot && (currentCfg.hyperOsPowerSaverEnabled || _hasUnappliedChanges.value)) {
+                val updatedForSaver = currentCfg.copy(
+                    activeProfile = "POWERSAVE",
+                    isMasterApplied = true,
+                    lastAppliedTimestamp = System.currentTimeMillis()
+                )
+                RootBridge.revertAllTweaks(getApplication())
+                RootBridge.applyPowersaveTweaks(getApplication(), updatedForSaver)
+                dao.updateBackupStatus(true, RootBridge.BACKUP_FILE_PATH)
+            }
+
+            val logs = if (staged.isNotEmpty()) {
+                KernelRamLabRepository.applyBatchKernelTweaks(staged)
+            } else if (_appliedKernelTweaks.value.isNotEmpty() && hasRoot) {
+                KernelRamLabRepository.applyBatchKernelTweaks(_appliedKernelTweaks.value)
+            } else {
+                emptyList()
+            }
+
             val mergedApplied = _appliedKernelTweaks.value.toMutableMap().apply {
                 putAll(staged)
             }
             _appliedKernelTweaks.value = mergedApplied
             _stagedKernelTweaks.value = emptyMap()
+            _hasUnappliedChanges.value = false
 
             val activeTemplate = _selectedHyperOsTemplate.value
             _isBalanceScreenOffSaverActive.value =
                 (activeTemplate == HyperOsProfileTemplate.BALANCE_SCREEN_OFF)
 
             // Persist active template, applied tweaks, and HyperOS Power Saver compatibility in Room DB
-            val currentCfg = dao.getConfigDirect() ?: configState.value
+            val freshCfg = dao.getConfigDirect() ?: configState.value
             dao.update(
-                currentCfg.copy(
+                freshCfg.copy(
                     activeProfile = "POWERSAVE",
-                    hyperOsPowerSaverEnabled = true,
+                    isMasterApplied = if (hasRoot) true else freshCfg.isMasterApplied,
+                    lastAppliedTimestamp = System.currentTimeMillis(),
                     hyperOsActiveTemplate = activeTemplate?.id.orEmpty(),
                     hyperOsAppliedTweaks = serializeTweaksMap(mergedApplied),
                     hyperOsStagedTweaks = "",
@@ -1422,20 +1497,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             )
 
-            val summary = when (activeTemplate) {
-                HyperOsProfileTemplate.BALANCE_SCREEN_OFF ->
+            val summary = when {
+                activeTemplate == HyperOsProfileTemplate.BALANCE_SCREEN_OFF ->
                     "Applied ${logs.size} HyperOS tweaks in RAM · Screen-off Battery Saver armed"
-                HyperOsProfileTemplate.POWERSAVE ->
+                activeTemplate == HyperOsProfileTemplate.POWERSAVE ->
                     "Applied ${logs.size} HyperOS Powersave tweaks permanently in RAM"
-                HyperOsProfileTemplate.PERFORMANCE ->
+                activeTemplate == HyperOsProfileTemplate.PERFORMANCE ->
                     "Applied ${logs.size} HyperOS Performance tweaks permanently in RAM"
-                null ->
+                logs.isNotEmpty() && freshCfg.hyperOsPowerSaverEnabled ->
+                    "Applied HyperOS Battery Saver + ${logs.size} HyperOS tweaks in RAM"
+                freshCfg.hyperOsPowerSaverEnabled ->
+                    "Applied HyperOS Battery Saver tweaks"
+                else ->
                     "Applied ${logs.size} HyperOS tweaks permanently in RAM"
             }
             _lastKernelActionBanner.value = summary
             _statusMessage.value = summary
-            logs.forEach { line ->
-                LogRepository.addLog(category = LogCategory.TWEAK, message = line, isSuccess = true)
+            if (logs.isEmpty()) {
+                LogRepository.addLog(category = LogCategory.TWEAK, message = summary, isSuccess = true)
+            } else {
+                logs.forEach { line ->
+                    LogRepository.addLog(category = LogCategory.TWEAK, message = line, isSuccess = true)
+                }
             }
             refreshKernelSnapshot()
             refreshTelemetry()
@@ -1450,7 +1533,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _appliedKernelTweaks.value = emptyMap()
             _selectedHyperOsTemplate.value = null
             _isBalanceScreenOffSaverActive.value = false
+            _hasUnappliedChanges.value = false
             persistHyperOsKernelState()
+
+            val currentCfg = dao.getConfigDirect() ?: configState.value
+            if (currentCfg.hyperOsPowerSaverEnabled) {
+                if (_telemetry.value.isRootGranted || RootBridge.isRootAvailable()) {
+                    RootBridge.revertAllTweaks(getApplication())
+                }
+                dao.update(
+                    currentCfg.copy(
+                        hyperOsPowerSaverEnabled = false,
+                        hyperOsAodDisabled = false,
+                        hyperOsAurogonFreezerEnabled = false,
+                        hyperOsSuperPowerCleanEnabled = false,
+                        hyperOsFiveGPowerOptEnabled = false,
+                        hyperOsTouchBoostDisabled = false,
+                        hyperOsLock60HzEnabled = false,
+                        hyperOsUltraSuperSaveUiEnabled = false
+                    )
+                )
+            }
+
             val logs = KernelRamLabRepository.restoreAllWasValues()
             val summary = logs.firstOrNull() ?: "Restored all HyperOS settings to default values"
             _lastKernelActionBanner.value = summary
