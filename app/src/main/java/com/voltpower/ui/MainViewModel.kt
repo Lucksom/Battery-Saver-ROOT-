@@ -1250,18 +1250,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onSelectHyperOsTemplate(template: HyperOsProfileTemplate?) {
         viewModelScope.launch {
+            val currentCfg = dao.getConfigDirect() ?: configState.value
+            val pocoF7Enabled = currentCfg.hyperOsPocoF7Enabled
             val next = if (_selectedHyperOsTemplate.value == template) null else template
             _selectedHyperOsTemplate.value = next
             if (next != null) {
-                val presets = KernelRamLabRepository.getTemplatePresets(next)
+                val presets = KernelRamLabRepository.getTemplatePresets(next, pocoF7Enabled)
                 _stagedKernelTweaks.value = presets
+                val pocoSuffix = if (pocoF7Enabled) " [Poco F7 · onyx · 8s Gen 4]" else ""
                 val banner = when (next) {
                     HyperOsProfileTemplate.POWERSAVE ->
-                        "Powersave template staged (${presets.size} settings) & sorted for battery saving"
+                        "Powersave$pocoSuffix staged (${presets.size} settings) & sorted in list"
                     HyperOsProfileTemplate.BALANCE_SCREEN_OFF ->
-                        "Balance template staged (${presets.size} settings) · Immediate Battery Saver on screen off ready"
+                        "Balance$pocoSuffix staged (${presets.size} settings) · Screen-off Battery Saver ready"
                     HyperOsProfileTemplate.PERFORMANCE ->
-                        "Performance template staged (${presets.size} settings) & sorted for peak speed"
+                        "Performance$pocoSuffix staged (${presets.size} settings) & sorted in list"
                 }
                 _lastKernelActionBanner.value = banner
                 _statusMessage.value = banner
@@ -1271,6 +1274,48 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _lastKernelActionBanner.value = "Template cleared · Showing default order"
             }
             persistHyperOsKernelState()
+        }
+    }
+
+    fun onToggleHyperOsPocoF7Mode(enabled: Boolean) {
+        viewModelScope.launch {
+            val currentCfg = dao.getConfigDirect() ?: configState.value
+            val activeTemplate = _selectedHyperOsTemplate.value
+                ?: if (enabled) HyperOsProfileTemplate.POWERSAVE else null
+            _selectedHyperOsTemplate.value = activeTemplate
+
+            val updatedStaged = if (activeTemplate != null) {
+                KernelRamLabRepository.getTemplatePresets(activeTemplate, pocoF7Enabled = enabled)
+            } else {
+                val pocoOnlyIds = KernelRamLabRepository.tweakSpecs
+                    .filter { it.isPocoF7Only }
+                    .map { it.id }
+                    .toSet()
+                _stagedKernelTweaks.value.filterKeys { enabled || it !in pocoOnlyIds }
+            }
+            _stagedKernelTweaks.value = updatedStaged
+
+            dao.update(
+                currentCfg.copy(
+                    hyperOsPocoF7Enabled = enabled,
+                    hyperOsActiveTemplate = activeTemplate?.id.orEmpty(),
+                    hyperOsStagedTweaks = serializeTweaksMap(updatedStaged)
+                )
+            )
+
+            val profileName = when (activeTemplate) {
+                HyperOsProfileTemplate.POWERSAVE -> "Powersave"
+                HyperOsProfileTemplate.BALANCE_SCREEN_OFF -> "Balance"
+                HyperOsProfileTemplate.PERFORMANCE -> "Performance"
+                null -> "HyperOS"
+            }
+            val banner = if (enabled) {
+                "Poco F7 (onyx, Snapdragon 8s Gen 4, HyperOS 3) enabled · Revealed & sorted in $profileName list (${updatedStaged.size} staged)"
+            } else {
+                "Poco F7 (onyx, Snapdragon 8s Gen 4, HyperOS 3) disabled · Showing standard $profileName list"
+            }
+            _lastKernelActionBanner.value = banner
+            _statusMessage.value = banner
         }
     }
 

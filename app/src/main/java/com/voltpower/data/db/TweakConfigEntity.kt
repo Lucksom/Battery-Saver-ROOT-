@@ -84,5 +84,6 @@ data class TweakConfigEntity(
     val hyperOsAppliedTweaks: String = "",
     val hyperOsStagedTweaks: String = "",
     val hyperOsBalanceScreenOffArmed: Boolean = false,
+    val hyperOsPocoF7Enabled: Boolean = false,
     val hyperOsFreezeCheckedApps: String = "__ALL_USER_ENABLED__"
 )

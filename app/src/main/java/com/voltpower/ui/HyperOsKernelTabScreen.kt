@@ -113,11 +113,13 @@ fun HyperOsKernelTabScreen(
     stagedTweaks: Map<String, String>,
     selectedTemplate: HyperOsProfileTemplate?,
     isBalanceScreenOffSaverActive: Boolean,
+    isPocoF7Enabled: Boolean,
     lastActionBanner: String?,
     installedApps: List<InstalledAppItem>,
     freezeCheckedAppsRaw: String,
     backgroundAllowedAppsCsv: String,
     onSelectTemplate: (HyperOsProfileTemplate?) -> Unit,
+    onTogglePocoF7Mode: (Boolean) -> Unit,
     onStageTweakValue: (String, String?) -> Unit,
     onRunSingleLineNow: (KernelTweakSpec, String) -> Unit,
     onUndoSingleLineToWas: (KernelTweakSpec) -> Unit,
@@ -136,11 +138,30 @@ fun HyperOsKernelTabScreen(
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var showAppPickerSheet by rememberSaveable { mutableStateOf(true) }
 
-    val filteredSpecs = remember(selectedSection, searchQuery, selectedTemplate) {
-        val base = if (selectedSection == KernelSection.ALL) {
-            KernelRamLabRepository.tweakSpecs
+    val effectiveSelectedSection = if (!isPocoF7Enabled && selectedSection == KernelSection.MEM_BUS) {
+        KernelSection.ALL
+    } else {
+        selectedSection
+    }
+
+    val filteredSpecs = remember(effectiveSelectedSection, searchQuery, selectedTemplate, isPocoF7Enabled) {
+        val visibleSpecs = KernelRamLabRepository.tweakSpecs.filter { spec ->
+            if (!isPocoF7Enabled && spec.isPocoF7Only) {
+                false
+            } else if (isPocoF7Enabled &&
+                selectedTemplate == HyperOsProfileTemplate.POWERSAVE &&
+                (spec.id == "walt_hispeed_load" || spec.id == "walt_hispeed_freq")
+            ) {
+                // Dropped in Poco F7 Powersave because policy5 uses 'powersave' governor
+                false
+            } else {
+                true
+            }
+        }
+        val base = if (effectiveSelectedSection == KernelSection.ALL) {
+            visibleSpecs
         } else {
-            KernelRamLabRepository.tweakSpecs.filter { it.section == selectedSection }
+            visibleSpecs.filter { it.section == effectiveSelectedSection }
         }
         val sortedBase = KernelRamLabRepository.sortSpecsForTemplate(base, selectedTemplate)
         val q = searchQuery.trim().lowercase(Locale.US)
@@ -156,8 +177,11 @@ fun HyperOsKernelTabScreen(
         }
     }
 
-    val groupedBySection = remember(filteredSpecs, selectedTemplate) {
-        val orderedSections = KernelRamLabRepository.getSectionOrderForTemplate(selectedTemplate)
+    val groupedBySection = remember(filteredSpecs, selectedTemplate, isPocoF7Enabled) {
+        val orderedSections = KernelRamLabRepository.getSectionOrderForTemplate(
+            template = selectedTemplate,
+            pocoF7Enabled = isPocoF7Enabled
+        )
         orderedSections.mapNotNull { sec ->
             val list = filteredSpecs.filter { it.section == sec }
             if (list.isNotEmpty()) sec to list else null
@@ -189,12 +213,14 @@ fun HyperOsKernelTabScreen(
                 )
             }
 
-            // 1B. HYPEROS PROFILE TEMPLATES CARD (Powersave / Balance Screen-Off / Performance)
+            // 1B. HYPEROS PROFILE TEMPLATES CARD (Powersave / Balance Screen-Off / Performance + Poco F7 Toggle)
             item(key = "hyperos_profile_templates") {
                 ExpressiveHyperOsTemplateCard(
                     selectedTemplate = selectedTemplate,
                     isBalanceScreenOffSaverActive = isBalanceScreenOffSaverActive,
-                    onSelectTemplate = onSelectTemplate
+                    isPocoF7Enabled = isPocoF7Enabled,
+                    onSelectTemplate = onSelectTemplate,
+                    onTogglePocoF7Mode = onTogglePocoF7Mode
                 )
             }
 
@@ -259,14 +285,17 @@ fun HyperOsKernelTabScreen(
 
             // 3. EXPRESSIVE SECTION PILL STRIP
             item(key = "section_filter_chips") {
+                val visibleSections = remember(isPocoF7Enabled) {
+                    KernelSection.entries.filter { isPocoF7Enabled || it != KernelSection.MEM_BUS }
+                }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    KernelSection.entries.forEach { sec ->
-                        val isSelected = selectedSection == sec
+                    visibleSections.forEach { sec ->
+                        val isSelected = effectiveSelectedSection == sec
                         Surface(
                             onClick = { selectedSection = sec },
                             shape = CircleShape,
@@ -296,9 +325,9 @@ fun HyperOsKernelTabScreen(
             }
 
             // 4. HYPEROS PERFORMANCE & THERMAL SERVICES (Connected Expressive Stack)
-            if ((selectedSection == KernelSection.ALL ||
-                    selectedSection == KernelSection.DAEMONS ||
-                    selectedSection == KernelSection.THERMAL) &&
+            if ((effectiveSelectedSection == KernelSection.ALL ||
+                    effectiveSelectedSection == KernelSection.DAEMONS ||
+                    effectiveSelectedSection == KernelSection.THERMAL) &&
                 searchQuery.isBlank()
             ) {
                 item(key = "xiaomi_daemons_group") {
@@ -310,7 +339,7 @@ fun HyperOsKernelTabScreen(
             }
 
             // 5. QUICK MEMORY MAINTENANCE (Connected Expressive Tiles)
-            if ((selectedSection == KernelSection.ALL || selectedSection == KernelSection.RAM) &&
+            if ((effectiveSelectedSection == KernelSection.ALL || effectiveSelectedSection == KernelSection.RAM) &&
                 searchQuery.isBlank()
             ) {
                 item(key = "ram_oneshot_actions") {
@@ -319,7 +348,7 @@ fun HyperOsKernelTabScreen(
             }
 
             // 6. PER-APP BACKGROUND FREEZER & CORE LIMITER
-            if ((selectedSection == KernelSection.ALL || selectedSection == KernelSection.FREEZE) &&
+            if ((effectiveSelectedSection == KernelSection.ALL || effectiveSelectedSection == KernelSection.FREEZE) &&
                 searchQuery.isBlank()
             ) {
                 item(key = "suspend_and_app_freezer") {
@@ -347,6 +376,7 @@ fun HyperOsKernelTabScreen(
                         specs = specsInSection,
                         snapshot = snapshot,
                         stagedTweaks = stagedTweaks,
+                        isPocoF7Enabled = isPocoF7Enabled,
                         onStageTweakValue = onStageTweakValue,
                         onRunSingleLineNow = onRunSingleLineNow,
                         onUndoSingleLineToWas = onUndoSingleLineToWas
@@ -374,11 +404,11 @@ private fun sectionIcon(section: KernelSection): ImageVector {
         KernelSection.CPU -> Icons.Filled.Speed
         KernelSection.SCHED -> Icons.Filled.DeveloperBoard
         KernelSection.GPU -> Icons.Filled.RocketLaunch
+        KernelSection.MEM_BUS -> Icons.Filled.Storage
         KernelSection.RAM -> Icons.Filled.Memory
         KernelSection.IRQ -> Icons.Filled.GraphicEq
         KernelSection.FREEZE -> Icons.Filled.AcUnit
         KernelSection.THERMAL -> Icons.Filled.Thermostat
-        KernelSection.CHARGING -> Icons.Filled.BatteryChargingFull
         KernelSection.DAEMONS -> Icons.Filled.Security
     }
 }
@@ -600,9 +630,12 @@ private fun ExpressiveKernelHeroCard(
 private fun ExpressiveHyperOsTemplateCard(
     selectedTemplate: HyperOsProfileTemplate?,
     isBalanceScreenOffSaverActive: Boolean,
-    onSelectTemplate: (HyperOsProfileTemplate?) -> Unit
+    isPocoF7Enabled: Boolean,
+    onSelectTemplate: (HyperOsProfileTemplate?) -> Unit,
+    onTogglePocoF7Mode: (Boolean) -> Unit
 ) {
     val roles = LocalMonetRoles.current
+    var showFunctionsGuide by rememberSaveable { mutableStateOf(false) }
 
     Surface(
         shape = RoundedCornerShape(30.dp),
@@ -619,17 +652,22 @@ private fun ExpressiveHyperOsTemplateCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "HyperOS Profile Templates",
+                            fontFamily = SpaceGroteskFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = roles.onS
+                        )
+                    }
                     Text(
-                        text = "HyperOS Profile Templates",
-                        fontFamily = SpaceGroteskFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                        color = roles.onS
-                    )
-                    Text(
-                        text = "Pre-selects & sorts HyperOS tweaks by profile · Swipe below to apply",
+                        text = "Select Powersave, Balance, or Performance · Swipe below to apply in RAM",
                         fontFamily = PlusJakartaSansFontFamily,
-                        fontSize = 12.sp,
+                        fontSize = 11.5.sp,
                         color = roles.onSv,
                         modifier = Modifier.padding(top = 2.dp)
                     )
@@ -686,34 +724,252 @@ private fun ExpressiveHyperOsTemplateCard(
                 }
             }
 
-            // Active Template Explanation Banner
-            val activeDesc = when (selectedTemplate) {
-                HyperOsProfileTemplate.POWERSAVE ->
-                    "Powersave: Sorts sleep & power limits first and pre-stages low idle speeds, parked Core 6, and strict background caps."
-                HyperOsProfileTemplate.BALANCE_SCREEN_OFF ->
-                    if (isBalanceScreenOffSaverActive) {
-                        "Balance (Screen-Off Saver Active): Balanced daily speed while screen is on + immediate Battery Saver & deep freeze the instant your screen turns off."
-                    } else {
-                        "Balance + Immediate Screen-Off Saver: Sorts balanced speed & sleep controls first, and arms immediate Battery Saver whenever the screen turns off."
+            // Toggle for Poco F7 (onyx, Snapdragon 8s Gen 4, HyperOS 3)
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = if (isPocoF7Enabled) roles.pc else roles.s3,
+                border = if (isPocoF7Enabled) BorderStroke(1.5.dp, roles.primary) else null,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(22.dp))
+                    .clickable { onTogglePocoF7Mode(!isPocoF7Enabled) }
+                    .testTag("poco_f7_onyx_toggle_row")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (isPocoF7Enabled) roles.primary else roles.s4,
+                        contentColor = if (isPocoF7Enabled) roles.onPrimary else roles.onSv,
+                        modifier = Modifier.size(42.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Filled.DeveloperBoard,
+                                contentDescription = "Poco F7 Mode",
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
-                HyperOsProfileTemplate.PERFORMANCE ->
-                    "Performance: Sorts processor, graphics & thermal limits first and pre-stages uncapped CPU/GPU speeds with fast ramp-up."
-                null ->
-                    "Tap Powersave, Balance, or Performance above to auto-stage pre-settings and sort HyperOS tweaks for that profile."
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Poco F7 (onyx, Snapdragon 8s Gen 4, HyperOS 3)",
+                            fontFamily = SpaceGroteskFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.5.sp,
+                            color = if (isPocoF7Enabled) roles.onPc else roles.onS
+                        )
+                        Text(
+                            text = if (isPocoF7Enabled) {
+                                "Enabled · Revealing & sorting Poco F7 tweaks in the same Powersave, Balance, and Performance list"
+                            } else {
+                                "Enable to reveal tweaks assigned & sorted for Poco F7 in Powersave, Balance, and Performance"
+                            },
+                            fontFamily = PlusJakartaSansFontFamily,
+                            fontSize = 11.5.sp,
+                            color = if (isPocoF7Enabled) roles.onPc.copy(alpha = 0.85f) else roles.onSv,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+
+                    KernelExpressiveSwitch(
+                        checked = isPocoF7Enabled,
+                        onCheckedChange = { onTogglePocoF7Mode(it) },
+                        modifier = Modifier.testTag("poco_f7_onyx_switch")
+                    )
+                }
+            }
+
+            // Profile summary & functions panel
+            val activeDesc = if (isPocoF7Enabled) {
+                when (selectedTemplate) {
+                    HyperOsProfileTemplate.POWERSAVE ->
+                        "Poco F7 (onyx, Snapdragon 8s Gen 4, HyperOS 3) · Powersave: Low idle floors (365/480 MHz), policy5 'powersave' governor, CPU caps (1.52 / 1.73 / 1.06 / 1.48 GHz), Core 6 parked (0), big cluster min_cpus=1, no power-key boost, DDR capped at 3.19 GHz, LLCC 806 MHz, L3 1.34 GHz, GPU 600 MHz (pwrlevel 4, idle 50ms), swappiness 60, vfs 100, read_ahead 64 KB, iostats/add_random off (0), freeze 5000ms, pm_async 0, blur off."
+                    HyperOsProfileTemplate.BALANCE_SCREEN_OFF ->
+                        if (isBalanceScreenOffSaverActive) {
+                            "Poco F7 (onyx, Snapdragon 8s Gen 4, HyperOS 3) · Balance (Screen-Off Saver Active): Low idle floors (365/480 MHz), 'walt' governor (hispeed 90% / 1.19 GHz), CPU caps (1.80 / 2.21 / 1.82 / 2.05 GHz), DDR 3.69 GHz, LLCC 933 MHz, L3 1.80 GHz, GPU 873 MHz (pwrlevel 2, idle 50ms), swappiness 100, vfs 100, read_ahead 128 KB + Immediate Screen-Off Saver."
+                        } else {
+                            "Poco F7 (onyx, Snapdragon 8s Gen 4, HyperOS 3) · Balance: Smooth daily use & trims waste — low idle floors (365/480 MHz), 'walt' governor (hispeed 90% / 1.19 GHz), CPU caps (1.80 / 2.21 / 1.82 / 2.05 GHz), DDR 3.69 GHz, LLCC 933 MHz, L3 1.80 GHz stock, GPU 873 MHz (pwrlevel 2, idle 50ms), swappiness 100, vfs 100, read_ahead 128 KB, iostats/add_random off (0)."
+                        }
+                    HyperOsProfileTemplate.PERFORMANCE ->
+                        "Poco F7 (onyx, Snapdragon 8s Gen 4, HyperOS 3) · Performance: Faster response & caps top speeds below absolute max to limit heat — 'walt' governor (hispeed 85% / 1.40 GHz), CPU caps (2.02 / 2.52 / 2.21 / 2.05 GHz), faster big-core migration (up 85 / down 75), uncapped stock DDR (4.76 GHz) / LLCC (1.21 GHz) / L3 (1.80 GHz), GPU 873 MHz (idle 80ms), swappiness 100, vfs 73, read_ahead 256 KB."
+                    null ->
+                        "Poco F7 (onyx, Snapdragon 8s Gen 4, HyperOS 3) tweaks are revealed in the list below. Tap Powersave, Balance, or Performance above to stage & sort them."
+                }
+            } else {
+                when (selectedTemplate) {
+                    HyperOsProfileTemplate.POWERSAVE ->
+                        "Powersave selected: Sorts & pre-selects low idle speeds, background core limits, GPU 600 MHz cap, notification blur removal, and fast deep sleep. Turn on the Poco F7 toggle above to also reveal Poco F7 (onyx, 8s Gen 4) bus/core_ctl/walt tweaks."
+                    HyperOsProfileTemplate.BALANCE_SCREEN_OFF ->
+                        "Balance selected: Balanced daily responsiveness + Immediate Battery Saver when screen turns off. Turn on the Poco F7 toggle above to also reveal Poco F7 (onyx, 8s Gen 4) tweaks."
+                    HyperOsProfileTemplate.PERFORMANCE ->
+                        "Performance selected: Sorts & pre-selects higher CPU/GPU ceilings and faster scheduler ramp-up. Turn on the Poco F7 toggle above to also reveal Poco F7 (onyx, 8s Gen 4) tweaks."
+                    null ->
+                        "Tap Powersave, Balance, or Performance above to sort & stage HyperOS tweaks, or enable the Poco F7 (onyx, Snapdragon 8s Gen 4, HyperOS 3) toggle."
+                }
             }
 
             Surface(
                 shape = RoundedCornerShape(18.dp),
-                color = if (selectedTemplate != null) roles.pc.copy(alpha = 0.45f) else roles.s3,
+                color = if (selectedTemplate != null || isPocoF7Enabled) roles.pc.copy(alpha = 0.45f) else roles.s3,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(
-                    text = activeDesc,
-                    fontFamily = PlusJakartaSansFontFamily,
-                    fontSize = 12.sp,
-                    color = roles.onS,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
-                )
+                Column(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (isPocoF7Enabled) {
+                                when (selectedTemplate) {
+                                    HyperOsProfileTemplate.POWERSAVE -> "POWERSAVE · POCO F7 (ONYX · 8S GEN 4 · HYPEROS 3)"
+                                    HyperOsProfileTemplate.BALANCE_SCREEN_OFF -> "BALANCE · POCO F7 (ONYX · 8S GEN 4 · HYPEROS 3)"
+                                    HyperOsProfileTemplate.PERFORMANCE -> "PERFORMANCE · POCO F7 (ONYX · 8S GEN 4 · HYPEROS 3)"
+                                    null -> "POCO F7 (ONYX · SNAPDRAGON 8S GEN 4 · HYPEROS 3)"
+                                }
+                            } else {
+                                when (selectedTemplate) {
+                                    HyperOsProfileTemplate.POWERSAVE -> "HYPEROS POWERSAVE PROFILE"
+                                    HyperOsProfileTemplate.BALANCE_SCREEN_OFF -> "HYPEROS BALANCE PROFILE"
+                                    HyperOsProfileTemplate.PERFORMANCE -> "HYPEROS PERFORMANCE PROFILE"
+                                    null -> "STANDARD HYPEROS TWEAKS"
+                                }
+                            },
+                            fontFamily = JetBrainsMonoFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp,
+                            letterSpacing = 0.6.sp,
+                            color = roles.primary
+                        )
+
+                        if (isPocoF7Enabled) {
+                            AlignedKernelPill(
+                                text = if (showFunctionsGuide) "Hide Functions" else "What Each Tweak Does",
+                                backgroundColor = roles.s4,
+                                contentColor = roles.onS,
+                                onClick = { showFunctionsGuide = !showFunctionsGuide }
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = activeDesc,
+                        fontFamily = PlusJakartaSansFontFamily,
+                        fontSize = 12.sp,
+                        color = roles.onS
+                    )
+
+                    AnimatedVisibility(
+                        visible = isPocoF7Enabled && showFunctionsGuide,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        PocoF7FunctionsGuidePanel(selectedTemplate = selectedTemplate)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PocoF7FunctionsGuidePanel(selectedTemplate: HyperOsProfileTemplate?) {
+    val roles = LocalMonetRoles.current
+    val groups = remember(selectedTemplate) {
+        listOf(
+            "CPU" to listOf(
+                "scaling_min_freq" to "The lowest speed a core cluster idles at (364.8 MHz on policy0, 480 MHz on policy2/5/7). A low floor saves power at idle.",
+                "scaling_max_freq" to "The speed ceiling. A lower cap means less heat and power, but slower peaks (Powersave: 1.52/1.73/1.06/1.48 GHz · Balanced: 1.80/2.21/1.82/2.05 GHz · Performance: 2.02/2.52/2.21/2.05 GHz).",
+                "scaling_governor" to "The rule for choosing speed. 'walt' follows load (Balanced/Perf). 'powersave' pins the cluster to its minimum (Powersave).",
+                "hispeed_load / hispeed_freq" to "With 'walt', the load % at which the CPU jumps to a fixed speed, and what that speed is (Balanced: 90% / 1.19 GHz · Performance: 85% / 1.40 GHz).",
+                "cpu6 online" to "0 parks Core 6 entirely (Powersave), 1 brings it back (Balanced/Performance).",
+                "core_ctl min_cpus" to "Minimum cores kept on in big cluster cpu2 (1 in Powersave lets cores park; 3 in Balanced/Performance).",
+                "sched_pelt_multiplier" to "How fast the scheduler reacts to load. 1 is slow and smooth (Powersave), 2 is balanced (Balanced), 4 is fast and uses more power (Performance).",
+                "sched_upmigrate / downmigrate" to "Load % at which a task moves to a bigger core and back down to a smaller one (95/85 in Powersave & Balanced · 85/75 in Performance).",
+                "powerkey_input_boost_freq" to "Short speed boost when you press the power key (Off in Powersave · On in Balanced & Performance)."
+            ),
+            "Task groups" to listOf(
+                "cpuset ... cpus" to "Which cores a group of tasks may use. background (0-1 Powersave, 0-3 Balanced, 0-7 Perf) and system-background (0-3 Powersave, 0-7 Balanced/Perf) are limited to small cores; misf is the frame service group (0-3 Powersave, 4-7 Balanced/Perf).",
+                "cpuctl uclamp.max / uclamp.min" to "Ceiling or floor on the speed a group can request, as a %. background/system-background: 15%/25% (Powersave), 25%/30% (Balanced), 30%/40% (Perf). nnapi-hal (AI/ML) floor: 0.00%.",
+                "sched_rt_runtime_us" to "How much of each period real-time tasks (audio, UI) may use; the rest stays for normal tasks (950000 Powersave · 1250000 Balanced/Perf)."
+            ),
+            "GPU" to listOf(
+                "idle_timer" to "How long the GPU waits idle before sleeping (50 ms in Powersave & Balanced · 80 ms in Performance).",
+                "max_pwrlevel" to "Highest GPU level allowed. 0 is fastest, higher number is slower (4 in Powersave · 2 in Balanced & Performance).",
+                "GPU max_freq" to "The GPU clock cap (600 MHz in Powersave · 873 MHz in Balanced & Performance).",
+                "kgsl-busmon max_freq" to "Cap on the GPU's memory bus speed (600 MHz in Powersave · 873 MHz in Balanced & Performance)."
+            ),
+            "Memory bus (bus_dcvs)" to listOf(
+                "DDR cap" to "RAM speed ceiling across all voters. Saves the most power, though games/camera feel it first (3.19 GHz Powersave · 3.69 GHz Balanced · 4.76 GHz Stock in Performance).",
+                "LLCC cap" to "Clock of the shared Last-Level Cache (806 MHz Powersave · 933 MHz Balanced · 1.21 GHz / 933 MHz Stock in Performance).",
+                "L3 cap" to "Clock of the CPU's L3 cache; affects CPU speed directly (1.34 GHz Powersave · 1.80 GHz Stock in Balanced & Performance)."
+            ),
+            "RAM and storage" to listOf(
+                "swappiness" to "How readily memory moves to ZRAM; higher swaps more (60 Powersave · 100 Balanced & Performance · 150 Stock).",
+                "vfs_cache_pressure" to "How quickly the kernel drops cached file and folder info; lower keeps more (100 Powersave & Balanced · 73 Performance & Stock).",
+                "read_ahead_kb" to "How much extra data is read ahead on sequential reads (64 KB Powersave · 128 KB Balanced · 256 KB Performance).",
+                "iostats / add_random" to "Per-read storage bookkeeping, turned off (0) across all profiles to save CPU overhead."
+            ),
+            "Suspend & Display" to listOf(
+                "pm_freeze_timeout" to "How long the phone waits for tasks to freeze before giving up on sleeping (5000 ms Powersave & Balanced · 20000 ms Performance).",
+                "pm_async" to "Whether devices suspend in parallel (1 in Balanced & Performance) or one by one (0 in Powersave).",
+                "disable_window_blurs" to "Turns off blur effects, which cost some GPU work (1 in Powersave · 0 in Balanced & Performance)."
+            )
+        )
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        groups.forEach { (groupTitle, items) ->
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = roles.s2,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = groupTitle.uppercase(Locale.US),
+                        fontFamily = SpaceGroteskFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.5.sp,
+                        color = roles.primary
+                    )
+                    items.forEach { (name, desc) ->
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = "• $name",
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                color = roles.onS
+                            )
+                            Text(
+                                text = desc,
+                                fontFamily = PlusJakartaSansFontFamily,
+                                fontSize = 11.sp,
+                                color = roles.onSv,
+                                modifier = Modifier.padding(start = 10.dp)
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -757,6 +1013,7 @@ private fun ExpressiveGroupedKernelTweakStack(
     specs: List<KernelTweakSpec>,
     snapshot: KernelRamLiveSnapshot,
     stagedTweaks: Map<String, String>,
+    isPocoF7Enabled: Boolean,
     onStageTweakValue: (String, String?) -> Unit,
     onRunSingleLineNow: (KernelTweakSpec, String) -> Unit,
     onUndoSingleLineToWas: (KernelTweakSpec) -> Unit
@@ -772,6 +1029,7 @@ private fun ExpressiveGroupedKernelTweakStack(
                 spec = spec,
                 liveValue = liveVal,
                 stagedValue = stagedVal,
+                isPocoF7Enabled = isPocoF7Enabled,
                 shape = RoundedCornerShape(
                     topStart = topRadius,
                     topEnd = topRadius,
@@ -792,6 +1050,7 @@ private fun ExpressiveKernelTweakItem(
     spec: KernelTweakSpec,
     liveValue: String,
     stagedValue: String?,
+    isPocoF7Enabled: Boolean,
     shape: RoundedCornerShape,
     onStageValue: (String?) -> Unit,
     onRunSingleLineNow: (String) -> Unit,
@@ -891,6 +1150,14 @@ private fun ExpressiveKernelTweakItem(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        if (isPocoF7Enabled && spec.isPocoF7Only) {
+                            AlignedKernelPill(
+                                text = "Poco F7 · onyx · 8s Gen 4",
+                                backgroundColor = roles.sc,
+                                contentColor = roles.onSc
+                            )
+                        }
+
                         if (spec.isRisky) {
                             AlignedKernelPill(
                                 text = "Caution",

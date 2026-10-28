@@ -681,12 +681,16 @@ fun MainScreen(
                                         stagedTweaks = stagedKernelTweaks,
                                         selectedTemplate = resolvedTemplate,
                                         isBalanceScreenOffSaverActive = isBalanceScreenOffSaverActive || config.hyperOsBalanceScreenOffArmed,
+                                        isPocoF7Enabled = config.hyperOsPocoF7Enabled,
                                         lastActionBanner = lastKernelActionBanner,
                                         installedApps = installedApps,
                                         freezeCheckedAppsRaw = config.hyperOsFreezeCheckedApps,
                                         backgroundAllowedAppsCsv = config.backgroundAllowedApps,
                                         onSelectTemplate = { template ->
                                             viewModel.onSelectHyperOsTemplate(template)
+                                        },
+                                        onTogglePocoF7Mode = { enabled ->
+                                            viewModel.onToggleHyperOsPocoF7Mode(enabled)
                                         },
                                         onStageTweakValue = { id, value ->
                                             viewModel.onStageKernelTweak(id, value)

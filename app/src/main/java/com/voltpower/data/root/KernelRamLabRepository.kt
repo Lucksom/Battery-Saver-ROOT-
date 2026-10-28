@@ -8,11 +8,11 @@ enum class KernelSection(val id: String, val title: String, val badge: String) {
     CPU("CPU", "CPU & Cores", "CPU"),
     SCHED("SCHED", "Task Scheduler", "SCHED"),
     GPU("GPU", "GPU & Graphics", "GPU"),
+    MEM_BUS("MEM_BUS", "Memory Bus (DDR/LLCC/L3)", "BUS"),
     RAM("RAM", "RAM & Storage", "RAM"),
     IRQ("IRQ", "Hardware Interrupts", "IRQ"),
     FREEZE("FREEZE", "Sleep & App Freeze", "SLEEP"),
     THERMAL("THERMAL", "Thermal Limits", "THERM"),
-    CHARGING("CHARGING", "Charging Control", "CHARGE"),
     DAEMONS("DAEMONS", "System Services", "SERVICE")
 }
 
@@ -55,6 +55,8 @@ data class KernelTweakSpec(
     val functionDesc: String,
     val upDownEffect: String,
     val isRisky: Boolean = false,
+    val isPocoF7Only: Boolean = false,
+    val isPocoF7Assigned: Boolean = true,
     val customWriteCommand: ((String) -> String)? = null,
     val customReadCommand: String? = null
 ) {
@@ -123,146 +125,190 @@ object KernelRamLabRepository {
         KernelTweakSpec(
             id = "policy0_max_freq",
             section = KernelSection.CPU,
-            title = "Small Cores Maximum Speed (Cores 0–1)",
+            title = "Small Cores Speed Ceiling (scaling_max_freq · Cores 0–1)",
             nodePath = "/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq",
             wasValue = "2016000",
             targetValue = "2016000",
-            options = listOf("1209600", "1612800", "2016000"),
+            options = listOf("1209600", "1516800", "1612800", "1804800", "2016000"),
             optionLabels = mapOf(
                 "1209600" to "1.21 GHz (Cool)",
-                "1612800" to "1.61 GHz (Balanced)",
-                "2016000" to "2.02 GHz (Full)"
+                "1516800" to "1.52 GHz (Powersave Cap)",
+                "1612800" to "1.61 GHz (Powersave Script)",
+                "1804800" to "1.80 GHz (Balanced)",
+                "2016000" to "2.02 GHz (Performance / Stock)"
             ),
-            functionDesc = "Controls the highest speed the efficiency cores can reach.",
-            upDownEffect = "Raising it makes everyday tasks faster with slightly more heat. Lowering it keeps the phone cooler and saves battery under load."
+            functionDesc = "scaling_max_freq: the speed ceiling for Cores 0–1. A lower cap means less heat and power, but slower peaks. (ONLY for Poco F7 / Redmi Turbo 4 Pro · Snapdragon 8s Gen 4)",
+            upDownEffect = "Powersave: 1.52 GHz (1.61 GHz target) · Balanced: 1.80 GHz · Performance & Stock: 2.02 GHz."
         ),
         KernelTweakSpec(
             id = "policy0_min_freq",
             section = KernelSection.CPU,
-            title = "Small Cores Idle Speed (Cores 0–1)",
+            title = "Small Cores Idle Speed (scaling_min_freq · Cores 0–1)",
             nodePath = "/sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq",
             wasValue = "748800",
             targetValue = "364800",
             options = listOf("364800", "576000", "748800"),
             optionLabels = mapOf(
-                "364800" to "365 MHz (Lowest Power)",
-                "576000" to "576 MHz (Balanced)",
-                "748800" to "749 MHz (Default)"
+                "364800" to "365 MHz (Low Idle Floor)",
+                "576000" to "576 MHz (Mid Idle)",
+                "748800" to "749 MHz (Stock Default)"
             ),
-            functionDesc = "Controls the lowest speed the small cores drop to when your phone is idle.",
-            upDownEffect = "Lowering to 365 MHz saves idle battery with a tiny delay when ramping up. Keeping it higher feels slightly snappier but uses more idle power."
+            functionDesc = "scaling_min_freq: the lowest speed a core cluster idles at. A low floor saves power at idle and does not hurt performance. (ONLY for Poco F7 / Redmi Turbo 4 Pro · Snapdragon 8s Gen 4)",
+            upDownEffect = "Powersave, Balanced & Performance (common_idle): 364800 (365 MHz) · Stock: 748800 (749 MHz)."
         ),
         KernelTweakSpec(
             id = "policy2_max_freq",
             section = KernelSection.CPU,
-            title = "Big Cores Maximum Speed (Cores 2–4)",
+            title = "Big Cores Speed Ceiling (scaling_max_freq · Cores 2–4)",
             nodePath = "/sys/devices/system/cpu/cpufreq/policy2/scaling_max_freq",
             wasValue = "3014400",
-            targetValue = "3014400",
-            options = listOf("1804800", "2400000", "3014400"),
+            targetValue = "2515200",
+            options = listOf("1728000", "1804800", "2208000", "2515200", "3014400"),
             optionLabels = mapOf(
-                "1804800" to "1.80 GHz (Power Save)",
-                "2400000" to "2.40 GHz (Balanced)",
-                "3014400" to "3.01 GHz (Full)"
+                "1728000" to "1.73 GHz (Powersave Cap)",
+                "1804800" to "1.80 GHz (Powersave Script)",
+                "2208000" to "2.21 GHz (Balanced)",
+                "2515200" to "2.52 GHz (Performance Cool Peak)",
+                "3014400" to "3.01 GHz (Stock Max)"
             ),
-            functionDesc = "Controls the highest speed the performance cores can reach.",
-            upDownEffect = "Higher speed finishes heavy app loads faster; lower speed reduces heat and battery drain."
+            functionDesc = "scaling_max_freq: the speed ceiling for Big Cores 2–4. A lower cap means less heat and power, but slower peaks. (ONLY for Poco F7 / Redmi Turbo 4 Pro · Snapdragon 8s Gen 4)",
+            upDownEffect = "Powersave: 1.73 GHz · Balanced: 2.21 GHz · Performance: 2.52 GHz (below 3.01 GHz peak to limit heat) · Stock: 3.01 GHz."
         ),
         KernelTweakSpec(
             id = "policy2_min_freq",
             section = KernelSection.CPU,
-            title = "Big Cores Idle Speed (Cores 2–4)",
+            title = "Big Cores Idle Speed (scaling_min_freq · Cores 2–4)",
             nodePath = "/sys/devices/system/cpu/cpufreq/policy2/scaling_min_freq",
             wasValue = "480000",
             targetValue = "480000",
             options = listOf("480000", "806400"),
             optionLabels = mapOf(
-                "480000" to "480 MHz (Lowest Power)",
-                "806400" to "806 MHz (Snappy)"
+                "480000" to "480 MHz (Low Idle Floor)",
+                "806400" to "806 MHz (Boosted Idle)"
             ),
-            functionDesc = "Controls the resting speed of the big performance cores when idle.",
-            upDownEffect = "Keeping it at 480 MHz minimizes idle battery drain; raising it keeps cores ready at the cost of extra battery."
+            functionDesc = "scaling_min_freq: the lowest speed the big core cluster idles at. A low floor saves power at idle. (ONLY for Poco F7 / Redmi Turbo 4 Pro · Snapdragon 8s Gen 4)",
+            upDownEffect = "Powersave, Balanced & Performance (common_idle): 480000 (480 MHz)."
         ),
         KernelTweakSpec(
             id = "policy5_max_freq",
             section = KernelSection.CPU,
-            title = "Mid Cores Maximum Speed (Cores 5–6)",
+            title = "Mid Cores Speed Ceiling (scaling_max_freq · Cores 5–6)",
             nodePath = "/sys/devices/system/cpu/cpufreq/policy5/scaling_max_freq",
             wasValue = "1056000",
-            targetValue = "2803200",
-            options = listOf("1056000", "1958400", "2803200"),
+            targetValue = "2208000",
+            options = listOf("1056000", "1824000", "2208000", "2803200"),
             optionLabels = mapOf(
-                "1056000" to "1.06 GHz (Capped)",
-                "1958400" to "1.96 GHz (Balanced)",
-                "2803200" to "2.80 GHz (Uncapped)"
+                "1056000" to "1.06 GHz (Powersave / Stock Cap)",
+                "1824000" to "1.82 GHz (Balanced)",
+                "2208000" to "2.21 GHz (Performance)",
+                "2803200" to "2.80 GHz (Full Uncapped)"
             ),
-            functionDesc = "Controls the speed ceiling for the middle cluster (often capped at 1.06 GHz by the system).",
-            upDownEffect = "Uncapping to 2.80 GHz unlocks full multitasking speed with more heat; 1.06 GHz keeps the phone cool."
+            functionDesc = "scaling_max_freq: the speed ceiling for Mid Cores 5–6. A lower cap means less heat and power. (ONLY for Poco F7 / Redmi Turbo 4 Pro · Snapdragon 8s Gen 4)",
+            upDownEffect = "Powersave: 1.06 GHz · Balanced: 1.82 GHz · Performance: 2.21 GHz."
         ),
         KernelTweakSpec(
             id = "policy5_min_freq",
             section = KernelSection.CPU,
-            title = "Mid Cores Idle Speed (Cores 5–6)",
+            title = "Mid Cores Idle Speed (scaling_min_freq · Cores 5–6)",
             nodePath = "/sys/devices/system/cpu/cpufreq/policy5/scaling_min_freq",
             wasValue = "480000",
             targetValue = "480000",
             options = listOf("480000", "806400"),
             optionLabels = mapOf(
-                "480000" to "480 MHz (Lowest Power)",
-                "806400" to "806 MHz (Snappy)"
+                "480000" to "480 MHz (Low Idle Floor)",
+                "806400" to "806 MHz (Boosted Idle)"
             ),
-            functionDesc = "Controls the lowest speed the middle cores drop to when idle.",
-            upDownEffect = "480 MHz saves the most standby power; 806 MHz responds slightly faster."
+            functionDesc = "scaling_min_freq: the lowest speed the middle core cluster idles at. A low floor saves power at idle. (ONLY for Poco F7 / Redmi Turbo 4 Pro · Snapdragon 8s Gen 4)",
+            upDownEffect = "Powersave, Balanced & Performance (common_idle): 480000 (480 MHz)."
         ),
         KernelTweakSpec(
             id = "policy7_max_freq",
             section = KernelSection.CPU,
-            title = "Prime Core Maximum Speed (Core 7)",
+            title = "Prime Core Speed Ceiling (scaling_max_freq · Core 7)",
             nodePath = "/sys/devices/system/cpu/cpufreq/policy7/scaling_max_freq",
             wasValue = "2054400",
-            targetValue = "3206400",
-            options = listOf("1612800", "2054400", "2649600", "3206400"),
+            targetValue = "2054400",
+            options = listOf("1478400", "1612800", "2054400", "2649600", "3206400"),
             optionLabels = mapOf(
-                "1612800" to "1.61 GHz (Eco)",
-                "2054400" to "2.05 GHz (Default Cap)",
+                "1478400" to "1.48 GHz (Powersave Cap)",
+                "1612800" to "1.61 GHz (Powersave Script)",
+                "2054400" to "2.05 GHz (Balanced / Perf / Stock)",
                 "2649600" to "2.65 GHz (Fast)",
                 "3206400" to "3.21 GHz (Max Boost)"
             ),
-            functionDesc = "Controls the top speed of the main Prime processor core.",
-            upDownEffect = "Raising to 3.21 GHz gives maximum single-core speed for heavy apps and games; lowering saves heat and battery."
+            functionDesc = "scaling_max_freq: the speed ceiling for Prime Core 7. A lower cap means less heat and power, but slower peaks. (ONLY for Poco F7 / Redmi Turbo 4 Pro · Snapdragon 8s Gen 4)",
+            upDownEffect = "Powersave: 1.48 GHz (1.61 GHz script) · Balanced, Performance & Stock: 2.05 GHz."
         ),
         KernelTweakSpec(
             id = "policy7_min_freq",
             section = KernelSection.CPU,
-            title = "Prime Core Idle Speed (Core 7)",
+            title = "Prime Core Idle Speed (scaling_min_freq · Core 7)",
             nodePath = "/sys/devices/system/cpu/cpufreq/policy7/scaling_min_freq",
             wasValue = "633600",
             targetValue = "480000",
             options = listOf("480000", "633600"),
             optionLabels = mapOf(
-                "480000" to "480 MHz (Lowest Power)",
-                "633600" to "634 MHz (Default)"
+                "480000" to "480 MHz (Low Idle Floor)",
+                "633600" to "634 MHz (Stock Default)"
             ),
-            functionDesc = "Controls the lowest idle speed of the Prime core.",
-            upDownEffect = "Lowering to 480 MHz reduces idle power draw when the Prime core is not busy."
+            functionDesc = "scaling_min_freq: the lowest speed the Prime core idles at. A low floor saves power at idle. (ONLY for Poco F7 / Redmi Turbo 4 Pro · Snapdragon 8s Gen 4)",
+            upDownEffect = "Powersave, Balanced & Performance (common_idle): 480000 (480 MHz) · Stock: 633600 (634 MHz)."
         ),
         KernelTweakSpec(
             id = "policy5_governor",
             section = KernelSection.CPU,
-            title = "CPU Speed Scaling Behavior (Governor)",
+            title = "CPU Speed Scaling Rule (scaling_governor · Policy 5)",
             nodePath = "/sys/devices/system/cpu/cpufreq/policy5/scaling_governor",
             wasValue = "walt",
-            targetValue = "schedutil",
-            options = listOf("walt", "schedutil", "powersave", "performance", "conservative"),
+            targetValue = "walt",
+            options = listOf("walt", "powersave", "schedutil", "performance", "conservative"),
             optionLabels = mapOf(
-                "walt" to "Qualcomm WALT (Default)",
-                "schedutil" to "Balanced Linux",
-                "powersave" to "Always Minimum Speed",
-                "performance" to "Always Maximum Speed",
-                "conservative" to "Gradual Ramp-Up"
+                "walt" to "walt (Follows Load · Balanced/Perf)",
+                "powersave" to "powersave (Pins to Minimum)",
+                "schedutil" to "schedutil (Linux Balanced)",
+                "performance" to "performance (Max Speed)",
+                "conservative" to "conservative (Gradual)"
             ),
-            functionDesc = "Chooses the behavior used to adjust processor speed based on workload.",
-            upDownEffect = "Balanced Linux or Gradual Ramp-Up smooths out sudden spikes; Always Minimum saves maximum battery; Always Maximum locks top speed."
+            functionDesc = "scaling_governor: the rule for choosing speed. 'walt' follows load. 'powersave' pins the cluster to its minimum. (ONLY for Poco F7 / Redmi Turbo 4 Pro · Snapdragon 8s Gen 4)",
+            upDownEffect = "Powersave: powersave · Balanced, Performance & Stock: walt."
+        ),
+        KernelTweakSpec(
+            id = "walt_hispeed_load",
+            section = KernelSection.CPU,
+            title = "WALT High-Speed Jump Load % (hispeed_load)",
+            nodePath = "/sys/devices/system/cpu/cpufreq/policy5/walt/hispeed_load",
+            wasValue = "90",
+            targetValue = "85",
+            options = listOf("75", "80", "85", "90", "95"),
+            optionLabels = mapOf(
+                "75" to "75% Load (Fastest)",
+                "80" to "80% Load (Quick)",
+                "85" to "85% Load (Performance)",
+                "90" to "90% Load (Balanced / Stock)",
+                "95" to "95% Load (Conservative)"
+            ),
+            functionDesc = "hispeed_load: with 'walt' governor, the load % at which the CPU jumps to a fixed speed (hispeed_freq). Skipped under 'powersave' governor. (Poco F7 · onyx · Snapdragon 8s Gen 4 · HyperOS 3)",
+            upDownEffect = "Balanced & Stock: 90 · Performance: 85 (not used in Powersave).",
+            isPocoF7Only = true
+        ),
+        KernelTweakSpec(
+            id = "walt_hispeed_freq",
+            section = KernelSection.CPU,
+            title = "WALT High-Speed Jump Frequency (hispeed_freq)",
+            nodePath = "/sys/devices/system/cpu/cpufreq/policy5/walt/hispeed_freq",
+            wasValue = "1190400",
+            targetValue = "1401600",
+            options = listOf("960000", "1056000", "1190400", "1401600", "1497600"),
+            optionLabels = mapOf(
+                "960000" to "960 MHz (Eco)",
+                "1056000" to "1.06 GHz (Capped)",
+                "1190400" to "1.19 GHz (Balanced / Stock)",
+                "1401600" to "1.40 GHz (Performance)",
+                "1497600" to "1.50 GHz (Max Jump)"
+            ),
+            functionDesc = "hispeed_freq: with 'walt' governor, what fixed speed the CPU jumps to when load crosses hispeed_load. Skipped under 'powersave' governor. (Poco F7 · onyx · Snapdragon 8s Gen 4 · HyperOS 3)",
+            upDownEffect = "Balanced & Stock: 1.19 GHz (1190400) · Performance: 1.40 GHz (1401600).",
+            isPocoF7Only = true
         ),
         KernelTweakSpec(
             id = "policy7_boost",
@@ -280,53 +326,89 @@ object KernelRamLabRepository {
             upDownEffect = "Turning it on makes app launches snappier with slightly more heat; keeping it off saves battery."
         ),
         KernelTweakSpec(
-            id = "walt_hispeed_load",
-            section = KernelSection.CPU,
-            title = "Speed Ramp-Up Threshold",
-            nodePath = "/sys/devices/system/cpu/cpufreq/policy5/walt/hispeed_load",
-            wasValue = "90",
-            targetValue = "80",
-            options = listOf("75", "80", "90", "95"),
-            optionLabels = mapOf(
-                "75" to "75% Load (Fast Ramp)",
-                "80" to "80% Load (Responsive)",
-                "90" to "90% Load (Default)",
-                "95" to "95% Load (Power Save)"
-            ),
-            functionDesc = "The processor workload percentage at which the cores jump to high speed.",
-            upDownEffect = "Lowering to 80% makes the phone ramp up sooner for smoother scrolling; raising to 95% delays ramping to save battery."
-        ),
-        KernelTweakSpec(
-            id = "walt_hispeed_freq",
-            section = KernelSection.CPU,
-            title = "High-Load Jump Speed",
-            nodePath = "/sys/devices/system/cpu/cpufreq/policy5/walt/hispeed_freq",
-            wasValue = "1190400",
-            targetValue = "1056000",
-            options = listOf("960000", "1056000", "1190400", "1497600"),
-            optionLabels = mapOf(
-                "960000" to "960 MHz (Eco)",
-                "1056000" to "1.06 GHz (Matched Cap)",
-                "1190400" to "1.19 GHz (Default)",
-                "1497600" to "1.50 GHz (Fast Jump)"
-            ),
-            functionDesc = "The target speed the cluster jumps to once workload crosses the threshold.",
-            upDownEffect = "Setting to 1.06 GHz matches the mid-cluster cap so the step works reliably; raising it jumps to a higher speed."
-        ),
-        KernelTweakSpec(
             id = "cpu6_online",
             section = KernelSection.CPU,
-            title = "Core 6 Power State",
+            title = "Core 6 Power State (cpu6 online)",
             nodePath = "/sys/devices/system/cpu/cpu6/online",
             wasValue = "1",
             targetValue = "0",
             options = listOf("0", "1"),
             optionLabels = mapOf(
-                "0" to "Parked (Offline)",
-                "1" to "Active (Online)"
+                "0" to "0 · Parked (Powersave)",
+                "1" to "1 · Online (Balanced / Perf / Stock)"
             ),
-            functionDesc = "Switches processor Core 6 off or on while keeping primary cores running.",
-            upDownEffect = "Parking the core saves power when you don't need heavy multitasking; setting Active brings all cores online."
+            functionDesc = "cpu6 online: 0 parks that core entirely, 1 brings it back. (ONLY for Poco F7 / Redmi Turbo 4 Pro · Snapdragon 8s Gen 4)",
+            upDownEffect = "Powersave: 0 (parked) · Balanced, Performance & Stock: 1 (online)."
+        ),
+        KernelTweakSpec(
+            id = "core_ctl_cpu2_min",
+            section = KernelSection.CPU,
+            title = "Big Cluster Minimum Cores (core_ctl min_cpus)",
+            nodePath = "/sys/devices/system/cpu/cpu2/core_ctl/min_cpus",
+            wasValue = "3",
+            targetValue = "1",
+            options = listOf("1", "2", "3"),
+            optionLabels = mapOf(
+                "1" to "1 Core Min (Powersave · Park Cores)",
+                "2" to "2 Cores Min",
+                "3" to "3 Cores Min (Balanced / Perf / Stock)"
+            ),
+            functionDesc = "core_ctl min_cpus: the minimum cores kept on in the big cluster (cpu2). Lower lets cores park and save power, but can add lag spikes. (Poco F7 · onyx · Snapdragon 8s Gen 4 · HyperOS 3)",
+            upDownEffect = "Powersave: 1 (big cluster may park cores) · Balanced, Performance & Stock: 3.",
+            isPocoF7Only = true
+        ),
+        KernelTweakSpec(
+            id = "powerkey_input_boost_freq",
+            section = KernelSection.CPU,
+            title = "Power Key Input Boost (powerkey_input_boost_freq)",
+            nodePath = "/proc/sys/walt/input_boost/powerkey_input_boost_freq",
+            wasValue = "1785600 0 2611200 0 0 2611200 0 2515200",
+            targetValue = "0 0 0 0 0 0 0 0",
+            options = listOf(
+                "0 0 0 0 0 0 0 0",
+                "1785600 0 2611200 0 0 2611200 0 2515200"
+            ),
+            optionLabels = mapOf(
+                "0 0 0 0 0 0 0 0" to "Off · No Power-Key Boost (Powersave)",
+                "1785600 0 2611200 0 0 2611200 0 2515200" to "Active Boost (Balanced / Perf / Stock)"
+            ),
+            functionDesc = "powerkey_input_boost_freq: a short speed boost when you press the power key. (Poco F7 · onyx · Snapdragon 8s Gen 4 · HyperOS 3)",
+            upDownEffect = "Powersave: '0 0 0 0 0 0 0 0' (no boost) · Balanced, Performance & Stock: '1785600 0 2611200 0 0 2611200 0 2515200'.",
+            isPocoF7Only = true
+        ),
+        KernelTweakSpec(
+            id = "walt_sched_upmigrate",
+            section = KernelSection.CPU,
+            title = "Task Up-Migration Load % (sched_upmigrate)",
+            nodePath = "/proc/sys/walt/sched_upmigrate",
+            wasValue = "95 95 95",
+            targetValue = "85 85 85",
+            options = listOf("85 85 85", "90 90 90", "95 95 95"),
+            optionLabels = mapOf(
+                "85 85 85" to "85% (Performance · Reach Big Cores Sooner)",
+                "90 90 90" to "90% (Moderate)",
+                "95 95 95" to "95% (Powersave / Balanced / Stock)"
+            ),
+            functionDesc = "sched_upmigrate: the load % at which a task moves to a bigger core. (Poco F7 · onyx · Snapdragon 8s Gen 4 · HyperOS 3)",
+            upDownEffect = "Powersave, Balanced & Stock: '95 95 95' · Performance: '85 85 85' (heavy tasks reach big cores sooner).",
+            isPocoF7Only = true
+        ),
+        KernelTweakSpec(
+            id = "walt_sched_downmigrate",
+            section = KernelSection.CPU,
+            title = "Task Down-Migration Load % (sched_downmigrate)",
+            nodePath = "/proc/sys/walt/sched_downmigrate",
+            wasValue = "85 85 85",
+            targetValue = "75 75 75",
+            options = listOf("75 75 75", "80 80 80", "85 85 85"),
+            optionLabels = mapOf(
+                "75 75 75" to "75% (Performance · Hold Big Cores)",
+                "80 80 80" to "80% (Moderate)",
+                "85 85 85" to "85% (Powersave / Balanced / Stock)"
+            ),
+            functionDesc = "sched_downmigrate: the load % at which a task moves back down to a smaller core. (Poco F7 · onyx · Snapdragon 8s Gen 4 · HyperOS 3)",
+            upDownEffect = "Powersave, Balanced & Stock: '85 85 85' · Performance: '75 75 75'.",
+            isPocoF7Only = true
         ),
 
         // ====================================================================
@@ -350,18 +432,18 @@ object KernelRamLabRepository {
         KernelTweakSpec(
             id = "sched_pelt_multiplier",
             section = KernelSection.SCHED,
-            title = "Workload Reaction Speed",
+            title = "Scheduler Load Reaction Speed (sched_pelt_multiplier)",
             nodePath = "/proc/sys/kernel/sched_pelt_multiplier",
             wasValue = "4",
             targetValue = "2",
             options = listOf("1", "2", "4"),
             optionLabels = mapOf(
-                "1" to "Slow & Smooth (1x)",
-                "2" to "Balanced (2x)",
-                "4" to "Fast Reaction (4x Default)"
+                "1" to "1 · Slow & Smooth (Powersave)",
+                "2" to "2 · Balanced (Balanced)",
+                "4" to "4 · Fast Reaction (Perf / Stock)"
             ),
-            functionDesc = "Controls how quickly the system reacts to sudden changes in app workload.",
-            upDownEffect = "Fast (4x) reacts immediately with more speed jumps; Balanced (2x) or Slow (1x) smooths out brief spikes to save power."
+            functionDesc = "sched_pelt_multiplier: how fast the scheduler reacts to load. 1 is slow and smooth, 4 is fast and uses more power. (ONLY for Poco F7 / Redmi Turbo 4 Pro · Snapdragon 8s Gen 4)",
+            upDownEffect = "Powersave: 1 · Balanced: 2 · Performance & Stock: 4."
         ),
         KernelTweakSpec(
             id = "sched_schedstats",
@@ -381,17 +463,17 @@ object KernelRamLabRepository {
         KernelTweakSpec(
             id = "sched_rt_runtime_us",
             section = KernelSection.SCHED,
-            title = "Real-Time Audio & UI Time Limit",
+            title = "Real-Time Audio & UI Quota (sched_rt_runtime_us)",
             nodePath = "/proc/sys/kernel/sched_rt_runtime_us",
             wasValue = "1250000",
             targetValue = "1250000",
             options = listOf("950000", "1250000"),
             optionLabels = mapOf(
-                "950000" to "95% Cap (Conservative)",
-                "1250000" to "Default (Standard)"
+                "950000" to "950,000 us (Powersave)",
+                "1250000" to "1,250,000 us (Balanced / Perf / Stock)"
             ),
-            functionDesc = "Controls the maximum processor time high-priority real-time tasks can use per period.",
-            upDownEffect = "Default works well for smooth audio and animations; 95% Cap leaves extra safety headroom for background tasks."
+            functionDesc = "sched_rt_runtime_us: how much of each period real-time tasks (audio, UI) may use. The rest stays for normal tasks. (ONLY for Poco F7 / Redmi Turbo 4 Pro · Snapdragon 8s Gen 4)",
+            upDownEffect = "Powersave: 950000 · Balanced, Performance & Stock: 1250000."
         ),
         KernelTweakSpec(
             id = "sched_rr_timeslice_ms",
@@ -411,51 +493,52 @@ object KernelRamLabRepository {
         KernelTweakSpec(
             id = "uclamp_bg_max",
             section = KernelSection.SCHED,
-            title = "Background App Speed Limit",
+            title = "Background Speed Ceiling (cpuctl background uclamp.max)",
             nodePath = "/dev/cpuctl/background/cpu.uclamp.max",
             wasValue = "30.00",
-            targetValue = "20.00",
-            options = listOf("15.00", "20.00", "30.00", "50.00"),
+            targetValue = "25.00",
+            options = listOf("15.00", "20.00", "25.00", "30.00", "50.00"),
             optionLabels = mapOf(
-                "15.00" to "15% Max (Strict Save)",
-                "20.00" to "20% Max (Power Save)",
-                "30.00" to "30% Max (Default)",
-                "50.00" to "50% Max (Faster Sync)"
+                "15.00" to "15% Max (Powersave)",
+                "20.00" to "20% Max (Eco)",
+                "25.00" to "25% Max (Balanced)",
+                "30.00" to "30% Max (Performance / Stock)",
+                "50.00" to "50% Max (Fast Sync)"
             ),
-            functionDesc = "Caps how fast the processor is allowed to run for background apps.",
-            upDownEffect = "Lowering to 15%–20% saves battery by slowing hidden background tasks; raising to 50% lets background tasks finish sooner."
+            functionDesc = "cpuctl uclamp.max: a ceiling on the speed background tasks can request, as a percentage. (ONLY for Poco F7 / Redmi Turbo 4 Pro · Snapdragon 8s Gen 4)",
+            upDownEffect = "Powersave: 15.00 · Balanced: 25.00 · Performance & Stock: 30.00."
         ),
         KernelTweakSpec(
             id = "uclamp_sysbg_max",
             section = KernelSection.SCHED,
-            title = "System Background Speed Limit",
+            title = "System-Background Speed Ceiling (uclamp.max)",
             nodePath = "/dev/cpuctl/system-background/cpu.uclamp.max",
             wasValue = "40.00",
             targetValue = "30.00",
             options = listOf("25.00", "30.00", "40.00", "60.00"),
             optionLabels = mapOf(
-                "25.00" to "25% Max (Strict Save)",
-                "30.00" to "30% Max (Power Save)",
-                "40.00" to "40% Max (Default)",
-                "60.00" to "60% Max (Fast System)"
+                "25.00" to "25% Max (Powersave)",
+                "30.00" to "30% Max (Balanced)",
+                "40.00" to "40% Max (Performance / Stock)",
+                "60.00" to "60% Max (Uncapped)"
             ),
-            functionDesc = "Caps how fast the processor is allowed to run for background system maintenance.",
-            upDownEffect = "Lowering to 25%–30% reduces background battery drain; raising to 60% speeds up background indexing and sync."
+            functionDesc = "cpuctl uclamp.max: a ceiling on the speed system-background tasks can request, as a percentage. (ONLY for Poco F7 / Redmi Turbo 4 Pro · Snapdragon 8s Gen 4)",
+            upDownEffect = "Powersave: 25.00 · Balanced: 30.00 · Performance & Stock: 40.00."
         ),
         KernelTweakSpec(
             id = "uclamp_nnapi_min",
             section = KernelSection.SCHED,
-            title = "AI Engine Idle Speed Floor",
+            title = "AI/ML Layer Speed Floor (nnapi-hal uclamp.min)",
             nodePath = "/dev/cpuctl/nnapi-hal/cpu.uclamp.min",
             wasValue = "1.00",
             targetValue = "0.00",
             options = listOf("0.00", "1.00"),
             optionLabels = mapOf(
-                "0.00" to "0% Floor (No Idle Drain)",
-                "1.00" to "1% Floor (Default)"
+                "0.00" to "0% Floor (Powersave / Balanced / Perf)",
+                "1.00" to "1% Floor (Stock Default)"
             ),
-            functionDesc = "Controls the minimum guaranteed speed floor for the neural/AI hardware service.",
-            upDownEffect = "Lowering to 0% removes the standing minimum floor when AI features are not in use."
+            functionDesc = "cpuctl uclamp.min: a floor on the speed a group can request, as a percentage. nnapi-hal is the AI/ML layer. (ONLY for Poco F7 / Redmi Turbo 4 Pro · Snapdragon 8s Gen 4)",
+            upDownEffect = "Powersave, Balanced & Performance (common_idle): 0.00 · Stock: 1.00."
         ),
         KernelTweakSpec(
             id = "uclamp_topapp_min",
@@ -476,34 +559,51 @@ object KernelRamLabRepository {
         KernelTweakSpec(
             id = "cpuset_misf",
             section = KernelSection.SCHED,
-            title = "System Frame Service Core Assignment",
+            title = "Frame Service Core Assignment (cpuset misf)",
             nodePath = "/dev/cpuset/misf/cpus",
             wasValue = "4-7",
-            targetValue = "0-7",
+            targetValue = "4-7",
             options = listOf("0-3", "4-7", "0-7"),
             optionLabels = mapOf(
-                "0-3" to "Small Cores Only (0–3)",
-                "4-7" to "Big Cores Only (4–7 Default)",
-                "0-7" to "All Cores (0–7)"
+                "0-3" to "0–3 · Small Cores (Powersave)",
+                "4-7" to "4–7 · Big Cores (Balanced / Perf / Stock)",
+                "0-7" to "0–7 · All Cores"
             ),
-            functionDesc = "Chooses which processor cores the HyperOS frame service can run on.",
-            upDownEffect = "Small Cores Only saves power; All Cores spreads the load across the whole processor."
+            functionDesc = "cpuset misf cpus: which cores a group of tasks may use. misf is a frame-related service group. (ONLY for Poco F7 / Redmi Turbo 4 Pro · Snapdragon 8s Gen 4)",
+            upDownEffect = "Powersave: 0-3 · Balanced, Performance & Stock: 4-7."
         ),
         KernelTweakSpec(
             id = "cpuset_background",
             section = KernelSection.SCHED,
-            title = "Background Apps Core Assignment",
+            title = "Background Tasks Core Assignment (cpuset background)",
             nodePath = "/dev/cpuset/background/cpus",
             wasValue = "0-7",
             targetValue = "0-3",
             options = listOf("0-1", "0-3", "0-7"),
             optionLabels = mapOf(
-                "0-1" to "Cores 0–1 (Ultra Save)",
-                "0-3" to "Small Cores 0–3 (Recommended)",
-                "0-7" to "All Cores 0–7 (Default)"
+                "0-1" to "0–1 · Efficiency Cores (Powersave)",
+                "0-3" to "0–3 · Small Cores (Balanced)",
+                "0-7" to "0–7 · All Cores (Performance / Stock)"
             ),
-            functionDesc = "Chooses which processor cores background apps are allowed to use.",
-            upDownEffect = "Restricting background apps to Small Cores (0–3) keeps them off the power-hungry big cores and saves battery."
+            functionDesc = "cpuset background cpus: which cores background tasks may use. Limited to small cores to save power. (ONLY for Poco F7 / Redmi Turbo 4 Pro · Snapdragon 8s Gen 4)",
+            upDownEffect = "Powersave: 0-1 · Balanced: 0-3 · Performance & Stock: 0-7."
+        ),
+        KernelTweakSpec(
+            id = "cpuset_sysbg",
+            section = KernelSection.SCHED,
+            title = "System-Background Core Assignment (cpuset system-background)",
+            nodePath = "/dev/cpuset/system-background/cpus",
+            wasValue = "0-7",
+            targetValue = "0-3",
+            options = listOf("0-1", "0-3", "0-7"),
+            optionLabels = mapOf(
+                "0-1" to "0–1 · Strict Small Cores",
+                "0-3" to "0–3 · Small Cores (Powersave)",
+                "0-7" to "0–7 · All Cores (Balanced / Perf / Stock)"
+            ),
+            functionDesc = "cpuset system-background cpus: which cores system-background tasks may use. Limited to small cores in Powersave. (Poco F7 · onyx · Snapdragon 8s Gen 4 · HyperOS 3)",
+            upDownEffect = "Powersave: 0-3 · Balanced, Performance & Stock: 0-7.",
+            isPocoF7Only = true
         ),
 
         // ====================================================================
@@ -625,24 +725,94 @@ object KernelRamLabRepository {
         ),
 
         // ====================================================================
+        // 3B. MEMORY BUS (DDR / LLCC / L3 — Poco F7 / Redmi Turbo 4 Pro / 8s Gen 4)
+        // ====================================================================
+        KernelTweakSpec(
+            id = "bus_dcvs_ddr_max",
+            section = KernelSection.MEM_BUS,
+            title = "DDR RAM Speed Ceiling (DDR cap)",
+            nodePath = "/sys/devices/system/cpu/bus_dcvs/DDR/24091000.qcom,bwmon-ddr/max_freq",
+            wasValue = "4761600",
+            targetValue = "3686400",
+            options = listOf("3187200", "3686400", "4761600"),
+            optionLabels = mapOf(
+                "3187200" to "3.19 GHz · Step 7/10 (Powersave)",
+                "3686400" to "3.69 GHz · Step 8/10 (Balanced)",
+                "4761600" to "4.76 GHz · Uncapped (Performance / Stock)"
+            ),
+            functionDesc = "DDR cap: the RAM speed ceiling across all DDR voters (bwmon + memlat). Saves the most power, but games and the camera feel it first. (Poco F7 · onyx · Snapdragon 8s Gen 4 · HyperOS 3)",
+            upDownEffect = "Powersave: 3187200 · Balanced: 3686400 · Performance & Stock: 4761600.",
+            isPocoF7Only = true,
+            customWriteCommand = { value ->
+                "for f in /sys/devices/system/cpu/bus_dcvs/DDR/*/max_freq; do if [ -e \"\$f\" ]; then chmod 0666 \"\$f\" 2>/dev/null; echo $value > \"\$f\" 2>/dev/null; fi; done"
+            },
+            customReadCommand = "cat /sys/devices/system/cpu/bus_dcvs/DDR/24091000.qcom,bwmon-ddr/max_freq 2>/dev/null || for f in /sys/devices/system/cpu/bus_dcvs/DDR/*/max_freq; do [ -e \"\$f\" ] && { cat \"\$f\" 2>/dev/null; break; }; done"
+        ),
+        KernelTweakSpec(
+            id = "bus_dcvs_llcc_max",
+            section = KernelSection.MEM_BUS,
+            title = "Last-Level Cache Clock Ceiling (LLCC cap)",
+            nodePath = "/sys/devices/system/cpu/bus_dcvs/LLCC/240b7400.qcom,bwmon-llcc/max_freq",
+            wasValue = "1211200",
+            targetValue = "933000",
+            options = listOf("806000", "933000", "1211200"),
+            optionLabels = mapOf(
+                "806000" to "806 MHz (Powersave)",
+                "933000" to "933 MHz (Balanced)",
+                "1211200" to "1.21 GHz / 933 MHz (Perf / Stock)"
+            ),
+            functionDesc = "LLCC cap: the clock of the shared last-level cache across bwmon and memlat voters. (Poco F7 · onyx · Snapdragon 8s Gen 4 · HyperOS 3)",
+            upDownEffect = "Powersave: 806000 · Balanced: 933000 · Performance & Stock: 1211200 (memlat) / 933000 (bwmon).",
+            isPocoF7Only = true,
+            customWriteCommand = { value ->
+                if (value == "1211200") {
+                    "for f in /sys/devices/system/cpu/bus_dcvs/LLCC/soc:qcom,memlat:llcc:*/max_freq; do if [ -e \"\$f\" ]; then chmod 0666 \"\$f\" 2>/dev/null; echo 1211200 > \"\$f\" 2>/dev/null; fi; done; if [ -e /sys/devices/system/cpu/bus_dcvs/LLCC/240b7400.qcom,bwmon-llcc/max_freq ]; then chmod 0666 /sys/devices/system/cpu/bus_dcvs/LLCC/240b7400.qcom,bwmon-llcc/max_freq 2>/dev/null; echo 933000 > /sys/devices/system/cpu/bus_dcvs/LLCC/240b7400.qcom,bwmon-llcc/max_freq 2>/dev/null; fi"
+                } else {
+                    "for f in /sys/devices/system/cpu/bus_dcvs/LLCC/*/max_freq; do if [ -e \"\$f\" ]; then chmod 0666 \"\$f\" 2>/dev/null; echo $value > \"\$f\" 2>/dev/null; fi; done"
+                }
+            },
+            customReadCommand = "for f in /sys/devices/system/cpu/bus_dcvs/LLCC/soc:qcom,memlat:llcc:*/max_freq; do [ -e \"\$f\" ] && { cat \"\$f\" 2>/dev/null; break; }; done"
+        ),
+        KernelTweakSpec(
+            id = "bus_dcvs_l3_max",
+            section = KernelSection.MEM_BUS,
+            title = "CPU L3 Cache Clock Ceiling (L3 cap)",
+            nodePath = "/sys/devices/system/cpu/bus_dcvs/L3/soc:qcom,memlat:l3:silver/max_freq",
+            wasValue = "1804800",
+            targetValue = "1344000",
+            options = listOf("1344000", "1804800"),
+            optionLabels = mapOf(
+                "1344000" to "1.34 GHz (Powersave)",
+                "1804800" to "1.80 GHz (Balanced / Perf / Stock)"
+            ),
+            functionDesc = "L3 cap: the clock of the CPU's L3 cache. It affects CPU speed directly. (Poco F7 · onyx · Snapdragon 8s Gen 4 · HyperOS 3)",
+            upDownEffect = "Powersave: 1344000 (1.34 GHz) · Balanced, Performance & Stock: 1804800 (1.80 GHz).",
+            isPocoF7Only = true,
+            customWriteCommand = { value ->
+                "for f in /sys/devices/system/cpu/bus_dcvs/L3/*/max_freq; do if [ -e \"\$f\" ]; then chmod 0666 \"\$f\" 2>/dev/null; echo $value > \"\$f\" 2>/dev/null; fi; done"
+            },
+            customReadCommand = "for f in /sys/devices/system/cpu/bus_dcvs/L3/*/max_freq; do [ -e \"\$f\" ] && { cat \"\$f\" 2>/dev/null; break; }; done"
+        ),
+
+        // ====================================================================
         // 4. RAM, SWAP & STORAGE
         // ====================================================================
         KernelTweakSpec(
             id = "vm_swappiness",
             section = KernelSection.RAM,
-            title = "Memory Swap Aggressiveness (ZRAM)",
+            title = "ZRAM Swap Readiness (swappiness)",
             nodePath = "/proc/sys/vm/swappiness",
             wasValue = "150",
-            targetValue = "80",
+            targetValue = "100",
             options = listOf("60", "80", "100", "150"),
             optionLabels = mapOf(
-                "60" to "Low Swap (60)",
-                "80" to "Balanced (80)",
-                "100" to "Moderate (100)",
-                "150" to "Aggressive (150 Default)"
+                "60" to "60 · Low Swap (Powersave)",
+                "80" to "80 · Mild Swap",
+                "100" to "100 · Balanced (Balanced / Perf)",
+                "150" to "150 · Aggressive (Stock Default)"
             ),
-            functionDesc = "Controls how eagerly the system compresses inactive memory into ZRAM swap.",
-            upDownEffect = "Lowering to 80 reduces processor work spent compressing RAM; keeping at 150 caches more background apps at higher CPU cost."
+            functionDesc = "swappiness: how readily memory moves to ZRAM. A higher value swaps more. (ONLY for Poco F7 / Redmi Turbo 4 Pro · Snapdragon 8s Gen 4)",
+            upDownEffect = "Powersave: 60 · Balanced & Performance: 100 · Stock: 150."
         ),
         KernelTweakSpec(
             id = "vm_min_free_kbytes",
@@ -663,19 +833,19 @@ object KernelRamLabRepository {
         KernelTweakSpec(
             id = "vm_vfs_cache_pressure",
             section = KernelSection.RAM,
-            title = "File Cache Cleanup Speed",
+            title = "File & Folder Cache Drop Speed (vfs_cache_pressure)",
             nodePath = "/proc/sys/vm/vfs_cache_pressure",
             wasValue = "73",
             targetValue = "100",
             options = listOf("50", "73", "100", "120"),
             optionLabels = mapOf(
-                "50" to "Keep Cache Longer (50)",
-                "73" to "Default (73)",
-                "100" to "Standard Cleanup (100)",
-                "120" to "Fast Cleanup (120)"
+                "50" to "50 · Keep Cache Longer",
+                "73" to "73 · Keep More Cache (Perf / Stock)",
+                "100" to "100 · Standard Drop (Powersave / Balanced)",
+                "120" to "120 · Fast Drop"
             ),
-            functionDesc = "Controls how quickly cached folder and file information is cleared to free RAM.",
-            upDownEffect = "Raising to 100 frees unused file cache sooner; lowering keeps folder data cached longer."
+            functionDesc = "vfs_cache_pressure: how quickly the kernel drops cached file and folder info. Lower keeps more of it. (ONLY for Poco F7 / Redmi Turbo 4 Pro · Snapdragon 8s Gen 4)",
+            upDownEffect = "Powersave & Balanced: 100 · Performance & Stock: 73."
         ),
         KernelTweakSpec(
             id = "vm_watermark_scale",
@@ -696,19 +866,51 @@ object KernelRamLabRepository {
         KernelTweakSpec(
             id = "sda_read_ahead_kb",
             section = KernelSection.RAM,
-            title = "Storage Read-Ahead Buffer",
+            title = "Sequential Read-Ahead Buffer (read_ahead_kb)",
             nodePath = "/sys/block/sda/queue/read_ahead_kb",
             wasValue = "128",
             targetValue = "128",
             options = listOf("64", "128", "256", "512"),
             optionLabels = mapOf(
-                "64" to "64 KB (Light)",
-                "128" to "128 KB (Default)",
-                "256" to "256 KB (Fast Media)",
+                "64" to "64 KB (Powersave)",
+                "128" to "128 KB (Balanced / Stock)",
+                "256" to "256 KB (Performance)",
                 "512" to "512 KB (Large Files)"
             ),
-            functionDesc = "Controls how much extra data is pre-loaded into RAM when reading storage.",
-            upDownEffect = "Higher values speed up loading large files and games but use slightly more RAM; 128 KB is balanced for everyday use."
+            functionDesc = "read_ahead_kb: how much extra data is read ahead on sequential reads. (ONLY for Poco F7 / Redmi Turbo 4 Pro · Snapdragon 8s Gen 4)",
+            upDownEffect = "Powersave: 64 KB · Balanced & Stock: 128 KB · Performance: 256 KB."
+        ),
+        KernelTweakSpec(
+            id = "sda_iostats",
+            section = KernelSection.RAM,
+            title = "Storage Per-Read I/O Bookkeeping (iostats)",
+            nodePath = "/sys/block/sda/queue/iostats",
+            wasValue = "1",
+            targetValue = "0",
+            options = listOf("0", "1"),
+            optionLabels = mapOf(
+                "0" to "0 · Off (Save CPU · All Profiles)",
+                "1" to "1 · On (Stock Default)"
+            ),
+            functionDesc = "iostats: per-read storage bookkeeping, turned off (0) to save a little CPU on every read. (Poco F7 · onyx · Snapdragon 8s Gen 4 · HyperOS 3)",
+            upDownEffect = "Powersave, Balanced & Performance (common_idle): 0 · Stock: 1.",
+            isPocoF7Only = true
+        ),
+        KernelTweakSpec(
+            id = "sda_add_random",
+            section = KernelSection.RAM,
+            title = "Storage Entropy Bookkeeping (add_random)",
+            nodePath = "/sys/block/sda/queue/add_random",
+            wasValue = "1",
+            targetValue = "0",
+            options = listOf("0", "1"),
+            optionLabels = mapOf(
+                "0" to "0 · Off (Save CPU · All Profiles)",
+                "1" to "1 · On (Stock Default)"
+            ),
+            functionDesc = "add_random: per-read random entropy bookkeeping, turned off (0) to save a little CPU on storage reads. (Poco F7 · onyx · Snapdragon 8s Gen 4 · HyperOS 3)",
+            upDownEffect = "Powersave, Balanced & Performance (common_idle): 0 · Stock: 1.",
+            isPocoF7Only = true
         ),
 
         // ====================================================================
@@ -794,6 +996,29 @@ object KernelRamLabRepository {
             functionDesc = "Controls whether hardware components are put to sleep all at once or one by one.",
             upDownEffect = "One by One is slightly slower but safer when a timer or sensor is preventing deep sleep."
         ),
+        KernelTweakSpec(
+            id = "miui_analytics_net_restrict",
+            section = KernelSection.FREEZE,
+            title = "Xiaomi Telemetry Background Block (com.miui.analytics · UID 10184)",
+            nodePath = "cmd:netpolicy:restrict-background-blacklist:10184",
+            wasValue = "0",
+            targetValue = "1",
+            options = listOf("0", "1"),
+            optionLabels = mapOf(
+                "0" to "Allowed (remove restrict-background-blacklist 10184)",
+                "1" to "Blocked (add restrict-background-blacklist 10184)"
+            ),
+            functionDesc = "com.miui.analytics (UID 10184) · Xiaomi telemetry: Blocks background network access via 'cmd netpolicy add restrict-background-blacklist 10184' (Undo: 'cmd netpolicy remove restrict-background-blacklist 10184').",
+            upDownEffect = "Enabling runs 'cmd netpolicy add restrict-background-blacklist 10184' to stop Xiaomi telemetry background wakeups; Undo runs 'cmd netpolicy remove restrict-background-blacklist 10184'.",
+            customWriteCommand = { value ->
+                if (value == "1") {
+                    "cmd netpolicy add restrict-background-blacklist 10184 2>/dev/null"
+                } else {
+                    "cmd netpolicy remove restrict-background-blacklist 10184 2>/dev/null"
+                }
+            },
+            customReadCommand = "cmd netpolicy list restrict-background-blacklist 2>/dev/null | grep -qw 10184 && echo 1 || echo 0"
+        ),
 
         // ====================================================================
         // 7. THERMAL COOLING LIMITS
@@ -859,28 +1084,6 @@ object KernelRamLabRepository {
                 "for c in /sys/class/thermal/cooling_device*; do if [ \"\$(cat \$c/type 2>/dev/null)\" = \"cdsp\" ]; then chmod 0666 \$c/cur_state 2>/dev/null; echo $value > \$c/cur_state 2>/dev/null; chmod 0444 \$c/cur_state 2>/dev/null; fi; done"
             },
             customReadCommand = "for c in /sys/class/thermal/cooling_device*; do [ \"\$(cat \$c/type 2>/dev/null)\" = \"cdsp\" ] && { cat \$c/cur_state 2>/dev/null; break; }; done"
-        ),
-
-        // ====================================================================
-        // 8. CHARGING LIMITS
-        // ====================================================================
-        KernelTweakSpec(
-            id = "battery_charge_control_limit",
-            section = KernelSection.CHARGING,
-            title = "Charging Speed & Heat Limit",
-            nodePath = "/sys/class/power_supply/battery/charge_control_limit",
-            wasValue = "0",
-            targetValue = "8",
-            options = listOf("0", "4", "8", "12", "16"),
-            optionLabels = mapOf(
-                "0" to "No Limit (Full Fast Charge)",
-                "4" to "Gentle Limit (Level 4)",
-                "8" to "Balanced Cool Charge (Level 8)",
-                "12" to "Slow Cool Charge (Level 12)",
-                "16" to "Minimum Charge Rate (Level 16)"
-            ),
-            functionDesc = "Controls how strongly charging current is throttled to keep the battery cool.",
-            upDownEffect = "Higher levels slow down charging to reduce battery heat and wear; No Limit allows full charging speed."
         )
     )
 
@@ -959,7 +1162,11 @@ object KernelRamLabRepository {
         }
 
         val path = spec.nodePath
-        val shouldLock = lockNodeAfterWrite && (path.startsWith("/sys/") || path.startsWith("/dev/"))
+        val shouldLock = lockNodeAfterWrite && (
+            path.startsWith("/sys/") ||
+                path.startsWith("/dev/") ||
+                path == "/proc/sys/vm/vfs_cache_pressure"
+        )
         val postMode = if (shouldLock) "0444" else "0644"
 
         return buildString {
@@ -974,15 +1181,23 @@ object KernelRamLabRepository {
                     append("if [ -e \"\$p\" ]; then chmod 0666 \"\$p\" 2>/dev/null; echo \"$value\" > \"\$p\" 2>/dev/null; chmod $postMode \"\$p\" 2>/dev/null; fi; done")
                 }
                 "walt_hispeed_load" -> {
-                    append("for p in /sys/devices/system/cpu/cpufreq/policy*/walt/hispeed_load /sys/devices/system/cpu/cpufreq/policy*/schedutil/hispeed_load; do ")
+                    append("for p in /sys/devices/system/cpu/cpufreq/policy5/walt/hispeed_load /sys/devices/system/cpu/cpufreq/policy*/walt/hispeed_load; do ")
                     append("if [ -e \"\$p\" ]; then chmod 0666 \"\$p\" 2>/dev/null; echo \"$value\" > \"\$p\" 2>/dev/null; chmod $postMode \"\$p\" 2>/dev/null; fi; done")
                 }
                 "walt_hispeed_freq" -> {
-                    append("for p in /sys/devices/system/cpu/cpufreq/policy*/walt/hispeed_freq /sys/devices/system/cpu/cpufreq/policy*/schedutil/hispeed_freq; do ")
+                    append("for p in /sys/devices/system/cpu/cpufreq/policy5/walt/hispeed_freq /sys/devices/system/cpu/cpufreq/policy*/walt/hispeed_freq; do ")
                     append("if [ -e \"\$p\" ]; then chmod 0666 \"\$p\" 2>/dev/null; echo \"$value\" > \"\$p\" 2>/dev/null; chmod $postMode \"\$p\" 2>/dev/null; fi; done")
                 }
                 "sda_read_ahead_kb" -> {
                     append("for b in /sys/block/sda/queue/read_ahead_kb /sys/block/sdc/queue/read_ahead_kb /sys/block/mmcblk0/queue/read_ahead_kb /sys/block/dm-0/queue/read_ahead_kb; do ")
+                    append("if [ -e \"\$b\" ]; then chmod 0666 \"\$b\" 2>/dev/null; echo \"$value\" > \"\$b\" 2>/dev/null; chmod $postMode \"\$b\" 2>/dev/null; fi; done")
+                }
+                "sda_iostats" -> {
+                    append("for b in /sys/block/sda/queue/iostats /sys/block/sdc/queue/iostats /sys/block/mmcblk0/queue/iostats; do ")
+                    append("if [ -e \"\$b\" ]; then chmod 0666 \"\$b\" 2>/dev/null; echo \"$value\" > \"\$b\" 2>/dev/null; chmod $postMode \"\$b\" 2>/dev/null; fi; done")
+                }
+                "sda_add_random" -> {
+                    append("for b in /sys/block/sda/queue/add_random /sys/block/sdc/queue/add_random /sys/block/mmcblk0/queue/add_random; do ")
                     append("if [ -e \"\$b\" ]; then chmod 0666 \"\$b\" 2>/dev/null; echo \"$value\" > \"\$b\" 2>/dev/null; chmod $postMode \"\$b\" 2>/dev/null; fi; done")
                 }
                 else -> {
@@ -1530,195 +1745,260 @@ object KernelRamLabRepository {
 
     /**
      * Returns the pre-configured settings map (specId -> targetValue) for each HyperOS template.
+     * When [pocoF7Enabled] is true, includes all Poco F7 (onyx, Snapdragon 8s Gen 4, HyperOS 3) tweaks
+     * assigned for Powersave, Balance, or Performance. When false, excludes Poco F7-exclusive tweaks.
      */
-    fun getTemplatePresets(template: HyperOsProfileTemplate): Map<String, String> {
-        return when (template) {
+    fun getTemplatePresets(
+        template: HyperOsProfileTemplate,
+        pocoF7Enabled: Boolean = false
+    ): Map<String, String> {
+        val fullMap = when (template) {
             HyperOsProfileTemplate.POWERSAVE -> mapOf(
-                "policy0_max_freq" to "1612800",
-                "policy0_min_freq" to "364800",
-                "policy2_max_freq" to "1804800",
-                "policy2_min_freq" to "480000",
-                "policy5_max_freq" to "1056000",
-                "policy5_min_freq" to "480000",
-                "policy7_max_freq" to "1612800",
-                "policy7_min_freq" to "480000",
-                "policy5_governor" to "powersave",
-                "policy7_boost" to "0",
-                "walt_hispeed_load" to "95",
-                "walt_hispeed_freq" to "960000",
+                "pm_freeze_timeout" to "5000",
+                "pm_async" to "0",
+                "miui_analytics_net_restrict" to "1",
                 "cpu6_online" to "0",
-                "sched_energy_aware" to "1",
-                "sched_pelt_multiplier" to "1",
-                "sched_schedstats" to "0",
-                "sched_rt_runtime_us" to "950000",
-                "sched_rr_timeslice_ms" to "100",
+                "policy0_min_freq" to "364800",
+                "policy2_min_freq" to "480000",
+                "policy5_min_freq" to "480000",
+                "policy7_min_freq" to "480000",
+                "uclamp_nnapi_min" to "0.00",
+                "sda_iostats" to "0",
+                "sda_add_random" to "0",
+                "policy5_governor" to "powersave",
+                "policy7_max_freq" to "1478400",
+                "policy2_max_freq" to "1728000",
+                "policy5_max_freq" to "1056000",
+                "policy0_max_freq" to "1516800",
+                "policy7_boost" to "0",
+                "cpuset_background" to "0-1",
                 "uclamp_bg_max" to "15.00",
                 "uclamp_sysbg_max" to "25.00",
-                "uclamp_nnapi_min" to "0.00",
-                "uclamp_topapp_min" to "0.00",
+                "sched_pelt_multiplier" to "1",
                 "cpuset_misf" to "0-3",
-                "cpuset_background" to "0-1",
-                "gpu_max_freq" to "600000000",
-                "gpu_min_freq" to "264000000",
+                "sched_rt_runtime_us" to "950000",
                 "gpu_idle_timer" to "50",
                 "gpu_max_pwrlevel" to "4",
+                "gpu_max_freq" to "600000000",
+                "gpu_min_freq" to "264000000",
                 "gpu_min_pwrlevel" to "10",
                 "kgsl_busmon_max" to "600000000",
                 "notification_window_blur" to "1",
                 "vm_swappiness" to "60",
-                "vm_min_free_kbytes" to "11584",
                 "vm_vfs_cache_pressure" to "100",
-                "vm_watermark_scale" to "10",
                 "sda_read_ahead_kb" to "64",
+                "bus_dcvs_ddr_max" to "3187200",
+                "bus_dcvs_llcc_max" to "806000",
+                "bus_dcvs_l3_max" to "1344000",
+                "core_ctl_cpu2_min" to "1",
+                "powerkey_input_boost_freq" to "0 0 0 0 0 0 0 0",
+                "cpuset_sysbg" to "0-3",
+                "walt_sched_upmigrate" to "95 95 95",
+                "walt_sched_downmigrate" to "85 85 85",
+                "sched_energy_aware" to "1",
+                "sched_schedstats" to "0",
+                "sched_rr_timeslice_ms" to "100",
+                "uclamp_topapp_min" to "0.00",
+                "vm_min_free_kbytes" to "11584",
+                "vm_watermark_scale" to "10",
                 "irq_359_msm_drm" to "0-1",
                 "irq_361_touchscreen" to "0-1",
                 "irq_367_glink" to "0-1",
-                "pm_freeze_timeout" to "5000",
-                "pm_async" to "0",
                 "thermal_cooling_gpu" to "4",
                 "thermal_cooling_cpu3" to "3",
-                "thermal_cooling_cdsp" to "1",
-                "battery_charge_control_limit" to "8"
+                "thermal_cooling_cdsp" to "1"
             )
 
             HyperOsProfileTemplate.BALANCE_SCREEN_OFF -> mapOf(
-                "policy0_max_freq" to "2016000",
-                "policy0_min_freq" to "364800",
-                "policy2_max_freq" to "2400000",
-                "policy2_min_freq" to "480000",
-                "policy5_max_freq" to "1958400",
-                "policy5_min_freq" to "480000",
-                "policy7_max_freq" to "2054400",
-                "policy7_min_freq" to "480000",
-                "policy5_governor" to "schedutil",
-                "policy7_boost" to "0",
-                "walt_hispeed_load" to "90",
-                "walt_hispeed_freq" to "1056000",
+                "pm_freeze_timeout" to "5000",
+                "pm_async" to "1",
+                "miui_analytics_net_restrict" to "1",
                 "cpu6_online" to "1",
-                "sched_energy_aware" to "1",
-                "sched_pelt_multiplier" to "2",
-                "sched_schedstats" to "0",
-                "sched_rt_runtime_us" to "1250000",
-                "sched_rr_timeslice_ms" to "100",
-                "uclamp_bg_max" to "20.00",
-                "uclamp_sysbg_max" to "30.00",
+                "policy0_min_freq" to "364800",
+                "policy2_min_freq" to "480000",
+                "policy5_min_freq" to "480000",
+                "policy7_min_freq" to "480000",
                 "uclamp_nnapi_min" to "0.00",
-                "uclamp_topapp_min" to "10.00",
-                "cpuset_misf" to "0-7",
+                "sda_iostats" to "0",
+                "sda_add_random" to "0",
+                "policy5_governor" to "walt",
+                "walt_hispeed_load" to "90",
+                "walt_hispeed_freq" to "1190400",
+                "policy0_max_freq" to "1804800",
+                "policy2_max_freq" to "2208000",
+                "policy5_max_freq" to "1824000",
+                "policy7_max_freq" to "2054400",
+                "policy7_boost" to "0",
                 "cpuset_background" to "0-3",
+                "uclamp_bg_max" to "25.00",
+                "uclamp_sysbg_max" to "30.00",
+                "sched_pelt_multiplier" to "2",
+                "cpuset_misf" to "4-7",
+                "sched_rt_runtime_us" to "1250000",
+                "gpu_idle_timer" to "50",
+                "gpu_max_pwrlevel" to "2",
                 "gpu_max_freq" to "873000000",
                 "gpu_min_freq" to "264000000",
-                "gpu_idle_timer" to "64",
-                "gpu_max_pwrlevel" to "2",
                 "gpu_min_pwrlevel" to "10",
                 "kgsl_busmon_max" to "873000000",
                 "notification_window_blur" to "0",
-                "vm_swappiness" to "80",
-                "vm_min_free_kbytes" to "24576",
+                "vm_swappiness" to "100",
                 "vm_vfs_cache_pressure" to "100",
-                "vm_watermark_scale" to "20",
                 "sda_read_ahead_kb" to "128",
-                "irq_359_msm_drm" to "2-4",
-                "irq_361_touchscreen" to "2-4",
+                "bus_dcvs_ddr_max" to "3686400",
+                "bus_dcvs_llcc_max" to "933000",
+                "bus_dcvs_l3_max" to "1804800",
+                "core_ctl_cpu2_min" to "3",
+                "powerkey_input_boost_freq" to "1785600 0 2611200 0 0 2611200 0 2515200",
+                "cpuset_sysbg" to "0-7",
+                "walt_sched_upmigrate" to "95 95 95",
+                "walt_sched_downmigrate" to "85 85 85",
+                "sched_energy_aware" to "1",
+                "sched_schedstats" to "0",
+                "sched_rr_timeslice_ms" to "100",
+                "uclamp_topapp_min" to "0.00",
+                "vm_min_free_kbytes" to "24576",
+                "vm_watermark_scale" to "20",
+                "irq_359_msm_drm" to "0-1",
+                "irq_361_touchscreen" to "0-1",
                 "irq_367_glink" to "0-1",
-                "pm_freeze_timeout" to "10000",
-                "pm_async" to "0",
                 "thermal_cooling_gpu" to "4",
                 "thermal_cooling_cpu3" to "3",
-                "thermal_cooling_cdsp" to "1",
-                "battery_charge_control_limit" to "4"
+                "thermal_cooling_cdsp" to "1"
             )
 
             HyperOsProfileTemplate.PERFORMANCE -> mapOf(
-                "policy0_max_freq" to "2016000",
-                "policy0_min_freq" to "748800",
-                "policy2_max_freq" to "3014400",
-                "policy2_min_freq" to "806400",
-                "policy5_max_freq" to "2803200",
-                "policy5_min_freq" to "806400",
-                "policy7_max_freq" to "3206400",
-                "policy7_min_freq" to "633600",
-                "policy5_governor" to "performance",
-                "policy7_boost" to "1",
-                "walt_hispeed_load" to "75",
-                "walt_hispeed_freq" to "1497600",
-                "cpu6_online" to "1",
-                "sched_energy_aware" to "0",
-                "sched_pelt_multiplier" to "4",
-                "sched_schedstats" to "0",
-                "sched_rt_runtime_us" to "1250000",
-                "sched_rr_timeslice_ms" to "50",
-                "uclamp_bg_max" to "50.00",
-                "uclamp_sysbg_max" to "60.00",
-                "uclamp_nnapi_min" to "1.00",
-                "uclamp_topapp_min" to "20.00",
-                "cpuset_misf" to "0-7",
-                "cpuset_background" to "0-7",
-                "gpu_max_freq" to "1150000000",
-                "gpu_min_freq" to "400000000",
-                "gpu_idle_timer" to "120",
-                "gpu_max_pwrlevel" to "0",
-                "gpu_min_pwrlevel" to "8",
-                "kgsl_busmon_max" to "1150000000",
-                "notification_window_blur" to "0",
-                "vm_swappiness" to "60",
-                "vm_min_free_kbytes" to "32768",
-                "vm_vfs_cache_pressure" to "120",
-                "vm_watermark_scale" to "40",
-                "sda_read_ahead_kb" to "512",
-                "irq_359_msm_drm" to "2-4",
-                "irq_361_touchscreen" to "2-4",
-                "irq_367_glink" to "2-4",
                 "pm_freeze_timeout" to "20000",
                 "pm_async" to "1",
-                "thermal_cooling_gpu" to "0",
-                "thermal_cooling_cpu3" to "0",
-                "thermal_cooling_cdsp" to "0",
-                "battery_charge_control_limit" to "0"
+                "miui_analytics_net_restrict" to "1",
+                "cpu6_online" to "1",
+                "policy0_min_freq" to "364800",
+                "policy2_min_freq" to "480000",
+                "policy5_min_freq" to "480000",
+                "policy7_min_freq" to "480000",
+                "uclamp_nnapi_min" to "0.00",
+                "sda_iostats" to "0",
+                "sda_add_random" to "0",
+                "policy5_governor" to "walt",
+                "walt_hispeed_load" to "85",
+                "walt_hispeed_freq" to "1401600",
+                "policy0_max_freq" to "2016000",
+                "policy2_max_freq" to "2515200",
+                "policy5_max_freq" to "2208000",
+                "policy7_max_freq" to "2054400",
+                "policy7_boost" to "1",
+                "cpuset_background" to "0-7",
+                "uclamp_bg_max" to "30.00",
+                "uclamp_sysbg_max" to "40.00",
+                "sched_pelt_multiplier" to "4",
+                "cpuset_misf" to "4-7",
+                "sched_rt_runtime_us" to "1250000",
+                "gpu_idle_timer" to "80",
+                "gpu_max_pwrlevel" to "2",
+                "gpu_max_freq" to "873000000",
+                "gpu_min_freq" to "264000000",
+                "gpu_min_pwrlevel" to "10",
+                "kgsl_busmon_max" to "873000000",
+                "notification_window_blur" to "0",
+                "vm_swappiness" to "100",
+                "vm_vfs_cache_pressure" to "73",
+                "sda_read_ahead_kb" to "256",
+                "bus_dcvs_ddr_max" to "4761600",
+                "bus_dcvs_llcc_max" to "1211200",
+                "bus_dcvs_l3_max" to "1804800",
+                "core_ctl_cpu2_min" to "3",
+                "powerkey_input_boost_freq" to "1785600 0 2611200 0 0 2611200 0 2515200",
+                "cpuset_sysbg" to "0-7",
+                "walt_sched_upmigrate" to "85 85 85",
+                "walt_sched_downmigrate" to "75 75 75",
+                "sched_energy_aware" to "1",
+                "sched_schedstats" to "0",
+                "sched_rr_timeslice_ms" to "100",
+                "uclamp_topapp_min" to "0.00",
+                "vm_min_free_kbytes" to "32768",
+                "vm_watermark_scale" to "20",
+                "irq_359_msm_drm" to "0-1",
+                "irq_361_touchscreen" to "0-1",
+                "irq_367_glink" to "0-1",
+                "thermal_cooling_gpu" to "4",
+                "thermal_cooling_cpu3" to "3",
+                "thermal_cooling_cdsp" to "1"
             )
         }
+        if (pocoF7Enabled) return fullMap
+        val pocoOnlyIds = tweakSpecs.filter { it.isPocoF7Only }.map { it.id }.toSet()
+        return fullMap.filterKeys { it !in pocoOnlyIds }
+    }
+
+    /**
+     * Reads live hardware status matching `sh profiles.sh status` for Poco F7 / Redmi Turbo 4 Pro (Snapdragon 8s Gen 4).
+     */
+    suspend fun readPocoF7StatusReport(): String = withContext(Dispatchers.IO) {
+        if (!RootBridge.isRootAvailable()) {
+            return@withContext "Root access not detected. Grant root to read live Poco F7 / Snapdragon 8s Gen 4 status."
+        }
+        val script = """
+            C=/sys/devices/system/cpu
+            F=${'$'}C/cpufreq
+            G=/sys/class/kgsl/kgsl-3d0
+            B=/sys/devices/system/cpu/bus_dcvs
+            for p in 0 2 5 7; do
+              echo "policy${'$'}p: gov=${'$'}(cat ${'$'}F/policy${'$'}p/scaling_governor 2>/dev/null) min=${'$'}(cat ${'$'}F/policy${'$'}p/scaling_min_freq 2>/dev/null) max=${'$'}(cat ${'$'}F/policy${'$'}p/scaling_max_freq 2>/dev/null) cur=${'$'}(cat ${'$'}F/policy${'$'}p/scaling_cur_freq 2>/dev/null)"
+            done
+            echo "cpu6 online=${'$'}(cat ${'$'}C/cpu6/online 2>/dev/null)"
+            echo "gpu max_freq=${'$'}(cat ${'$'}G/devfreq/max_freq 2>/dev/null) pwrlevel=${'$'}(cat ${'$'}G/max_pwrlevel 2>/dev/null)"
+            echo "DDR max=${'$'}(cat ${'$'}B/DDR/24091000.qcom,bwmon-ddr/max_freq 2>/dev/null) cur=${'$'}(cat ${'$'}B/DDR/cur_freq 2>/dev/null)  LLCC max=${'$'}(cat ${'$'}B/LLCC/240b7400.qcom,bwmon-llcc/max_freq 2>/dev/null) cur=${'$'}(cat ${'$'}B/LLCC/cur_freq 2>/dev/null)  L3 cur=${'$'}(cat ${'$'}B/L3/cur_freq 2>/dev/null)"
+            echo "core_ctl cpu2 min=${'$'}(cat ${'$'}C/cpu2/core_ctl/min_cpus 2>/dev/null)  up/down migrate=${'$'}(cat /proc/sys/walt/sched_upmigrate 2>/dev/null)/${'$'}(cat /proc/sys/walt/sched_downmigrate 2>/dev/null)"
+            echo "swappiness=${'$'}(cat /proc/sys/vm/swappiness 2>/dev/null) vfs=${'$'}(cat /proc/sys/vm/vfs_cache_pressure 2>/dev/null) pelt=${'$'}(cat /proc/sys/kernel/sched_pelt_multiplier 2>/dev/null)"
+        """.trimIndent()
+        val res = RootBridge.execute(script)
+        res.stdout.trim().ifBlank { "Status read complete (some Snapdragon 8s Gen 4 sysfs nodes not present on this device)." }
     }
 
     /**
      * Returns sections ordered by priority for the selected HyperOS profile template.
      */
-    fun getSectionOrderForTemplate(template: HyperOsProfileTemplate?): List<KernelSection> {
-        return when (template) {
+    fun getSectionOrderForTemplate(
+        template: HyperOsProfileTemplate?,
+        pocoF7Enabled: Boolean = false
+    ): List<KernelSection> {
+        val base = when (template) {
             HyperOsProfileTemplate.POWERSAVE -> listOf(
                 KernelSection.FREEZE,
                 KernelSection.CPU,
                 KernelSection.SCHED,
                 KernelSection.GPU,
+                KernelSection.MEM_BUS,
                 KernelSection.RAM,
-                KernelSection.CHARGING,
                 KernelSection.IRQ,
                 KernelSection.THERMAL
             )
 
             HyperOsProfileTemplate.BALANCE_SCREEN_OFF -> listOf(
                 KernelSection.FREEZE,
-                KernelSection.SCHED,
                 KernelSection.CPU,
-                KernelSection.RAM,
+                KernelSection.SCHED,
+                KernelSection.MEM_BUS,
                 KernelSection.GPU,
+                KernelSection.RAM,
                 KernelSection.IRQ,
-                KernelSection.CHARGING,
                 KernelSection.THERMAL
             )
 
             HyperOsProfileTemplate.PERFORMANCE -> listOf(
                 KernelSection.CPU,
-                KernelSection.GPU,
-                KernelSection.THERMAL,
+                KernelSection.MEM_BUS,
                 KernelSection.SCHED,
+                KernelSection.GPU,
                 KernelSection.RAM,
+                KernelSection.THERMAL,
                 KernelSection.IRQ,
-                KernelSection.CHARGING,
                 KernelSection.FREEZE
             )
 
             null -> KernelSection.entries.filter { it != KernelSection.ALL && it != KernelSection.DAEMONS }
         }
+        return if (pocoF7Enabled) base else base.filter { it != KernelSection.MEM_BUS }
     }
 
     /**
@@ -1731,41 +2011,42 @@ object KernelRamLabRepository {
         if (template == null) return specs
         val priorityOrder: List<String> = when (template) {
             HyperOsProfileTemplate.POWERSAVE -> listOf(
-                // Freeze & Idle power first
-                "pm_freeze_timeout", "pm_async",
+                "pm_freeze_timeout", "pm_async", "miui_analytics_net_restrict",
                 "cpu6_online", "policy0_min_freq", "policy2_min_freq", "policy5_min_freq", "policy7_min_freq",
-                "policy5_governor", "walt_hispeed_load", "walt_hispeed_freq",
-                "policy7_max_freq", "policy2_max_freq", "policy5_max_freq", "policy0_max_freq", "policy7_boost",
-                "cpuset_background", "uclamp_bg_max", "uclamp_sysbg_max", "sched_energy_aware",
-                "sched_pelt_multiplier", "uclamp_nnapi_min", "uclamp_topapp_min", "cpuset_misf",
-                "gpu_idle_timer", "gpu_min_pwrlevel", "gpu_max_pwrlevel", "gpu_max_freq", "gpu_min_freq", "kgsl_busmon_max", "notification_window_blur",
-                "vm_swappiness", "vm_vfs_cache_pressure", "sda_read_ahead_kb", "vm_min_free_kbytes", "vm_watermark_scale",
-                "battery_charge_control_limit"
+                "policy5_governor",
+                "policy7_max_freq", "policy2_max_freq", "policy5_max_freq", "policy0_max_freq",
+                "core_ctl_cpu2_min", "powerkey_input_boost_freq", "walt_sched_upmigrate", "walt_sched_downmigrate", "policy7_boost",
+                "cpuset_background", "cpuset_sysbg", "uclamp_bg_max", "uclamp_sysbg_max",
+                "sched_pelt_multiplier", "uclamp_nnapi_min", "cpuset_misf", "sched_rt_runtime_us",
+                "gpu_idle_timer", "gpu_max_pwrlevel", "gpu_max_freq", "kgsl_busmon_max", "notification_window_blur",
+                "bus_dcvs_ddr_max", "bus_dcvs_llcc_max", "bus_dcvs_l3_max",
+                "vm_swappiness", "vm_vfs_cache_pressure", "sda_read_ahead_kb", "sda_iostats", "sda_add_random"
             )
 
             HyperOsProfileTemplate.BALANCE_SCREEN_OFF -> listOf(
-                // Screen-off sleep + balanced UI smoothness first
-                "pm_freeze_timeout", "pm_async",
-                "cpuset_background", "uclamp_bg_max", "uclamp_sysbg_max", "uclamp_topapp_min",
-                "sched_pelt_multiplier", "sched_energy_aware", "cpuset_misf", "uclamp_nnapi_min",
+                "pm_freeze_timeout", "pm_async", "miui_analytics_net_restrict",
+                "cpu6_online", "policy0_min_freq", "policy2_min_freq", "policy5_min_freq", "policy7_min_freq",
                 "policy5_governor", "walt_hispeed_load", "walt_hispeed_freq",
-                "policy5_max_freq", "policy2_max_freq", "policy7_max_freq", "policy0_max_freq",
-                "policy0_min_freq", "policy7_min_freq", "policy2_min_freq", "policy5_min_freq", "cpu6_online",
-                "vm_swappiness", "vm_min_free_kbytes", "vm_watermark_scale", "vm_vfs_cache_pressure", "sda_read_ahead_kb",
-                "gpu_idle_timer", "gpu_max_freq", "gpu_min_freq", "kgsl_busmon_max", "notification_window_blur"
+                "policy0_max_freq", "policy2_max_freq", "policy5_max_freq", "policy7_max_freq",
+                "core_ctl_cpu2_min", "powerkey_input_boost_freq", "walt_sched_upmigrate", "walt_sched_downmigrate",
+                "cpuset_background", "cpuset_sysbg", "uclamp_bg_max", "uclamp_sysbg_max",
+                "sched_pelt_multiplier", "uclamp_nnapi_min", "cpuset_misf", "sched_rt_runtime_us",
+                "bus_dcvs_ddr_max", "bus_dcvs_llcc_max", "bus_dcvs_l3_max",
+                "gpu_idle_timer", "gpu_max_pwrlevel", "gpu_max_freq", "kgsl_busmon_max", "notification_window_blur",
+                "vm_swappiness", "vm_vfs_cache_pressure", "sda_read_ahead_kb", "sda_iostats", "sda_add_random"
             )
 
             HyperOsProfileTemplate.PERFORMANCE -> listOf(
-                // Peak clocks, boost, thermal unthrottling & gaming responsiveness first
-                "policy7_max_freq", "policy5_max_freq", "policy2_max_freq", "policy0_max_freq",
-                "policy7_boost", "policy5_governor", "walt_hispeed_load", "walt_hispeed_freq",
-                "cpu6_online", "policy7_min_freq", "policy2_min_freq", "policy5_min_freq", "policy0_min_freq",
-                "gpu_max_freq", "gpu_max_pwrlevel", "kgsl_busmon_max", "gpu_idle_timer", "gpu_min_freq", "gpu_min_pwrlevel", "notification_window_blur",
-                "thermal_cooling_gpu", "thermal_cooling_cpu3", "thermal_cooling_cdsp",
-                "uclamp_topapp_min", "sched_energy_aware", "sched_pelt_multiplier", "sched_rr_timeslice_ms",
-                "cpuset_misf", "cpuset_background", "uclamp_bg_max", "uclamp_sysbg_max",
-                "vm_min_free_kbytes", "vm_watermark_scale", "sda_read_ahead_kb", "vm_vfs_cache_pressure", "vm_swappiness",
-                "irq_361_touchscreen", "irq_359_msm_drm", "irq_367_glink"
+                "policy5_governor", "walt_hispeed_load", "walt_hispeed_freq",
+                "policy0_max_freq", "policy2_max_freq", "policy5_max_freq", "policy7_max_freq",
+                "core_ctl_cpu2_min", "powerkey_input_boost_freq", "walt_sched_upmigrate", "walt_sched_downmigrate",
+                "cpu6_online", "policy0_min_freq", "policy2_min_freq", "policy5_min_freq", "policy7_min_freq",
+                "bus_dcvs_ddr_max", "bus_dcvs_llcc_max", "bus_dcvs_l3_max",
+                "cpuset_background", "cpuset_sysbg", "uclamp_bg_max", "uclamp_sysbg_max",
+                "sched_pelt_multiplier", "uclamp_nnapi_min", "cpuset_misf", "sched_rt_runtime_us",
+                "gpu_idle_timer", "gpu_max_pwrlevel", "gpu_max_freq", "kgsl_busmon_max", "notification_window_blur",
+                "vm_swappiness", "vm_vfs_cache_pressure", "sda_read_ahead_kb", "sda_iostats", "sda_add_random",
+                "pm_freeze_timeout", "pm_async", "miui_analytics_net_restrict"
             )
         }
         val rankMap = priorityOrder.withIndex().associate { (idx, id) -> id to idx }
